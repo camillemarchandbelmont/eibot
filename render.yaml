@@ -1,0 +1,47 @@
+services:
+  - type: web
+    name: empire-immo-bot
+    runtime: python
+    plan: free
+    region: frankfurt
+    buildCommand: pip install -r requirements.txt
+    startCommand: python -m src.main
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.9"
+      - key: DISCORD_TOKEN
+        sync: false          # à saisir dans le dashboard Render
+      - key: TICK_TOKEN
+        generateValue: true  # généré par Render, à recopier dans cron-job.org
+      - key: GUILD_ID
+        sync: false
+      - key: DATABASE_URL
+        fromDatabase:
+          name: empire-immo-db
+          property: connectionString
+      # Clé de l'API Empire Immo. Renseignée -> le bot lit l'export en ligne ;
+      # laissée vide -> il retombe sur le CSV versionné dans le dépôt.
+      - key: EMPIRE_API_KEY
+        sync: false
+      # À définir seulement si le monde change (M8 -> M9) ou si l'URL bouge.
+      - key: EMPIRE_API_URL
+        sync: false
+      # Fourchette par défaut : 100 TØ -> 6 PØ
+      - key: PRIX_MIN
+        value: "1e14"
+      - key: PRIX_MAX
+        value: "6e15"
+      - key: HEURE
+        value: "09:00"
+      - key: FUSEAU
+        value: "Europe/Paris"
+      # Salons, rôle et journal ne sont pas déclarés ici : ils se règlent par
+      # /config salon ajouter, /config mention et /config logs, et sont
+      # persistés en base. Un ID codé dans le blueprint serait doublonné avec
+      # la config Discord et prêterait à confusion.
+
+databases:
+  - name: empire-immo-db
+    plan: free
+    region: frankfurt

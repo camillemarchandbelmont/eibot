@@ -1,0 +1,7 @@
+# Dépendances de test uniquement. Séparées de `requirements.txt` pour que Render
+# n'installe pas pytest à chaque build : il ne sert qu'en local.
+-r requirements.txt
+pytest==8.3.4
+# `asyncio_mode = auto` de pytest.ini vient de ce paquet : sans lui, tous les
+# tests async sont silencieusement ignorés.
+pytest-asyncio==0.26.0
