@@ -238,6 +238,70 @@ nouvel horaire s'applique tout de suite, sans attendre demain.
 
 `GET /health` répond `ok` : c'est aussi la cible du health check Render.
 
+## Le site web
+
+Un panneau de contrôle Next.js (dépôt séparé, `../eiweb`) remplace la plupart des
+commandes : promotions du jour, fourchette, heure, template, publication à la
+demande. Il se connecte au bot par ces routes :
+
+| Route | Effet |
+|---|---|
+| `GET /api/etat` | Bot connecté, type de stockage, dernière publication |
+| `GET /api/promos[?min=&max=]` | Promotions du jour, fourchette optionnelle |
+| `GET /api/config` | Configuration courante |
+| `PATCH /api/config` | Écrit `prix_min`, `prix_max`, `heure`, `fuseau` |
+| `GET /api/template` | Template et liste des placeholders |
+| `PUT /api/template` | Remplace le template |
+| `POST /api/apercu` | Rend le post sans publier ni enregistrer |
+| `POST /api/publier` | Publie immédiatement (`forcer=True`) |
+
+### Activer l'API
+
+Une seule variable : `API_SECRET`, la même valeur que dans le projet Vercel.
+
+```bash
+openssl rand -base64 32
+```
+
+Sans elle, **toutes** les routes `/api/*` répondent 401 — y compris les lectures.
+C'est délibéré : un `API_SECRET` vide comparé à un en-tête absent donnerait
+`"" == ""`, et l'API serait grande ouverte.
+
+`API_SECRET` est **distinct de `TICK_TOKEN`** pour qu'une fuite de l'un ne donne
+pas l'autre : le jeton du cron circule dans une query string, donc dans les
+journaux d'accès. `API_SECRET`, lui, voyage dans l'en-tête `X-Api-Secret`, qui
+n'y apparaît jamais.
+
+### Ce qui reste dans Discord
+
+`PATCH /api/config` n'accepte que quatre champs (`CHAMPS_MODIFIABLES` dans
+`src/api.py`). Les **salons**, la **mention**, le **salon de logs** et la **liste
+d'accès** désignent des objets Discord dont le site ne peut vérifier ni
+l'existence, ni les permissions du bot, ni l'appartenance d'un membre au serveur.
+Ils restent réglés par commande, où Discord fait la vérification lui-même. Toute
+autre clé est refusée en 400 avec le nom du champ fautif.
+
+### Les montants ne passent jamais en nombre JSON
+
+Un nombre JSON est un double IEEE 754 : `19013724539281000000` en ressortirait à
+`19013724539280998400`, et le site afficherait un prix faux sans que rien ne le
+signale. Chaque montant traverse donc le JSON **en texte**, sous trois formes
+(`prix`, `prix_long`, `prix_brut`), produites par `src/serialisation.py` — les
+mêmes rendus que les placeholders du template, pour que le site et Discord
+n'affichent jamais deux montants différents.
+
+`tests/test_serialisation.py` fige ces noms de champs (`test_contrat_*`) :
+renommer un champ ici ne casserait rien côté Python, le site afficherait
+simplement une colonne vide.
+
+### Les erreurs ne disent que le type
+
+Une exception inattendue sur `/api/*` renvoie `Erreur inattendue (RuntimeError)`,
+jamais le message. Le détail pourrait contenir l'URL de l'API du jeu, donc la clé
+`EMPIRE_API_KEY`. Un test (`test_erreur_inattendue_ne_fuit_pas_la_cle_dapi`)
+plante volontairement la clé dans un message d'exception et vérifie qu'elle
+n'atteint pas la réponse.
+
 ## Source des données : API du jeu ou fichier local
 
 Le bot lit l'export officiel du monde :
@@ -311,7 +375,7 @@ pip install -r requirements-dev.txt
 python -m pytest -q
 ```
 
-286 tests couvrent la notation monétaire, le parsing du CSV (entiers de
+348 tests couvrent la notation monétaire, le parsing du CSV (entiers de
 21 chiffres, notation scientifique), le calcul des remises, le repêchage hors
 fourchette, le rendu du template, les limites Discord, le planning (fenêtre
 de rattrapage, idempotence quotidienne), l'API du jeu (construction de l'URL,
@@ -319,8 +383,39 @@ erreurs 401/5xx, non-fuite de la clé, réponses non-CSV), la publication
 multi-salon (échec partiel, échec total, salon supprimé), le salon de journal
 (qui ne doit jamais échouer), le contrôle d'accès (toutes les commandes
 protégées, admin jamais verrouillé dehors, liste non modifiable par un membre
-autorisé), les commandes slash (exécutées hors ligne, embeds inspectés) et les
-endpoints HTTP.
+autorisé), les commandes slash (exécutées hors ligne, embeds inspectés), les
+endpoints HTTP et l'API du site (secret partagé, validation des écritures,
+non-fuite de la clé d'API dans les erreurs).
+
+### Deux exports, deux usages
+
+`buildings_batiments_entreprise.csv`, à la racine, est **remplacé** à chaque
+nouvel export du jeu. Un test qui y épinglerait un nom de bâtiment ou un montant
+casserait au remplacement suivant sans qu'aucun bug n'existe. Un seul test le
+lit donc, `test_csv_vivant_reste_lisible`, et ne vérifie que le **format** — ce
+qui attrape justement ce qui ferait publier « 0 bâtiment » demain matin : fichier
+tronqué, ré-encodé, colonnes renommées.
+
+Les tests qui ont besoin de valeurs stables lisent
+`tests/fixtures/export_2026-07-28.csv`, un export **figé** (116 bâtiments,
+4 promotions à −17 %). Nouvel export à figer : le copier sous un nouveau nom
+daté, sans écraser l'ancien.
+
+### Vérifier que les tests mordent
+
+```bash
+python tests/mutations.py          # les 24 mutations
+python tests/mutations.py acces    # celles dont le nom contient « acces »
+```
+
+Une suite verte prouve que le code passe les tests, pas que les tests
+vérifieraient quoi que ce soit. `tests/mutations.py` introduit une à une
+24 fautes plausibles dans `src/` (inverser une comparaison, ôter une garde,
+supprimer un masquage de secret) et exige que la suite échoue à chaque fois. Un
+**survivant** est un trou de couverture, pas un faux positif.
+
+Le fichier muté est restauré dans un `finally`, donc rien ne reste modifié même
+sur Ctrl-C. Vérification de sûreté : `git diff --stat src/` après un passage.
 
 ## Structure
 
@@ -334,6 +429,9 @@ src/bot.py       client Discord et commandes slash
 src/journal.py   compte rendu dans le salon de logs
 src/schedule.py  « est-ce l'heure de publier ? »
 src/db.py        configuration persistante (Postgres)
+src/acces.py     qui a le droit d'utiliser les commandes
 src/web.py       /health et /tick
+src/api.py       routes /api/* consommées par le site web
+src/serialisation.py  objets métier → JSON (montants en texte)
 src/main.py      point d'entrée
 ```

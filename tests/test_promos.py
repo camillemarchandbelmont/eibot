@@ -7,7 +7,15 @@ import pytest
 
 from src.promos import Building, find_promos, parse_csv
 
-CSV_REEL = Path(__file__).resolve().parent.parent / "buildings_batiments_entreprise.csv"
+#: L'export du dépôt, celui que le bot lit vraiment. Il est **remplacé** à
+#: chaque nouvel export du jeu : n'en attendre que le format, jamais des noms de
+#: bâtiments ni des montants précis.
+CSV_VIVANT = Path(__file__).resolve().parent.parent / "buildings_batiments_entreprise.csv"
+
+#: Un export figé (mise à jour du 2026-07-28, 4 promotions à −17 %). C'est lui
+#: qui sert aux tests de sélection : leurs assertions citent des noms et des
+#: prix, qui n'ont de sens que sur des données immuables.
+CSV_FIGE = Path(__file__).resolve().parent / "fixtures" / "export_2026-07-28.csv"
 
 ENTETE = """# nom: Empire Immo - M8
 # description: Liste des bâtiments du monde 8
@@ -136,21 +144,26 @@ def test_aucun_resultat_liste_vide():
     assert find_promos(batiments, Decimal("1e9"), Decimal("1e12"), minimum=0) == []
 
 
-# --- Le vrai fichier du jeu -------------------------------------------------
+# --- Un export figé du jeu --------------------------------------------------
+#
+# Les tests qui citent des noms de bâtiments lisent `CSV_FIGE`, pas l'export du
+# dépôt : celui-ci est remplacé à chaque nouvel export du jeu, et les promotions
+# du jour changent (le 2026-07-30, quatre autres bâtiments, à −8 %). Les épingler
+# sur le fichier vivant rendait ces tests rouges sans qu'aucun code n'ait bougé.
 
 @pytest.fixture(scope="module")
-def reel():
-    return parse_csv(CSV_REEL.read_text(encoding="utf-8"))
+def fige():
+    return parse_csv(CSV_FIGE.read_text(encoding="utf-8"))
 
 
-def test_csv_reel_116_batiments(reel):
-    _, batiments = reel
+def test_csv_fige_116_batiments(fige):
+    _, batiments = fige
     assert len(batiments) == 116
     assert all(isinstance(b, Building) for b in batiments)
 
 
-def test_csv_reel_quatre_promos(reel):
-    _, batiments = reel
+def test_csv_fige_quatre_promos(fige):
+    _, batiments = fige
     promos = find_promos(batiments, Decimal(0), Decimal("1e30"))
     assert [p.building.nom for p in promos] == [
         "Mégapôle millenium désaffecté",
@@ -160,17 +173,35 @@ def test_csv_reel_quatre_promos(reel):
     ]
 
 
-def test_csv_reel_fourchette_par_defaut_100T_6P(reel):
+def test_csv_fige_fourchette_par_defaut_100T_6P(fige):
     """La fourchette du jeu : 100 TØ -> 6 PØ. Un seul bâtiment y tombe."""
-    _, batiments = reel
+    _, batiments = fige
     promos = find_promos(batiments, Decimal("1e14"), Decimal("6e15"), minimum=0)
     assert [p.building.nom for p in promos] == ["Technopôle millenium désaffecté"]
 
 
-def test_csv_reel_petit_budget(reel):
-    _, batiments = reel
+def test_csv_fige_petit_budget(fige):
+    _, batiments = fige
     promos = find_promos(batiments, Decimal(0), Decimal("1e6"), minimum=0)
     assert [p.building.nom for p in promos] == ["Entrepôt inexploitable"]
+
+
+# --- L'export réellement embarqué dans le dépôt -----------------------------
+
+def test_csv_vivant_reste_lisible():
+    """Le seul test légitime sur l'export du dépôt : son **format**.
+
+    Il attrape un remplacement par un fichier tronqué, réencodé ou aux colonnes
+    renommées — c'est-à-dire ce qui ferait publier « 0 bâtiment » demain matin —
+    sans rien supposer des promotions du jour.
+    """
+    meta, batiments = parse_csv(CSV_VIVANT.read_text(encoding="utf-8"))
+
+    assert meta.monde, "en-tête `# nom:` absente"
+    assert meta.mise_a_jour, "en-tête `# mise_a_jour:` absente"
+    assert len(batiments) > 100, f"seulement {len(batiments)} bâtiments lus"
+    # Les montants doivent être exploitables, pas tous nuls après un parsing raté.
+    assert any(b.valeur > 0 for b in batiments)
 
 
 # --- Repêchage quand la fourchette est trop pauvre --------------------------
@@ -283,9 +314,9 @@ def test_aucune_promo_du_tout():
     assert find_promos(batiments, Decimal(100), Decimal(200)) == []
 
 
-def test_csv_reel_fourchette_100T_6P_repeche_une_seconde(reel):
+def test_csv_fige_fourchette_100T_6P_repeche_une_seconde(fige):
     """Seul le Technopole est dans 100T-6P : on complete avec le plus proche."""
-    _, batiments = reel
+    _, batiments = fige
     promos = find_promos(batiments, Decimal("1e14"), Decimal("6e15"))
     assert len(promos) == 2
     assert promos[0].building.nom == "Technopôle millenium désaffecté"

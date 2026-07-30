@@ -26,6 +26,27 @@ PORT = int(os.getenv("PORT", "10000"))
 #: Jeton partagé avec cron-job.org pour protéger /tick.
 TICK_TOKEN = os.getenv("TICK_TOKEN", "")
 
+#: Secret partagé avec le site Vercel, qui protège `/api/*`.
+#:
+#: Distinct de `TICK_TOKEN` : le cron n'a besoin que de déclencher la
+#: publication, alors que ce secret ouvre les réglages et le template. L'un
+#: fuité ne doit pas donner l'autre.
+#:
+#: Vide, l'API refuse tout : c'est le comportement voulu si le site n'est pas
+#: déployé.
+API_SECRET = os.getenv("API_SECRET", "")
+
+#: Origines autorisées à appeler `/api/*` depuis un navigateur, séparées par des
+#: virgules. Normalement inutile : le site Vercel appelle le bot depuis son
+#: serveur, jamais depuis le navigateur, ce qui évite CORS et garde `API_SECRET`
+#: hors du code de la page. Sert de soupape si un appel direct devient
+#: nécessaire.
+API_ORIGINES = [
+    origine.strip()
+    for origine in os.getenv("API_ORIGINES", "").split(",")
+    if origine.strip()
+]
+
 # --- Source des données ----------------------------------------------------
 CSV_PATH = os.getenv("CSV_PATH", str(RACINE / "buildings_batiments_entreprise.csv"))
 

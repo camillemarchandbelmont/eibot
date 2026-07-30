@@ -11,6 +11,7 @@ import discord
 from discord import app_commands
 
 from src import settings
+from src.acces import acces_autorise, gere_la_liste
 from src.db import Store
 from src.journal import Journal
 from src.money import MoneyError, format_money, parse_money
@@ -71,14 +72,17 @@ class ArbreProtege(app_commands.CommandTree):
 
         Nom distinct de `interaction_check` pour rester appelable en test sans
         passer par discord.py.
+
+        La décision est déléguée à `src.acces` : le site web applique la même
+        règle, donc un membre ajouté par `/config acces ajouter` obtient les deux
+        accès d'un coup.
         """
         permissions = getattr(interaction.user, "guild_permissions", None)
-        # Un administrateur passe toujours : il ne peut pas se verrouiller
-        # dehors en se retirant de la liste.
-        if permissions is not None and permissions.administrator:
-            return True
-
-        if str(getattr(interaction.user, "id", "")) in await self.store.autorises():
+        if acces_autorise(
+            est_admin=bool(permissions and permissions.administrator),
+            membre_id=getattr(interaction.user, "id", None),
+            autorises=await self.store.autorises(),
+        ):
             return True
 
         await interaction.response.send_message(
@@ -254,7 +258,7 @@ def _administrateur(interaction: discord.Interaction) -> bool:
     qui l'a nommé.
     """
     permissions = getattr(interaction.user, "guild_permissions", None)
-    return bool(permissions and permissions.administrator)
+    return gere_la_liste(est_admin=bool(permissions and permissions.administrator))
 
 
 def _permissions_manquantes(

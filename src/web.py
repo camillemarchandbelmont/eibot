@@ -71,6 +71,13 @@ def creer_app(bot) -> web.Application:
     app.router.add_get("/health", health)
     app.router.add_get("/tick", tick)
     app.router.add_post("/tick", tick)
+
+    # `/api/*` : les routes du site web, protégées par leur propre secret.
+    # Importé ici et non en tête de module pour garder `web.py` chargeable même
+    # si `api.py` casse : le keepalive de Render ne doit pas dépendre du site.
+    from src.api import enregistrer_routes
+
+    enregistrer_routes(app, bot)
     return app
 
 
