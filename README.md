@@ -210,12 +210,46 @@ Le dépôt contient `render.yaml` : **New → Blueprint** crée le web service e
 la base Postgres d'un coup.
 
 1. Renseigne `DISCORD_TOKEN`, `GUILD_ID` et `EMPIRE_API_KEY` dans le dashboard.
-2. Récupère la valeur générée de `TICK_TOKEN`.
+2. Récupère les valeurs générées de `TICK_TOKEN` et `API_SECRET`. La seconde se
+   recopie dans le projet Vercel du site.
 3. Sur [cron-job.org](https://cron-job.org), crée un job **toutes les
    5 minutes** vers :
    ```
    https://<ton-service>.onrender.com/tick?token=<TICK_TOKEN>
    ```
+
+### Une seconde instance de test
+
+Le blueprint est fait pour la prod : il crée **aussi une base Postgres**, ce
+qu'une instance de test n'a pas besoin d'avoir. Créer le service de test avec
+**New → Web Service** (et non Blueprint) évite cette base, et évite surtout
+qu'un `render.yaml` partagé fasse un jour converger les deux déploiements.
+
+| Réglage | Test |
+|---|---|
+| Build / Start | `pip install -r requirements.txt` / `python -m src.main` |
+| Health check | `/health` |
+| `DISCORD_TOKEN` | **une autre application Discord** (voir ci-dessous) |
+| `GUILD_ID` | l'ID d'un serveur Discord de test |
+| `API_SECRET` | une valeur **différente** de la prod |
+| `DATABASE_URL` | **laissé vide** |
+| `EMPIRE_API_KEY` | vide → le bot lit le CSV du dépôt, sans toucher à l'API du jeu |
+
+Trois pièges, dans l'ordre de gravité :
+
+- **Jamais le même `DISCORD_TOKEN` que la prod.** Deux processus connectés au
+  même token se déconnectent mutuellement en boucle, et la prod cesse de poster.
+  Il faut une seconde application sur le portail Discord.
+- **Jamais le `DATABASE_URL` de la prod.** La table `bot_state` n'a qu'une seule
+  clé `config`, sans distinction de serveur : le bot de test écraserait la
+  fourchette, l'heure et le template de la prod.
+- **`GUILD_ID` sur un serveur de test.** Sinon les commandes du bot de test
+  apparaissent en double dans le serveur réel.
+
+Sans `DATABASE_URL`, la configuration vit en mémoire et repart des valeurs par
+défaut à chaque réveil. Pour une instance de test c'est un avantage — chaque
+essai part d'un état connu — et le site l'annonce par un bandeau « réglages non
+persistants » plutôt que de le laisser deviner.
 
 Ce job unique remplit deux rôles : il empêche le service gratuit de
 s'endormir, et il déclenche la publication. L'heure exacte du post reste

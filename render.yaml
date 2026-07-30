@@ -14,6 +14,12 @@ services:
         sync: false          # à saisir dans le dashboard Render
       - key: TICK_TOKEN
         generateValue: true  # généré par Render, à recopier dans cron-job.org
+      # Secret partagé avec le site (projet Vercel), pour les routes /api/*.
+      # Généré par Render puis recopié dans Vercel : ainsi il n'existe nulle
+      # part en clair dans le dépôt. Distinct de TICK_TOKEN à dessein — celui-ci
+      # circule dans une query string, donc dans les journaux d'accès.
+      - key: API_SECRET
+        generateValue: true
       - key: GUILD_ID
         sync: false
       - key: DATABASE_URL
