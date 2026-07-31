@@ -71,7 +71,15 @@ LOGS_SALON_DEFAUT = os.getenv("LOGS_SALON_ID", "")
 
 
 def config_par_defaut() -> dict:
-    """Config initiale, écrite en base au premier démarrage."""
+    """Valeurs de repli des clés jamais réglées. **Jamais écrites en base.**
+
+    `prix_min`/`prix_max`/`salons` y survivent alors que les fourchettes les ont
+    remplacés : ils servent encore à la migration d'une config plate à laquelle
+    il manque un champ (voir `Store.fourchettes`). C'est aussi pourquoi toute
+    écriture part de `Store._enregistree()` et non de `Store.config()` : les
+    matérialiser en base donnerait à un bot neuf la signature d'une config à
+    migrer, donc une fourchette `principale` que personne n'a demandée.
+    """
     return {
         "prix_min": str(PRIX_MIN_DEFAUT),
         "prix_max": str(PRIX_MAX_DEFAUT),

@@ -61,8 +61,13 @@ class Journal:
     ) -> None:
         """Compte rendu d'une publication quotidienne.
 
-        `reussis` et `echecs` contiennent des salons déjà formatés (`<#id>` ou
-        `#nom`) : le journal ne résout pas les salons lui-même.
+        `reussis` et `echecs` contiennent des destinations déjà formatées
+        (`<#id> (fourchette)`) : le journal ne résout rien lui-même.
+
+        Le compte porte sur les **envois** et non sur les salons : chaque
+        fourchette poste son propre message, donc un salon qui en sert deux
+        apparaît deux fois. Écrire « 3/3 salons » à côté de deux salons nommés
+        ferait chercher un troisième qui n'existe pas.
         """
         if promos:
             sujet = f"{promos} promotion" + ("s" if promos > 1 else "")
@@ -72,13 +77,13 @@ class Journal:
         total = len(reussis) + len(echecs)
 
         if reussis and not echecs:
-            entete = f"✅ **Publication** · {sujet} · {len(reussis)}/{total} salon"
+            entete = f"✅ **Publication** · {sujet} · {len(reussis)}/{total} envoi"
             entete += "s" if len(reussis) > 1 else ""
             lignes = [f"{entete} : {', '.join(reussis)}"]
         elif reussis:
             lignes = [
                 f"⚠️ **Publication partielle** · {sujet} · "
-                f"{len(reussis)}/{total} salons : {', '.join(reussis)}"
+                f"{len(reussis)}/{total} envois : {', '.join(reussis)}"
             ]
         else:
             lignes = [f"❌ **Publication échouée** · {sujet}"]

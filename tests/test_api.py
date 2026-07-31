@@ -196,9 +196,15 @@ async def test_etat_ne_fuit_jamais_la_cle_dapi(monkeypatch, client_pour):
 
 # --- Promotions -------------------------------------------------------------
 
-async def test_promos_avec_la_fourchette_enregistree(api):
+async def test_promos_couvre_toutes_les_fourchettes_enregistrees(api):
+    """Sans paramètre, l'union des bornes : comme `/promos` dans Discord.
+
+    Interroger une seule fourchette obligerait le site à en désigner une, alors
+    que la page sert à voir ce qui bouge dans tout ce qui est surveillé.
+    """
     client, bot = await api()
-    await bot.store.maj_config(prix_min="1e11", prix_max="1e16")
+    await bot.store.ajouter_fourchette("grosses", Decimal("1e15"), Decimal("1e16"))
+    await bot.store.ajouter_fourchette("petits", Decimal("1e11"), Decimal("1e12"))
 
     corps = await (await client.get("/api/promos", headers=_entetes())).json()
 
@@ -208,10 +214,37 @@ async def test_promos_avec_la_fourchette_enregistree(api):
     assert "Sans promo" not in noms
 
 
+async def test_promos_union_ne_se_reduit_pas_a_la_premiere_fourchette(api):
+    """Les deux bornes viennent de fourchettes différentes.
+
+    Sans ça, ne consulter que la première passerait le test précédent, où elle
+    est la plus large — et la page perdrait silencieusement les promotions des
+    autres fourchettes.
+    """
+    client, bot = await api()
+    await bot.store.ajouter_fourchette("petits", Decimal("1e11"), Decimal("1e12"))
+    await bot.store.ajouter_fourchette("grosses", Decimal("1e15"), Decimal("1e16"))
+
+    corps = await (await client.get("/api/promos", headers=_entetes())).json()
+
+    dedans = {p["nom"] for p in corps["promos"] if p["dans_fourchette"]}
+    assert dedans == {"Technopôle", "Zone portuaire"}
+
+
+async def test_promos_sans_fourchette_configuree_explique(api):
+    """Un bot neuf : une liste vide ferait croire à une absence de promotions."""
+    client, _ = await api()
+
+    reponse = await client.get("/api/promos", headers=_entetes())
+
+    assert reponse.status == 400
+    assert "fourchette" in (await reponse.json())["erreur"].lower()
+
+
 async def test_promos_fourchette_en_parametres(api):
     """La page peut simuler une autre fourchette sans modifier la config."""
     client, bot = await api()
-    await bot.store.maj_config(prix_min="1e11", prix_max="1e16")
+    await bot.store.ajouter_fourchette("grosses", Decimal("1e11"), Decimal("1e16"))
 
     corps = await (await client.get(
         "/api/promos?min=0&max=1000000", headers=_entetes()
@@ -220,7 +253,8 @@ async def test_promos_fourchette_en_parametres(api):
     dedans = [p["nom"] for p in corps["promos"] if p["dans_fourchette"]]
     assert dedans == ["Entrepôt"]
     # La config n'a pas bougé.
-    assert (await bot.store.config())["prix_min"] == "1e11"
+    fourchette = (await bot.store.fourchettes())[0]
+    assert Decimal(fourchette["prix_min"]) == Decimal("1e11")
 
 
 async def test_promos_signale_les_repechees(api):
@@ -298,7 +332,10 @@ async def test_erreur_inattendue_ne_fuit_pas_la_cle_dapi(monkeypatch, client_pou
     await store.connect()
     client = await client_pour(BotFactice(store, Explose()))
 
-    reponse = await client.get("/api/promos", headers=_entetes())
+    # Bornes explicites : sans elles la requête s'arrêterait sur « aucune
+    # fourchette configurée », et la source ne serait jamais appelée — donc
+    # l'exception qui porte la clé ne serait jamais levée.
+    reponse = await client.get("/api/promos?min=0&max=1Z", headers=_entetes())
     corps = await reponse.text()
 
     assert reponse.status == 500
@@ -322,7 +359,9 @@ async def test_promos_source_en_panne(monkeypatch, client_pour):
     await store.connect()
     client = await client_pour(BotFactice(store, Cassee()))
 
-    reponse = await client.get("/api/promos", headers=_entetes())
+    # Bornes explicites : la panne de source est ce qu'on teste, pas l'absence
+    # de fourchette, qui répondrait 400 avant d'appeler la source.
+    reponse = await client.get("/api/promos?min=0&max=1Z", headers=_entetes())
     assert reponse.status == 502
     assert "injoignable" in (await reponse.json())["erreur"]
 
@@ -331,53 +370,82 @@ async def test_promos_source_en_panne(monkeypatch, client_pour):
 
 async def test_config_lecture(api):
     client, bot = await api()
-    await bot.store.maj_config(prix_min="1e14", heure="09:30")
+    await bot.store.maj_config(heure="09:30")
+    await bot.store.ajouter_fourchette("grosses", Decimal("1e14"), Decimal("6e15"))
+    await bot.store.ajouter_salon_fourchette("grosses", "111")
 
     corps = await (await client.get("/api/config", headers=_entetes())).json()
-    assert corps["prix_min_brut"] == "100000000000000"
+
     assert corps["heure"] == "09:30"
+    fourchette = corps["fourchettes"][0]
+    assert fourchette["nom"] == "grosses"
+    assert fourchette["prix_min_brut"] == "100000000000000"
+    assert fourchette["salons"] == ["111"]
+
+
+async def test_config_lecture_sans_fourchette(api):
+    client, _ = await api()
+    corps = await (await client.get("/api/config", headers=_entetes())).json()
+    assert corps["fourchettes"] == []
 
 
 async def test_config_ecriture(api):
     client, bot = await api()
 
     reponse = await client.patch(
-        "/api/config", headers=_entetes(),
-        json={"prix_min": "100T", "prix_max": "6P", "heure": "07:15"},
+        "/api/config", headers=_entetes(), json={"heure": "07:15"}
     )
     assert reponse.status == 200
 
-    config = await bot.store.config()
-    assert Decimal(config["prix_min"]) == Decimal("1e14")
-    assert config["heure"] == "07:15"
+    assert (await bot.store.config())["heure"] == "07:15"
     # La réponse renvoie l'état après écriture, pour éviter un second aller-retour.
     assert (await reponse.json())["heure"] == "07:15"
 
 
 async def test_config_ecriture_partielle(api):
-    """Un PATCH ne touche que les champs fournis : la page de réglages ne doit
-    pas écraser l'heure en modifiant la fourchette."""
+    """Un PATCH ne touche que les champs fournis : régler l'heure ne doit pas
+    écraser le fuseau."""
     client, bot = await api()
     await bot.store.maj_config(heure="09:00", fuseau="Europe/Paris")
 
-    await client.patch("/api/config", headers=_entetes(), json={"prix_min": "1M"})
+    await client.patch("/api/config", headers=_entetes(), json={"heure": "10:30"})
 
     config = await bot.store.config()
-    assert config["heure"] == "09:00"
+    assert config["heure"] == "10:30"
     assert config["fuseau"] == "Europe/Paris"
 
 
-async def test_config_refuse_un_montant_illisible(api):
+async def test_config_refuse_les_fourchettes_depuis_le_site(api):
+    """Elles désignent des salons dont le site ne peut vérifier ni l'existence,
+    ni les permissions du bot : elles restent réglées dans Discord.
+
+    Le refus doit dire où aller, sinon la page paraît cassée.
+    """
     client, bot = await api()
-    avant = await bot.store.config()
+    avant = await bot.store.fourchettes()
 
     reponse = await client.patch(
-        "/api/config", headers=_entetes(), json={"prix_min": "n'importe quoi"}
+        "/api/config", headers=_entetes(),
+        json={"fourchettes": [{"nom": "pirate", "prix_min": "0", "prix_max": "1",
+                               "salons": ["999"]}]},
     )
 
     assert reponse.status == 400
-    # Rien n'a été écrit : un PATCH partiellement appliqué serait pire qu'un refus.
-    assert await bot.store.config() == avant
+    erreur = (await reponse.json())["erreur"]
+    assert "Discord" in erreur
+    assert await bot.store.fourchettes() == avant
+
+
+async def test_config_refuse_les_anciens_champs_de_prix(api):
+    """`prix_min` à la racine n'existe plus : l'accepter écrirait une clé morte
+    que plus rien ne lit, en laissant croire au site que c'est enregistré."""
+    client, _ = await api()
+
+    reponse = await client.patch(
+        "/api/config", headers=_entetes(), json={"prix_min": "100T"}
+    )
+
+    assert reponse.status == 400
 
 
 async def test_config_refuse_une_heure_invalide(api):
@@ -388,16 +456,6 @@ async def test_config_refuse_une_heure_invalide(api):
         )
         assert reponse.status == 400, heure
     assert (await bot.store.config())["heure"] != "25:00"
-
-
-async def test_config_refuse_min_superieur_a_max(api):
-    """Une fourchette inversée ne renverrait jamais rien : autant le dire."""
-    client, _ = await api()
-    reponse = await client.patch(
-        "/api/config", headers=_entetes(), json={"prix_min": "1P", "prix_max": "1M"}
-    )
-    assert reponse.status == 400
-    assert "min" in (await reponse.json())["erreur"].lower()
 
 
 async def test_config_refuse_un_fuseau_inconnu(api):
@@ -493,6 +551,9 @@ async def test_apercu_rend_le_post_sans_publier(api):
 async def test_apercu_utilise_le_template_enregistre_par_defaut(api):
     client, bot = await api()
     await bot.store.set_template({"embeds": [{"title": "ENREGISTRÉ {nom}"}]})
+    # Sans fourchette il n'y a pas de « post du jour » à prévisualiser : la
+    # route refuse, et ce n'est pas ce cas-là qu'on teste ici.
+    await bot.store.ajouter_fourchette("grosses", Decimal("0"), Decimal("1e21"))
 
     corps = await (await client.post(
         "/api/apercu", headers=_entetes(), json={}

@@ -235,7 +235,12 @@ class SourceEnPanne:
 
 
 async def test_apercu_affiche_lerreur_de_source():
+    """Une fourchette est nécessaire : sans elle, `/apercu` refuse avant même de
+    charger l'export, et ce n'est pas ce cas-là qu'on teste ici."""
+    from decimal import Decimal
+
     bot = await _bot(SourceEnPanne())
+    await bot.store.ajouter_fourchette("grosses", Decimal("1e14"), Decimal("6e15"))
     interaction = InteractionFactice()
 
     await _commande(bot, "apercu").callback(interaction)
@@ -243,7 +248,11 @@ async def test_apercu_affiche_lerreur_de_source():
     assert "API injoignable" in interaction.textes[0]
 
 
-# --- /config salon : liste de salons ----------------------------------------
+# --- Salons : voir `tests/test_commandes_fourchettes.py` --------------------
+#
+# `/config salon ajouter|retirer|liste` n'existe plus : un salon s'attache
+# désormais à une fourchette nommée (`/fourchette salon ajouter`). Les tests
+# d'attachement, de permissions et de listage ont suivi la commande.
 
 class SalonDiscordFactice:
     """Remplace `discord.TextChannel` pour les arguments de commande."""
@@ -275,117 +284,6 @@ async def _bot_fichier(tmp_path) -> EmpireBot:
     chemin = tmp_path / "export.csv"
     chemin.write_text(CSV, encoding="utf-8")
     return await _bot(CsvFileSource(chemin))
-
-
-async def test_salon_ajouter(tmp_path):
-    bot = await _bot_fichier(tmp_path)
-    interaction = InteractionFactice()
-
-    await _commande(bot, "config salon ajouter").callback(
-        interaction, SalonDiscordFactice(111)
-    )
-
-    assert await bot.store.salons() == ["111"]
-    assert "✅" in interaction.textes[0]
-
-
-async def test_salon_ajouter_plusieurs(tmp_path):
-    bot = await _bot_fichier(tmp_path)
-
-    for salon_id in (111, 222):
-        await _commande(bot, "config salon ajouter").callback(
-            InteractionFactice(), SalonDiscordFactice(salon_id)
-        )
-
-    assert await bot.store.salons() == ["111", "222"]
-
-
-async def test_salon_ajouter_deux_fois_le_dit(tmp_path):
-    bot = await _bot_fichier(tmp_path)
-    salon = SalonDiscordFactice(111)
-    await _commande(bot, "config salon ajouter").callback(InteractionFactice(), salon)
-
-    interaction = InteractionFactice()
-    await _commande(bot, "config salon ajouter").callback(interaction, salon)
-
-    assert await bot.store.salons() == ["111"]
-    assert "déjà" in interaction.textes[0]
-
-
-async def test_salon_ajouter_refuse_sans_permission_decrire(tmp_path):
-    """Sinon l'erreur n'apparaîtrait qu'à 09:00 le lendemain."""
-    bot = await _bot_fichier(tmp_path)
-    interaction = InteractionFactice()
-
-    await _commande(bot, "config salon ajouter").callback(
-        interaction, SalonDiscordFactice(111, peut_ecrire=False, peut_integrer=True)
-    )
-
-    assert await bot.store.salons() == []
-    message = interaction.textes[0]
-    assert "Envoyer des messages" in message
-
-
-async def test_salon_ajouter_refuse_sans_permission_dintegrer(tmp_path):
-    """Le post est fait d'embeds : « Envoyer des messages » ne suffit pas.
-
-    Testé séparément de `send_messages` : avec un salon qui refuse les deux,
-    supprimer l'une des deux vérifications passerait inaperçu.
-    """
-    bot = await _bot_fichier(tmp_path)
-    interaction = InteractionFactice()
-
-    await _commande(bot, "config salon ajouter").callback(
-        interaction, SalonDiscordFactice(111, peut_ecrire=True, peut_integrer=False)
-    )
-
-    assert await bot.store.salons() == []
-    assert "Intégrer des liens" in interaction.textes[0]
-
-
-async def test_salon_retirer(tmp_path):
-    bot = await _bot_fichier(tmp_path)
-    await bot.store.ajouter_salon("111")
-    interaction = InteractionFactice()
-
-    await _commande(bot, "config salon retirer").callback(
-        interaction, SalonDiscordFactice(111)
-    )
-
-    assert await bot.store.salons() == []
-    assert "✅" in interaction.textes[0]
-
-
-async def test_salon_retirer_un_salon_absent_le_dit(tmp_path):
-    bot = await _bot_fichier(tmp_path)
-    interaction = InteractionFactice()
-
-    await _commande(bot, "config salon retirer").callback(
-        interaction, SalonDiscordFactice(111)
-    )
-
-    assert "pas" in interaction.textes[0].lower()
-
-
-async def test_salon_liste_vide(tmp_path):
-    bot = await _bot_fichier(tmp_path)
-    interaction = InteractionFactice()
-
-    await _commande(bot, "config salon liste").callback(interaction)
-
-    assert "aucun" in (interaction.textes + [""])[0].lower() or interaction.embeds
-
-
-async def test_salon_liste_affiche_les_salons(tmp_path):
-    bot = await _bot_fichier(tmp_path)
-    await bot.store.ajouter_salon("111")
-    await bot.store.ajouter_salon("222")
-    interaction = InteractionFactice()
-
-    await _commande(bot, "config salon liste").callback(interaction)
-
-    rendu = repr(interaction.embeds[0].to_dict()) if interaction.embeds else interaction.textes[0]
-    assert "111" in rendu and "222" in rendu
 
 
 async def test_salon_commandes_reservees(tmp_path):
@@ -430,23 +328,29 @@ async def test_logs_reserve(tmp_path):
     assert await bot.store.salon_logs() is None
 
 
-# --- /config voir : refléter la liste ---------------------------------------
+# --- /config voir : refléter les fourchettes --------------------------------
 
-async def test_config_voir_affiche_tous_les_salons(tmp_path):
+async def test_config_voir_affiche_chaque_fourchette_et_ses_salons(tmp_path):
+    """Une seule ligne « fourchette » ne dirait plus quel salon reçoit quoi."""
+    from decimal import Decimal
+
     bot = await _bot_fichier(tmp_path)
-    await bot.store.ajouter_salon("111")
-    await bot.store.ajouter_salon("222")
+    await bot.store.ajouter_fourchette("grosses", Decimal("1e14"), Decimal("6e15"))
+    await bot.store.ajouter_salon_fourchette("grosses", "111")
+    await bot.store.ajouter_fourchette("petits", Decimal("0"), Decimal("1e12"))
+    await bot.store.ajouter_salon_fourchette("petits", "222")
     await bot.store.maj_config(logs_salon_id="999")
     interaction = InteractionFactice()
 
     await _commande(bot, "config voir").callback(interaction)
 
     rendu = repr(interaction.embeds[0].to_dict())
+    assert "grosses" in rendu and "petits" in rendu
     assert "111" in rendu and "222" in rendu
     assert "999" in rendu
 
 
-async def test_config_voir_sans_salon(tmp_path):
+async def test_config_voir_sans_fourchette(tmp_path):
     bot = await _bot_fichier(tmp_path)
     interaction = InteractionFactice()
 

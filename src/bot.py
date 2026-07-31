@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+# Les paramètres des commandes s'appellent `min` et `max` (ce que Discord
+# affiche) : les fonctions natives ne sont donc joignables que par `builtins`.
+import builtins
 import json
 import logging
 from decimal import Decimal
@@ -15,7 +18,7 @@ from src.acces import acces_autorise, gere_la_liste
 from src.db import Store
 from src.journal import Journal
 from src.money import MoneyError, format_money, parse_money
-from src.promos import find_promos, parse_csv
+from src.promos import Building, Meta, find_promos, parse_csv
 from src.publish import construire_embeds, envoyer, message_aucune_promo
 from src.schedule import (
     FENETRE_RATTRAPAGE,
@@ -141,10 +144,18 @@ class EmpireBot(discord.Client):
         return parse_csv(texte)
 
     async def construire_publication(
-        self, prix_min: Decimal, prix_max: Decimal
+        self,
+        prix_min: Decimal,
+        prix_max: Decimal,
+        donnees: tuple[Meta, list[Building]] | None = None,
     ) -> tuple[list[dict], str, str]:
-        """Renvoie (embeds, contenu, message de repli si aucune promo)."""
-        meta, batiments = await self.charger()
+        """Renvoie (embeds, contenu, message de repli si aucune promo).
+
+        `donnees` permet de réutiliser un export déjà chargé : avec plusieurs
+        fourchettes, recharger à chaque tour multiplierait les appels à l'API du
+        jeu pour des données identiques.
+        """
+        meta, batiments = donnees if donnees is not None else await self.charger()
         promos = find_promos(batiments, prix_min, prix_max)
         modele = await self.store.template()
         date = maintenant_local((await self.store.config())["fuseau"]).strftime("%Y-%m-%d")
@@ -167,8 +178,11 @@ class EmpireBot(discord.Client):
     async def publier_si_lheure(self, forcer: bool = False) -> str:
         """Appelée par /tick et la boucle interne.
 
-        Diffuse le même post dans tous les salons configurés. Chaque salon est
-        isolé : un salon supprimé ou sans permissions n'empêche pas les autres.
+        Chaque fourchette publie son propre post dans ses propres salons.
+        L'isolation est à deux niveaux : une fourchette dont tous les salons
+        échouent n'empêche pas les suivantes, et un salon cassé ne prive pas les
+        autres salons de sa fourchette.
+
         Renvoie un compte rendu pour la réponse HTTP.
         """
         config = await self.store.config()
@@ -179,56 +193,93 @@ class EmpireBot(discord.Client):
             if not doit_publier(maintenant, config["heure"], derniere):
                 return "rien à faire"
 
-        salons = await self.store.salons()
-        if not salons:
-            return "aucun salon configuré (/config salon ajouter)"
+        fourchettes = await self.store.fourchettes()
+        if not fourchettes:
+            return "aucune fourchette configurée (/fourchette ajouter)"
 
-        # Les données d'abord : si l'API est en panne, on lève avant d'avoir
-        # touché à Discord, et surtout avant `marquer_publie` — sinon la panne
-        # de 09:00 annulerait la publication de toute la journée.
+        servies = [f for f in fourchettes if f["salons"]]
+        if not servies:
+            return "aucun salon configuré (/fourchette salon ajouter)"
+
+        # L'export d'abord, une seule fois pour toutes les fourchettes : si
+        # l'API est en panne, on lève avant d'avoir touché à Discord, et surtout
+        # avant `marquer_publie` — sinon la panne de 09:00 annulerait la
+        # publication de toute la journée.
         try:
-            embeds, contenu, repli = await self.construire_publication(
-                Decimal(config["prix_min"]), Decimal(config["prix_max"])
-            )
+            donnees = await self.charger()
         except SourceError as erreur:
             await self._journaliser_erreur(str(erreur))
             raise
         except Exception as erreur:
-            # Panne non prévue (CSV corrompu, bug de rendu) : elle doit rester
-            # visible dans Discord, pas seulement dans les logs du serveur.
+            # Panne non prévue (CSV corrompu) : elle doit rester visible dans
+            # Discord, pas seulement dans les logs du serveur.
             await self._journaliser_erreur(f"{type(erreur).__name__} : {erreur}")
             raise
 
-        promos = 0 if repli else len(embeds)
+        promos = 0
         reussis: list[str] = []
         echecs: dict[str, str] = {}
 
-        for salon_id in salons:
+        for fourchette in servies:
             try:
-                salon = await self.resoudre_salon(salon_id)
-                if repli:
-                    await salon.send(repli)
-                else:
-                    await envoyer(salon, embeds, contenu, config.get("role_id"))
+                embeds, contenu, repli = await self.construire_publication(
+                    Decimal(fourchette["prix_min"]),
+                    Decimal(fourchette["prix_max"]),
+                    donnees=donnees,
+                )
             except Exception as erreur:
-                # Un salon cassé ne doit pas priver les autres : on note et on
-                # continue. Le détail part dans le salon de logs.
-                log.warning("Publication impossible dans %s : %s", salon_id, erreur)
-                echecs[f"<#{salon_id}>"] = f"{type(erreur).__name__}: {erreur}"
-            else:
-                reussis.append(f"<#{salon_id}>")
+                # Rendu impossible pour *cette* fourchette (template appliqué à
+                # des valeurs inattendues) : les autres doivent quand même
+                # partir, alors qu'une panne de l'export les condamnait toutes.
+                log.warning("Rendu impossible pour « %s » : %s", fourchette["nom"], erreur)
+                await self._journaliser_erreur(
+                    f"Fourchette « {fourchette['nom']} » : "
+                    f"{type(erreur).__name__} : {erreur}"
+                )
+                continue
+
+            promos += 0 if repli else len(embeds)
+
+            for salon_id in fourchette["salons"]:
+                try:
+                    salon = await self.resoudre_salon(salon_id)
+                    if repli:
+                        await salon.send(repli)
+                    else:
+                        await envoyer(salon, embeds, contenu, config.get("role_id"))
+                except Exception as erreur:
+                    # Un salon cassé ne doit pas priver les autres : on note et
+                    # on continue. Le détail part dans le salon de logs.
+                    log.warning("Publication impossible dans %s : %s", salon_id, erreur)
+                    # La fourchette est nommée : un même salon peut servir deux
+                    # fourchettes, et « <#111> a échoué » serait ambigu.
+                    echecs[f"<#{salon_id}> ({fourchette['nom']})"] = (
+                        f"{type(erreur).__name__}: {erreur}"
+                    )
+                else:
+                    reussis.append(f"<#{salon_id}> ({fourchette['nom']})")
 
         await self._journaliser_publication(promos, reussis, echecs)
 
         if not reussis:
-            log.error("Publication échouée dans les %d salons.", len(echecs))
-            return f"échec dans les {len(echecs)} salon(s)"
+            log.error("Publication échouée dans les %d envois.", len(echecs))
+            return f"échec dans les {len(echecs)} envoi(s)"
 
         # Marqué dès qu'un salon a reçu le post : sinon le passage suivant
         # reposterait là où ça avait marché.
         await self.store.marquer_publie(maintenant.strftime("%Y-%m-%d"))
-        log.info("Publication effectuée (%d/%d salons).", len(reussis), len(salons))
-        return f"publié ({len(reussis)}/{len(salons)} salons)"
+        total = sum(len(f["salons"]) for f in servies)
+        log.info(
+            "Publication effectuée (%d/%d envois, %d fourchettes).",
+            len(reussis), total, len(servies),
+        )
+        # « Envois » et non « salons » : un salon servant deux fourchettes reçoit
+        # deux posts, et le compter une fois annoncerait moins que ce qui est
+        # parti.
+        return (
+            f"publié ({len(reussis)}/{total} envois, "
+            f"{len(servies)} fourchette{'s' if len(servies) > 1 else ''})"
+        )
 
     # --- Journal : un observateur ne doit jamais bloquer l'essentiel --------
 
@@ -291,6 +342,74 @@ def _lister_salons(bot: EmpireBot, salons: list[str]) -> str:
     return "\n".join(lignes)
 
 
+def _lister_fourchettes(bot: EmpireBot, fourchettes: list[dict]) -> str:
+    """Fourchettes avec bornes et salons, ⚠️ sur celles qui ne publieront rien.
+
+    Une fourchette sans salon est silencieuse à la publication : ça doit se voir
+    dans la liste, sans avoir à le déduire de l'absence de salon.
+    """
+    if not fourchettes:
+        return (
+            "*Aucune fourchette configurée.* Le post quotidien ne sortira pas.\n"
+            "-# `/fourchette ajouter nom:… min:… max:…`"
+        )
+
+    lignes = []
+    for fourchette in fourchettes:
+        bornes = (
+            f"{format_money(Decimal(fourchette['prix_min']))} → "
+            f"{format_money(Decimal(fourchette['prix_max']))}"
+        )
+        lignes.append(f"**{fourchette['nom']}** — {bornes}")
+        if not fourchette["salons"]:
+            lignes.append("⚠️ aucun salon : ne publiera rien")
+            continue
+        for salon_id in fourchette["salons"]:
+            introuvable = bot.get_channel(int(salon_id)) is None
+            suffixe = " ⚠️ introuvable" if introuvable else ""
+            lignes.append(f"• <#{salon_id}>{suffixe}")
+    return "\n".join(lignes)
+
+
+class _AucuneFourchette(Exception):
+    """Rien n'est configuré : le message porte la commande qui y remédie."""
+
+
+async def _bornes_demandees(
+    bot: EmpireBot, min: str | None, max: str | None
+) -> tuple[Decimal, Decimal]:
+    """Bornes d'une recherche `/promos`, remises dans l'ordre.
+
+    Sans argument, couvre **l'union** de toutes les fourchettes : la commande
+    sert à voir ce qui bouge dans tout ce qui est surveillé, pas à en interroger
+    une en particulier — sinon il faudrait la nommer.
+    """
+    if min and max:
+        plancher, plafond = parse_money(min), parse_money(max)
+    else:
+        fourchettes = await bot.store.fourchettes()
+        if not fourchettes:
+            raise _AucuneFourchette(
+                "❌ Aucune fourchette configurée : précise `min:` et `max:`, ou "
+                "crée-en une avec `/fourchette ajouter`."
+            )
+
+        # Une seule borne fournie : l'autre vient de l'union. Refuser une saisie
+        # dont l'intention est claire serait gratuit.
+        plancher = (
+            parse_money(min) if min
+            else builtins.min(Decimal(f["prix_min"]) for f in fourchettes)
+        )
+        plafond = (
+            parse_money(max) if max
+            else builtins.max(Decimal(f["prix_max"]) for f in fourchettes)
+        )
+
+    # `min`/`max` sont ici les paramètres de la commande, pas les fonctions : le
+    # tri passe donc par `sorted`.
+    return tuple(sorted((plancher, plafond)))  # type: ignore[return-value]
+
+
 def _aide_montants() -> str:
     return (
         "Formats acceptés : `840`, `12,25M`, `100T`, `6P`, `50 6P`, `2,71 PØ`.\n"
@@ -314,12 +433,13 @@ def enregistrer_commandes(bot: EmpireBot) -> None:
         max: str | None = None,
     ):
         await interaction.response.defer()
-        config = await bot.store.config()
         try:
-            prix_min = parse_money(min) if min else Decimal(config["prix_min"])
-            prix_max = parse_money(max) if max else Decimal(config["prix_max"])
+            prix_min, prix_max = await _bornes_demandees(bot, min, max)
         except MoneyError as erreur:
             await interaction.followup.send(f"❌ {erreur}\n{_aide_montants()}", ephemeral=True)
+            return
+        except _AucuneFourchette as erreur:
+            await interaction.followup.send(str(erreur), ephemeral=True)
             return
 
         if prix_min > prix_max:
@@ -345,18 +465,12 @@ def enregistrer_commandes(bot: EmpireBot) -> None:
     @config_groupe.command(name="voir", description="Affiche la configuration courante")
     async def config_voir(interaction: discord.Interaction):
         config = await bot.store.config()
-        salons = await bot.store.salons()
+        fourchettes = await bot.store.fourchettes()
         logs = await bot.store.salon_logs()
         role = f"<@&{config['role_id']}>" if config.get("role_id") else "*aucun*"
         stockage = "Postgres" if bot.store.persistant else "⚠️ mémoire (perdue au redémarrage)"
 
         embed = discord.Embed(title="Configuration", color=0x5865F2)
-        embed.add_field(
-            name="Fourchette de prix",
-            value=f"{format_money(Decimal(config['prix_min']))} → "
-                  f"{format_money(Decimal(config['prix_max']))}",
-            inline=False,
-        )
         # L'heure vue par le bot, pour rendre visible un décalage de fuseau.
         embed.add_field(
             name="Heure",
@@ -364,9 +478,11 @@ def enregistrer_commandes(bot: EmpireBot) -> None:
                   f"-# il est {maintenant_local(config['fuseau']).strftime('%H:%M')}",
         )
         embed.add_field(name="Mention", value=role)
+        # Les salons sont listés *sous leur fourchette* : séparés, on ne saurait
+        # plus quel salon reçoit quelles promotions.
         embed.add_field(
-            name=f"Salons ({len(salons)})",
-            value=_lister_salons(bot, salons),
+            name=f"Fourchettes ({len(fourchettes)})",
+            value=_lister_fourchettes(bot, fourchettes),
             inline=False,
         )
         embed.add_field(
@@ -377,26 +493,6 @@ def enregistrer_commandes(bot: EmpireBot) -> None:
         embed.add_field(name="Données", value=bot.decrire_source(), inline=False)
         embed.set_footer(text=f"Dernière publication : {await bot.store.derniere_publication() or 'jamais'}")
         await interaction.response.send_message(embed=embed, ephemeral=True)
-
-    @config_groupe.command(name="prix", description="Définit la fourchette de prix")
-    @app_commands.describe(min="Prix minimum (ex: 100T)", max="Prix maximum (ex: 6P)")
-    async def config_prix(interaction: discord.Interaction, min: str, max: str):
-        try:
-            prix_min, prix_max = parse_money(min), parse_money(max)
-        except MoneyError as erreur:
-            await interaction.response.send_message(
-                f"❌ {erreur}\n{_aide_montants()}", ephemeral=True
-            )
-            return
-
-        if prix_min > prix_max:
-            prix_min, prix_max = prix_max, prix_min
-
-        await bot.store.maj_config(prix_min=str(prix_min), prix_max=str(prix_max))
-        await interaction.response.send_message(
-            f"✅ Fourchette : **{format_money(prix_min)}** → **{format_money(prix_max)}**",
-            ephemeral=True,
-        )
 
     @config_groupe.command(name="heure", description="Heure du post quotidien")
     @app_commands.describe(heure="Format HH:MM", fuseau="Ex: Europe/Paris")
@@ -443,13 +539,138 @@ def enregistrer_commandes(bot: EmpireBot) -> None:
 
         await interaction.response.send_message(message, ephemeral=True)
 
-    salon_groupe = app_commands.Group(
-        name="salon", description="Salons de publication", parent=config_groupe
+    # --- /fourchette ------------------------------------------------------
+    #
+    # Remplace `/config prix` et `/config salon` : ceux-ci ne pouvaient plus
+    # rien signifier sans dire *de quelle* fourchette il s'agit. Une commande
+    # qui agit sur une cible implicite est exactement ce qui fait publier au
+    # mauvais endroit.
+
+    fourchette_groupe = app_commands.Group(
+        name="fourchette", description="Fourchettes de prix et leurs salons"
     )
 
-    @salon_groupe.command(name="ajouter", description="Ajoute un salon de publication")
-    async def salon_ajouter(
-        interaction: discord.Interaction, salon: discord.TextChannel
+    async def _completer_nom(
+        interaction: discord.Interaction, saisie: str
+    ) -> list[app_commands.Choice[str]]:
+        """Propose les fourchettes existantes.
+
+        Sans ça le nom serait retapé à chaque commande, et une faute de frappe
+        ne se verrait qu'au message d'erreur.
+        """
+        debut = saisie.strip().casefold()
+        return [
+            app_commands.Choice(name=f["nom"], value=f["nom"])
+            for f in await bot.store.fourchettes()
+            if debut in f["nom"].casefold()
+        ][:25]  # limite Discord
+
+    async def _refuser_nom_inconnu(interaction: discord.Interaction, nom: str) -> None:
+        """Refuse en listant les noms valides.
+
+        Sans la liste, impossible de savoir si c'est une faute de frappe ou une
+        fourchette jamais créée.
+        """
+        noms = [f["nom"] for f in await bot.store.fourchettes()]
+        connues = ", ".join(f"`{n}`" for n in noms) if noms else "*aucune*"
+        await interaction.response.send_message(
+            f"❌ Aucune fourchette nommée « {nom} ». Fourchettes : {connues}.",
+            ephemeral=True,
+        )
+
+    @fourchette_groupe.command(name="ajouter", description="Crée une fourchette de prix")
+    @app_commands.describe(
+        nom="Nom court, ex: grosses-affaires",
+        min="Prix minimum (ex: 100T)",
+        max="Prix maximum (ex: 6P)",
+    )
+    async def fourchette_ajouter(
+        interaction: discord.Interaction, nom: str, min: str, max: str
+    ):
+        try:
+            prix_min, prix_max = parse_money(min), parse_money(max)
+        except MoneyError as erreur:
+            await interaction.response.send_message(
+                f"❌ {erreur}\n{_aide_montants()}", ephemeral=True
+            )
+            return
+
+        try:
+            fourchette = await bot.store.ajouter_fourchette(nom, prix_min, prix_max)
+        except ValueError as erreur:
+            await interaction.response.send_message(f"❌ {erreur}", ephemeral=True)
+            return
+
+        await interaction.response.send_message(
+            f"✅ Fourchette **{fourchette['nom']}** : "
+            f"**{format_money(Decimal(fourchette['prix_min']))}** → "
+            f"**{format_money(Decimal(fourchette['prix_max']))}**.\n"
+            f"-# Reste à lui donner un salon : "
+            f"`/fourchette salon ajouter nom:{fourchette['nom']}`",
+            ephemeral=True,
+        )
+
+    @fourchette_groupe.command(name="supprimer", description="Supprime une fourchette")
+    @app_commands.autocomplete(nom=_completer_nom)
+    async def fourchette_supprimer(interaction: discord.Interaction, nom: str):
+        if not await bot.store.supprimer_fourchette(nom):
+            await _refuser_nom_inconnu(interaction, nom)
+            return
+
+        restantes = await bot.store.fourchettes()
+        message = f"✅ Fourchette **{nom.strip()}** supprimée."
+        if not restantes:
+            message += "\n⚠️ Plus aucune fourchette : le post quotidien ne sortira plus."
+        await interaction.response.send_message(message, ephemeral=True)
+
+    @fourchette_groupe.command(name="prix", description="Modifie les bornes d'une fourchette")
+    @app_commands.describe(min="Prix minimum (ex: 100T)", max="Prix maximum (ex: 6P)")
+    @app_commands.autocomplete(nom=_completer_nom)
+    async def fourchette_prix(
+        interaction: discord.Interaction, nom: str, min: str, max: str
+    ):
+        try:
+            prix_min, prix_max = parse_money(min), parse_money(max)
+        except MoneyError as erreur:
+            await interaction.response.send_message(
+                f"❌ {erreur}\n{_aide_montants()}", ephemeral=True
+            )
+            return
+
+        if not await bot.store.majprix_fourchette(nom, prix_min, prix_max):
+            await _refuser_nom_inconnu(interaction, nom)
+            return
+
+        if prix_min > prix_max:
+            prix_min, prix_max = prix_max, prix_min
+        await interaction.response.send_message(
+            f"✅ **{nom.strip()}** : **{format_money(prix_min)}** → "
+            f"**{format_money(prix_max)}**",
+            ephemeral=True,
+        )
+
+    @fourchette_groupe.command(name="liste", description="Liste les fourchettes et leurs salons")
+    async def fourchette_liste(interaction: discord.Interaction):
+        fourchettes = await bot.store.fourchettes()
+        embed = discord.Embed(
+            title="Fourchettes de prix",
+            description=_lister_fourchettes(bot, fourchettes),
+            color=0x5865F2,
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    fourchette_salon_groupe = app_commands.Group(
+        name="salon",
+        description="Salons d'une fourchette",
+        parent=fourchette_groupe,
+    )
+
+    @fourchette_salon_groupe.command(
+        name="ajouter", description="Publie cette fourchette dans un salon"
+    )
+    @app_commands.autocomplete(nom=_completer_nom)
+    async def fourchette_salon_ajouter(
+        interaction: discord.Interaction, nom: str, salon: discord.TextChannel
     ):
         # Vérifié tout de suite : sinon l'erreur n'apparaîtrait qu'à l'heure du
         # post, le lendemain.
@@ -462,45 +683,46 @@ def enregistrer_commandes(bot: EmpireBot) -> None:
             )
             return
 
-        if not await bot.store.ajouter_salon(str(salon.id)):
+        if bot.store._index(await bot.store.fourchettes(), nom) < 0:
+            await _refuser_nom_inconnu(interaction, nom)
+            return
+
+        if not await bot.store.ajouter_salon_fourchette(nom, str(salon.id)):
             await interaction.response.send_message(
-                f"ℹ️ {salon.mention} est déjà dans la liste.", ephemeral=True
+                f"ℹ️ {salon.mention} reçoit déjà **{nom.strip()}**.", ephemeral=True
             )
             return
 
-        salons = await bot.store.salons()
         await interaction.response.send_message(
-            f"✅ {salon.mention} ajouté. Publication dans **{len(salons)} salon"
-            f"{'s' if len(salons) > 1 else ''}**.",
+            f"✅ **{nom.strip()}** sera publiée dans {salon.mention}.", ephemeral=True
+        )
+
+    @fourchette_salon_groupe.command(
+        name="retirer", description="Ne plus publier cette fourchette dans un salon"
+    )
+    @app_commands.autocomplete(nom=_completer_nom)
+    async def fourchette_salon_retirer(
+        interaction: discord.Interaction, nom: str, salon: discord.TextChannel
+    ):
+        if bot.store._index(await bot.store.fourchettes(), nom) < 0:
+            await _refuser_nom_inconnu(interaction, nom)
+            return
+
+        if not await bot.store.retirer_salon_fourchette(nom, str(salon.id)):
+            await interaction.response.send_message(
+                f"❌ **{nom.strip()}** n'était pas publiée dans {salon.mention}.",
+                ephemeral=True,
+            )
+            return
+
+        await interaction.response.send_message(
+            f"✅ **{nom.strip()}** ne sera plus publiée dans {salon.mention}.",
             ephemeral=True,
         )
 
-    @salon_groupe.command(name="retirer", description="Retire un salon de publication")
-    async def salon_retirer(
-        interaction: discord.Interaction, salon: discord.TextChannel
-    ):
-        if not await bot.store.retirer_salon(str(salon.id)):
-            await interaction.response.send_message(
-                f"ℹ️ {salon.mention} n'était pas dans la liste.", ephemeral=True
-            )
-            return
+    tree.add_command(fourchette_groupe)
 
-        restants = await bot.store.salons()
-        message = f"✅ {salon.mention} retiré."
-        if not restants:
-            message += "\n⚠️ Plus aucun salon : le post quotidien ne sortira plus."
-        await interaction.response.send_message(message, ephemeral=True)
-
-    @salon_groupe.command(name="liste", description="Liste les salons de publication")
-    async def salon_liste(interaction: discord.Interaction):
-        salons = await bot.store.salons()
-        embed = discord.Embed(
-            title="Salons de publication",
-            description=_lister_salons(bot, salons),
-            color=0x5865F2,
-        )
-        embed.set_footer(text="/config salon ajouter pour en ajouter un.")
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+    # --- /config (suite) --------------------------------------------------
 
     acces_groupe = app_commands.Group(
         name="acces",
@@ -848,19 +1070,45 @@ def enregistrer_commandes(bot: EmpireBot) -> None:
 
     # --- /apercu ----------------------------------------------------------
 
-    @tree.command(name="apercu", description="Prévisualise le post du jour sans publier")
+    @tree.command(name="apercu", description="Prévisualise les posts du jour sans publier")
     async def apercu(interaction: discord.Interaction):
+        """Un aperçu **par fourchette**, comme la publication.
+
+        Montrer l'union des bornes en un seul post serait plus court et
+        mensonger : aucun salon ne recevrait ça.
+        """
         await interaction.response.defer(ephemeral=True)
-        config = await bot.store.config()
-        try:
-            embeds, contenu, repli = await bot.construire_publication(
-                Decimal(config["prix_min"]), Decimal(config["prix_max"])
+        fourchettes = await bot.store.fourchettes()
+        if not fourchettes:
+            await interaction.followup.send(
+                "❌ Aucune fourchette configurée : rien ne serait publié.\n"
+                "-# `/fourchette ajouter nom:… min:… max:…`",
+                ephemeral=True,
             )
+            return
+
+        # Chargé une fois pour toutes les fourchettes, comme à la publication.
+        try:
+            donnees = await bot.charger()
         except SourceError as erreur:
             await interaction.followup.send(f"❌ {erreur}", ephemeral=True)
             return
 
-        if repli:
-            await interaction.followup.send(repli, ephemeral=True)
-            return
-        await envoyer(interaction.followup, embeds, contenu, ephemere=True)
+        for fourchette in fourchettes:
+            embeds, contenu, repli = await bot.construire_publication(
+                Decimal(fourchette["prix_min"]),
+                Decimal(fourchette["prix_max"]),
+                donnees=donnees,
+            )
+
+            # Le nom en tête de chaque aperçu : deux posts d'affilée seraient
+            # sinon indistinguables.
+            entete = f"**{fourchette['nom']}**"
+            if not fourchette["salons"]:
+                entete += " ⚠️ aucun salon : ne sera pas publiée"
+            await interaction.followup.send(entete, ephemeral=True)
+
+            if repli:
+                await interaction.followup.send(repli, ephemeral=True)
+                continue
+            await envoyer(interaction.followup, embeds, contenu, ephemere=True)

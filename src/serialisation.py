@@ -112,16 +112,38 @@ def _montant_ou_zero(brut: Any) -> Decimal:
         return Decimal(0)
 
 
-def config_en_json(config: dict, salons: list[str]) -> dict[str, Any]:
-    """La configuration, telle que la page de réglages la consomme.
+def fourchette_en_json(fourchette: dict) -> dict[str, Any]:
+    """Une fourchette : son nom, ses salons, ses bornes en trois formes.
 
-    `salons` est passé à part car `Store.salons()` applique une migration
-    (l'ancien `salon_id` unique) que la config brute ne reflète pas.
+    Les salons sont **dans** la fourchette et non à côté : c'est ce qui permet
+    au site de dire quel salon reçoit quelles promotions.
     """
     rendu: dict[str, Any] = {
+        "nom": str(fourchette.get("nom", "")),
+        "salons": [str(salon) for salon in fourchette.get("salons") or [] if salon],
+    }
+    for champ in ("prix_min", "prix_max"):
+        rendu.update(
+            montant_en_json(champ, _montant_ou_zero(fourchette.get(champ, 0)))
+        )
+    return rendu
+
+
+def config_en_json(config: dict, fourchettes: list[dict]) -> dict[str, Any]:
+    """La configuration, telle que la page de réglages la consomme.
+
+    `fourchettes` est passé à part car `Store.fourchettes()` applique les
+    migrations (`salon_id` unique, puis config plate) que la config brute ne
+    reflète pas.
+
+    Aucun `prix_min`/`prix_max` à la racine : ils appartiennent désormais à une
+    fourchette. Les exposer quand même les ferait alimenter par les défauts
+    d'usine, donc afficher une fourchette plausible que personne n'a réglée.
+    """
+    return {
         "heure": config.get("heure", ""),
         "fuseau": config.get("fuseau", ""),
-        "salons": [str(salon) for salon in salons],
+        "fourchettes": [fourchette_en_json(f) for f in fourchettes],
         # `or None` : la config stocke indifféremment "" ou None pour « aucun »,
         # et le site n'a pas à distinguer les deux.
         "role_id": str(config.get("role_id")) if config.get("role_id") else None,
@@ -130,11 +152,6 @@ def config_en_json(config: dict, salons: list[str]) -> dict[str, Any]:
         ),
         "autorises": [str(m) for m in config.get("autorises") or [] if m],
     }
-
-    for champ in ("prix_min", "prix_max"):
-        rendu.update(montant_en_json(champ, _montant_ou_zero(config.get(champ, 0))))
-
-    return rendu
 
 
 def etat_en_json(

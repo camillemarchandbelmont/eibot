@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import hmac
 import logging
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 from typing import Any
 
 from aiohttp import web
@@ -51,11 +51,15 @@ ENTETE_SECRET = "X-Api-Secret"
 #: Champs de configuration que le site peut écrire.
 #:
 #: Liste blanche plutôt que « tout sauf » : un bug de la page ne doit pas pouvoir
-#: écrire n'importe quelle clé en base. `salons`, `autorises` et `logs_salon_id`
-#: en sont volontairement absents — ils restent réglés par commande Discord,
-#: parce qu'ils désignent des objets Discord que le site ne peut pas vérifier
-#: (permissions du bot dans le salon, appartenance du membre au serveur).
-CHAMPS_MODIFIABLES = ("prix_min", "prix_max", "heure", "fuseau")
+#: écrire n'importe quelle clé en base. `fourchettes`, `autorises` et
+#: `logs_salon_id` en sont volontairement absents — ils restent réglés par
+#: commande Discord, parce qu'ils désignent des objets Discord que le site ne
+#: peut pas vérifier (permissions du bot dans le salon, appartenance du membre au
+#: serveur).
+#:
+#: `prix_min`/`prix_max` ont disparu avec la fourchette unique : les accepter
+#: écrirait une clé que plus rien ne lit, en laissant croire que c'est réglé.
+CHAMPS_MODIFIABLES = ("heure", "fuseau")
 
 
 class RequeteInvalide(Exception):
@@ -149,25 +153,52 @@ async def _corps_json(requete: web.Request) -> dict:
 
 
 async def _fourchette(bot, requete: web.Request, charge: dict | None = None):
-    """Fourchette à utiliser : celle de la requête, sinon celle enregistrée.
+    """Fourchette à utiliser : celle de la requête, sinon l'union des réglées.
 
     Permet de simuler une autre fourchette sur le site sans toucher aux
     réglages, comme `/promos min: max:` dans Discord.
+
+    Sans paramètre, couvre **l'union** de toutes les fourchettes configurées :
+    la page sert à voir ce qui bouge dans tout ce qui est surveillé, et en
+    désigner une obligerait le site à choisir laquelle.
     """
     source = {**(charge or {}), **dict(requete.query)}
-    config = await bot.store.config()
 
+    # Ce qui est saisi est validé **avant** de consulter la base : sinon
+    # `?min=abc` sur un bot sans fourchette répondrait « aucune fourchette
+    # configurée », en cachant la faute de frappe qui est la vraie cause.
+    donne = {}
     if source.get("min") not in (None, ""):
-        prix_min = _montant(source["min"], "Prix minimum")
-    else:
-        prix_min = Decimal(config["prix_min"])
-
+        donne["prix_min"] = _montant(source["min"], "Prix minimum")
     if source.get("max") not in (None, ""):
-        prix_max = _montant(source["max"], "Prix maximum")
-    else:
-        prix_max = Decimal(config["prix_max"])
+        donne["prix_max"] = _montant(source["max"], "Prix maximum")
 
-    return prix_min, prix_max
+    if len(donne) == 2:
+        return donne["prix_min"], donne["prix_max"]
+
+    fourchettes = await bot.store.fourchettes()
+    if not fourchettes:
+        raise RequeteInvalide(
+            "Aucune fourchette configurée : indique un minimum et un maximum, "
+            "ou crée une fourchette avec `/fourchette ajouter` dans Discord."
+        )
+
+    # Une seule borne saisie : l'autre vient de l'union. Refuser une saisie dont
+    # l'intention est claire serait gratuit.
+    return (
+        donne.get("prix_min", min(Decimal(f["prix_min"]) for f in fourchettes)),
+        donne.get("prix_max", max(Decimal(f["prix_max"]) for f in fourchettes)),
+    )
+
+
+async def _config_json(bot) -> dict[str, Any]:
+    """La config telle que le site la lit.
+
+    `fourchettes()` et non `config()["fourchettes"]` : c'est l'accesseur qui
+    applique les migrations (`salon_id` unique, puis config plate), et la config
+    brute d'une base ancienne n'en contiendrait aucune.
+    """
+    return config_en_json(await bot.store.config(), await bot.store.fourchettes())
 
 
 async def _date_du_jour(bot) -> str:
@@ -236,67 +267,38 @@ def enregistrer_routes(app: web.Application, bot) -> None:
     # --- Configuration ------------------------------------------------------
 
     async def config_lire(_: web.Request) -> web.Response:
-        return _json(
-            config_en_json(await bot.store.config(), await bot.store.salons())
-        )
+        return _json(await _config_json(bot))
 
     async def config_ecrire(requete: web.Request) -> web.Response:
         charge = await _corps_json(requete)
 
         inconnus = sorted(set(charge) - set(CHAMPS_MODIFIABLES))
         if inconnus:
+            # Nommer les champs refusés *et* où les régler : sans la seconde
+            # moitié, la page a l'air cassée alors qu'elle applique une règle.
             raise RequeteInvalide(
                 f"Champs non modifiables depuis le site : {', '.join(inconnus)}. "
-                "Les salons, la mention et la liste d'accès se règlent par "
-                "commande Discord."
+                "Les fourchettes et leurs salons, la mention et la liste d'accès "
+                "se règlent par commande Discord."
             )
 
         # Tout valider avant d'écrire : un PATCH à moitié appliqué serait pire
         # qu'un refus, puisqu'il faudrait deviner ce qui est passé.
         champs: dict[str, Any] = {}
-        if "prix_min" in charge:
-            champs["prix_min"] = _montant(charge["prix_min"], "Prix minimum")
-        if "prix_max" in charge:
-            champs["prix_max"] = _montant(charge["prix_max"], "Prix maximum")
         if "heure" in charge:
             champs["heure"] = _heure(charge["heure"])
         if "fuseau" in charge:
             champs["fuseau"] = _fuseau(charge["fuseau"])
 
-        # Comparé à la config courante, pas seulement entre eux : modifier le
-        # seul minimum peut inverser la fourchette tout autant.
-        courante = await bot.store.config()
-        try:
-            minimum = champs.get("prix_min", Decimal(courante["prix_min"]))
-            maximum = champs.get("prix_max", Decimal(courante["prix_max"]))
-        except InvalidOperation as erreur:  # config abîmée à la main
-            raise RequeteInvalide(
-                "La fourchette enregistrée est illisible : renseigne le minimum "
-                "et le maximum ensemble pour la réparer."
-            ) from erreur
-        if minimum > maximum:
-            raise RequeteInvalide(
-                "Le prix minimum dépasse le maximum : la fourchette ne "
-                "contiendrait jamais rien."
-            )
+        if champs:
+            await bot.store.maj_config(**champs)
 
-        # `str(Decimal)` : la base stocke les montants en texte, sinon les
-        # entiers de 21 chiffres ne survivraient pas au JSON de JSONB.
-        a_ecrire = {
-            cle: str(valeur) if isinstance(valeur, Decimal) else valeur
-            for cle, valeur in champs.items()
-        }
-        if a_ecrire:
-            await bot.store.maj_config(**a_ecrire)
-
-        if "heure" in a_ecrire:
+        if "heure" in champs:
             # Comme `/config heure` : changer l'heure exprime l'intention de
             # publier à la nouvelle, donc on oublie la marque du jour.
             await bot.store.oublier_publication()
 
-        return _json(
-            config_en_json(await bot.store.config(), await bot.store.salons())
-        )
+        return _json(await _config_json(bot))
 
     # --- Template -----------------------------------------------------------
 

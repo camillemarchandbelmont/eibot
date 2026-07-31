@@ -4,7 +4,9 @@ Poste chaque jour dans Discord les bâtiments **en promotion** du monde M8 dont
 le prix tombe dans une fourchette configurable, avec un embed que tu dessines
 toi-même sur [Discohook](https://discohook.org).
 
-Fourchette par défaut : **100 TØ → 6 PØ**.
+Plusieurs fourchettes, chacune avec **ses propres salons** : les grosses affaires
+dans un salon, les petits prix dans un autre. Un bot neuf n'en a aucune et ne
+publie donc rien — `/fourchette ajouter` puis `/fourchette salon ajouter`.
 
 ## Comment le bot lit les promotions
 
@@ -24,6 +26,10 @@ Les promotions retenues sont triées **du plus cher au moins cher**.
 Le bot vise **au moins 2 promotions** par post. S'il en trouve moins dans ta
 fourchette, il complète avec celles dont le prix est **le plus proche d'un des
 bords** — à écart égal, la plus chère.
+
+Le repêchage est **par fourchette** : chacune complète le sien, indépendamment
+des autres. Un même bâtiment peut donc apparaître dans deux posts, ce qui est
+préférable à un post vide dans un salon qui attend sa liste.
 
 Ces promos repêchées **ne sont pas signalées** : elles apparaissent comme les
 autres. Le placeholder `{ecart}` reste disponible si tu veux malgré tout
@@ -77,14 +83,16 @@ local, mais elle repart des valeurs de `.env` à chaque redémarrage.
 
 | Commande | Effet |
 |---|---|
-| `/promos [min] [max]` | Promotions à la demande ; sans argument, la fourchette configurée |
+| `/promos [min] [max]` | Promotions à la demande ; sans argument, l'**union** des fourchettes |
+| `/fourchette ajouter nom min max` | Crée une fourchette (ex : `nom:grosses min:100T max:6P`) |
+| `/fourchette prix nom min max` | Modifie ses bornes, en gardant ses salons |
+| `/fourchette supprimer nom` | Supprime une fourchette et ses salons |
+| `/fourchette liste` | Les fourchettes, leurs bornes et leurs salons |
+| `/fourchette salon ajouter nom salon` | Publie **cette** fourchette dans ce salon |
+| `/fourchette salon retirer nom salon` | Cesse de l'y publier |
 | `/config voir` | Affiche la configuration courante |
-| `/config prix min max` | Définit la fourchette (ex : `min:100T max:6P`) |
 | `/config heure heure [fuseau]` | Heure du post quotidien (`HH:MM`) |
 | `/config retester` | Oublie la publication du jour pour retester le déclenchement |
-| `/config salon ajouter salon` | Ajoute un salon de publication |
-| `/config salon retirer salon` | Retire un salon de publication |
-| `/config salon liste` | Liste les salons, en signalant ceux devenus inaccessibles |
 | `/config mention [role]` | Rôle mentionné dans le post ; sans argument, aucune mention |
 | `/config logs [salon]` | Salon de journal ; sans argument, journal désactivé |
 | `/config acces ajouter membre` | Autorise un membre à utiliser les commandes |
@@ -127,23 +135,51 @@ Les commandes restent visibles dans le menu Discord pour tous les membres :
 les masquer passerait par `default_member_permissions`, qui les cacherait aussi
 aux membres autorisés non-administrateurs.
 
-## Publier dans plusieurs salons
+## Plusieurs fourchettes, plusieurs salons
 
-`/config salon ajouter` autant de fois que nécessaire : le bot poste **le même
-message dans tous les salons de la liste**. Une seule fourchette, une seule
-recherche, une seule mention de rôle (`/config mention`) — les salons ne se
-configurent pas séparément.
+Une fourchette porte **ses bornes et ses salons** :
 
-À l'ajout, le bot vérifie tout de suite qu'il a **Envoyer des messages** et
-**Intégrer des liens** dans le salon, et refuse sinon : une permission
-manquante découverte à l'heure du post serait un post perdu. `/config salon
-liste` marque `⚠️ introuvable` un salon supprimé depuis.
+```
+/fourchette ajouter nom:grosses min:100T max:6P
+/fourchette salon ajouter nom:grosses salon:#affaires
+/fourchette salon ajouter nom:grosses salon:#général
 
-**Si un salon échoue** (supprimé, permissions retirées entre-temps), les
-autres reçoivent quand même le post, l'échec est signalé dans le journal, et
-la journée est marquée publiée. Sans ça, le passage suivant reposterait dans
-les salons déjà servis. En revanche, si **tous** les salons échouent, rien
-n'est marqué et le prochain passage réessaie.
+/fourchette ajouter nom:petits min:100K max:1G
+/fourchette salon ajouter nom:petits salon:#débutants
+```
+
+À l'heure dite, **un seul passage** publie tout : un post par fourchette et par
+salon, chacun avec sa propre recherche et son propre repêchage. Ici, trois posts.
+L'heure, le fuseau, la mention de rôle, le salon de logs et le template restent
+**globaux** — ce qui change d'un salon à l'autre, ce sont les prix.
+
+Les noms sont insensibles à la casse (`Grosses` et `grosses` désignent la même) et
+proposés en autocomplétion, pour ne pas régler une fourchette jamais créée.
+
+À l'ajout d'un salon, le bot vérifie tout de suite qu'il a **Envoyer des
+messages** et **Intégrer des liens**, et refuse sinon : une permission manquante
+découverte à l'heure du post serait un post perdu.
+
+Une fourchette **sans salon est muette** : le bot la saute. `/fourchette liste` et
+le site la signalent, faute de quoi ça ne se remarquerait que le lendemain.
+
+L'isolation des pannes est à **deux niveaux** : une fourchette dont le rendu
+échoue n'empêche pas les suivantes, et un salon cassé ne prive pas les autres
+salons de sa fourchette. La journée est marquée publiée dès qu'un envoi a réussi —
+sinon le passage suivant reposterait là où ça avait marché. Si **tous** les envois
+échouent, rien n'est marqué et le prochain passage réessaie.
+
+Un même salon peut servir deux fourchettes : il reçoit alors deux posts. C'est
+pourquoi le compte rendu parle d'**envois** et non de salons.
+
+### Migration depuis la fourchette unique
+
+Une configuration d'avant ce changement (`prix_min`/`prix_max`/`salons` à la
+racine) est convertie **à la lecture** en une fourchette nommée `principale`, avec
+ses bornes et ses salons. Rien à lancer : la conversion a lieu au premier accès et
+la racine est nettoyée à la première écriture. Sans elle, une mise à jour du bot
+aurait fait taire un salon déjà configuré, et ça ne se serait vu que le lendemain
+à l'heure du post.
 
 ## Salon de journal
 
@@ -275,15 +311,15 @@ nouvel horaire s'applique tout de suite, sans attendre demain.
 ## Le site web
 
 Un panneau de contrôle Next.js (dépôt séparé, `../eiweb`) remplace la plupart des
-commandes : promotions du jour, fourchette, heure, template, publication à la
+commandes : promotions du jour, fourchettes, heure, template, publication à la
 demande. Il se connecte au bot par ces routes :
 
 | Route | Effet |
 |---|---|
 | `GET /api/etat` | Bot connecté, type de stockage, dernière publication |
-| `GET /api/promos[?min=&max=]` | Promotions du jour, fourchette optionnelle |
-| `GET /api/config` | Configuration courante |
-| `PATCH /api/config` | Écrit `prix_min`, `prix_max`, `heure`, `fuseau` |
+| `GET /api/promos[?min=&max=]` | Promotions du jour ; sans bornes, l'**union** des fourchettes |
+| `GET /api/config` | Configuration courante, dont la liste des fourchettes |
+| `PATCH /api/config` | Écrit `heure` et `fuseau` — rien d'autre |
 | `GET /api/template` | Template et liste des placeholders |
 | `PUT /api/template` | Remplace le template |
 | `POST /api/apercu` | Rend le post sans publier ni enregistrer |
@@ -308,12 +344,26 @@ n'y apparaît jamais.
 
 ### Ce qui reste dans Discord
 
-`PATCH /api/config` n'accepte que quatre champs (`CHAMPS_MODIFIABLES` dans
-`src/api.py`). Les **salons**, la **mention**, le **salon de logs** et la **liste
-d'accès** désignent des objets Discord dont le site ne peut vérifier ni
-l'existence, ni les permissions du bot, ni l'appartenance d'un membre au serveur.
-Ils restent réglés par commande, où Discord fait la vérification lui-même. Toute
-autre clé est refusée en 400 avec le nom du champ fautif.
+`PATCH /api/config` n'accepte que deux champs, `heure` et `fuseau`
+(`CHAMPS_MODIFIABLES` dans `src/api.py`). Les **salons**, la **mention**, le
+**salon de logs** et la **liste d'accès** désignent des objets Discord dont le
+site ne peut vérifier ni l'existence, ni les permissions du bot, ni
+l'appartenance d'un membre au serveur. Ils restent réglés par commande, où
+Discord fait la vérification lui-même. Toute autre clé est refusée en 400 avec le
+nom du champ fautif.
+
+Les **bornes** suivent leurs salons : une fourchette porte les deux ensemble, et
+régler un prix depuis le site sans pouvoir en régler les salons donnerait une
+fourchette à moitié modifiable. `prix_min` et `prix_max` sont donc refusés comme
+les autres — le site les **affiche**, `/fourchette prix` les change.
+
+### Sans bornes, `/api/promos` renvoie l'union
+
+Le site liste les promotions de toutes les fourchettes à la fois : la borne basse
+vient de la plus basse, la borne haute de la plus haute. Un prix compris dans
+cette union peut donc n'appartenir à **aucune** fourchette — la page dit ce qui
+est surveillé, pas ce que recevra un salon donné. `/api/apercu`, lui, rend un
+bloc par fourchette, dans l'ordre de publication.
 
 ### Les montants ne passent jamais en nombre JSON
 
@@ -409,11 +459,13 @@ pip install -r requirements-dev.txt
 python -m pytest -q
 ```
 
-348 tests couvrent la notation monétaire, le parsing du CSV (entiers de
+418 tests couvrent la notation monétaire, le parsing du CSV (entiers de
 21 chiffres, notation scientifique), le calcul des remises, le repêchage hors
 fourchette, le rendu du template, les limites Discord, le planning (fenêtre
 de rattrapage, idempotence quotidienne), l'API du jeu (construction de l'URL,
-erreurs 401/5xx, non-fuite de la clé, réponses non-CSV), la publication
+erreurs 401/5xx, non-fuite de la clé, réponses non-CSV), les fourchettes
+multiples (chaque salon ne reçoit que les promotions de sa fourchette, migration
+d'une config plate, unicité des noms insensible à la casse), la publication
 multi-salon (échec partiel, échec total, salon supprimé), le salon de journal
 (qui ne doit jamais échouer), le contrôle d'accès (toutes les commandes
 protégées, admin jamais verrouillé dehors, liste non modifiable par un membre
@@ -438,13 +490,13 @@ daté, sans écraser l'ancien.
 ### Vérifier que les tests mordent
 
 ```bash
-python tests/mutations.py          # les 24 mutations
+python tests/mutations.py          # les 45 mutations
 python tests/mutations.py acces    # celles dont le nom contient « acces »
 ```
 
 Une suite verte prouve que le code passe les tests, pas que les tests
 vérifieraient quoi que ce soit. `tests/mutations.py` introduit une à une
-24 fautes plausibles dans `src/` (inverser une comparaison, ôter une garde,
+45 fautes plausibles dans `src/` (inverser une comparaison, ôter une garde,
 supprimer un masquage de secret) et exige que la suite échoue à chaque fois. Un
 **survivant** est un trou de couverture, pas un faux positif.
 

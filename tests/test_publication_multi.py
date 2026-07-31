@@ -89,10 +89,16 @@ async def test_un_seul_salon_fonctionne_comme_avant():
     assert len(salons[1].envois) == 1
 
 
-async def test_aucun_salon_configure_ne_publie_rien():
+async def test_rien_de_configure_ne_publie_rien():
+    """Un bot neuf n'a pas de fourchette, donc nulle part où publier.
+
+    Le message parle de fourchette et non de salon depuis que les salons
+    s'attachent à une fourchette : « aucun salon » enverrait vers une commande
+    qui exige un nom de fourchette inexistante.
+    """
     bot = await _bot({})
     resultat = await bot.publier_si_lheure(forcer=True)
-    assert "aucun salon" in resultat
+    assert "aucune fourchette" in resultat
 
 
 # --- Échec partiel ----------------------------------------------------------

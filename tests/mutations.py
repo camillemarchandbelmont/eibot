@@ -99,11 +99,25 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
         "le site pourrait écrire n'importe quelle clé, dont `autorises`",
     ),
     (
-        "api-fourchette-inversee-acceptee",
+        "api-fourchette-sans-borne-acceptee",
         "src/api.py",
-        "        if minimum > maximum:",
-        "        if False:",
-        "une fourchette inversée serait enregistrée et ne rendrait jamais rien",
+        "    if not fourchettes:\n        raise RequeteInvalide(",
+        "    if False:\n        raise RequeteInvalide(",
+        "un bot neuf renverrait une liste vide, lue comme « aucune promotion »",
+    ),
+    (
+        "api-fourchette-une-seule-au-lieu-de-lunion",
+        "src/api.py",
+        'donne.get("prix_max", max(Decimal(f["prix_max"]) for f in fourchettes)),',
+        'donne.get("prix_max", Decimal(fourchettes[0]["prix_max"])),',
+        "les promos des autres fourchettes disparaîtraient de la page",
+    ),
+    (
+        "api-montant-valide-apres-la-base",
+        "src/api.py",
+        '    donne = {}\n    if source.get("min") not in (None, ""):',
+        '    donne = {}\n    if False and source.get("min") not in (None, ""):',
+        "`?min=abc` serait ignoré au lieu d'être signalé",
     ),
     (
         "api-heure-non-bornee",
@@ -179,13 +193,27 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
         "une promo hors budget serait présentée comme dedans",
     ),
     (
-        "serial-config-notation-scientifique",
+        "serial-fourchette-notation-scientifique",
         "src/serialisation.py",
-        "        rendu.update(montant_en_json(champ, _montant_ou_zero(config.get(champ, 0))))",
-        '        rendu.update({champ: str(config.get(champ, 0)),\n'
-        '                      f"{champ}_brut": str(config.get(champ, 0)),\n'
-        '                      f"{champ}_long": str(config.get(champ, 0))})',
+        "            montant_en_json(champ, _montant_ou_zero(fourchette.get(champ, 0)))",
+        '            {champ: str(fourchette.get(champ, 0)),\n'
+        '             f"{champ}_brut": str(fourchette.get(champ, 0)),\n'
+        '             f"{champ}_long": str(fourchette.get(champ, 0))}',
         "le site afficherait « 1e14 » au lieu de « 100,00 TØ »",
+    ),
+    (
+        "serial-fourchette-salons-perdus",
+        "src/serialisation.py",
+        '"salons": [str(salon) for salon in fourchette.get("salons") or [] if salon],',
+        '"salons": [],',
+        "le site dirait « aucun salon » d'une fourchette qui publie",
+    ),
+    (
+        "serial-fourchette-nom-perdu",
+        "src/serialisation.py",
+        '"nom": str(fourchette.get("nom", "")),',
+        '"nom": "",',
+        "le site ne saurait plus laquelle des fourchettes il affiche",
     ),
     # --- Contrat de champs avec le site ------------------------------------
     #
@@ -206,6 +234,150 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
         '"role_id": str(config.get("role_id")) if config.get("role_id") else None,',
         '"role_id": str(config.get("role_id")),',
         "le site afficherait « rôle None » au lieu de « aucune »",
+    ),
+    # --- src/db.py : la migration d'une config plate -----------------------
+    #
+    # Le cas le plus risque du changement : la prod tourne avec une config plate
+    # (`prix_min`/`prix_max`/`salons` a la racine). Une migration ratee ne leve
+    # rien -- elle fait taire un salon deja configure, et ca ne se remarque que
+    # le lendemain a l'heure du post.
+    (
+        "db-migration-ignoree",
+        "src/db.py",
+        "        if not any(cle in enregistree for cle in _CHAMPS_PLATS):\n            return []",
+        "        return []",
+        "la fourchette de la prod disparaîtrait à la mise à jour du bot",
+    ),
+    (
+        "db-migration-ecrase-les-fourchettes",
+        "src/db.py",
+        '        if "fourchettes" in enregistree:',
+        "        if False:",
+        "les fourchettes réglées seraient remplacées par la config plate",
+    ),
+    (
+        "db-liste-vide-remigre",
+        "src/db.py",
+        '            liste = enregistree["fourchettes"] or []\n'
+        "            return [_normaliser_fourchette(f) for f in liste if isinstance(f, dict)]",
+        '            liste = enregistree["fourchettes"] or []\n'
+        "            if liste:\n"
+        "                return [_normaliser_fourchette(f) for f in liste if isinstance(f, dict)]",
+        "la dernière fourchette supprimée ressusciterait au redémarrage",
+    ),
+    (
+        "db-migration-perd-le-salon-unique",
+        "src/db.py",
+        '                    "salons": await self.salons(),',
+        '                    "salons": [],',
+        "un salon réglé avant le multi-salon deviendrait muet",
+    ),
+    (
+        "db-ecriture-materialise-les-defauts",
+        "src/db.py",
+        '        return dict(await self.get("config", {}) or {})',
+        "        return await self.config()",
+        "un bot neuf hériterait d'une fourchette « principale » non demandée",
+    ),
+    (
+        "db-champs-plats-non-effaces",
+        "src/db.py",
+        '        for ancien in ("prix_min", "prix_max", "salons", "salon_id"):\n'
+        "            config.pop(ancien, None)",
+        "        pass",
+        "les vieux champs plats feraient ressusciter la fourchette migrée",
+    ),
+    (
+        "db-nom-sensible-a-la-casse",
+        "src/db.py",
+        "    return str(nom).strip().casefold()",
+        "    return str(nom)",
+        "« Grosses » et « grosses » seraient deux fourchettes indistinguables",
+    ),
+    (
+        "db-salon-attache-a-la-premiere-fourchette",
+        "src/db.py",
+        "        liste = await self.fourchettes()\n"
+        "        index = self._index(liste, nom)\n"
+        '        if index < 0 or str(salon_id) in liste[index]["salons"]:',
+        "        liste = await self.fourchettes()\n"
+        "        index = 0 if liste else -1\n"
+        '        if index < 0 or str(salon_id) in liste[index]["salons"]:',
+        "le salon recevrait les promotions d'une autre fourchette",
+    ),
+    # --- src/bot.py : la boucle de publication -----------------------------
+    (
+        "bot-publie-une-seule-fourchette",
+        "src/bot.py",
+        "        for fourchette in servies:",
+        "        for fourchette in servies[:1]:",
+        "seule la première fourchette serait publiée, sans erreur visible",
+    ),
+    (
+        "bot-publie-partout-les-memes-promos",
+        "src/bot.py",
+        '                    Decimal(fourchette["prix_min"]),\n'
+        '                    Decimal(fourchette["prix_max"]),\n'
+        "                    donnees=donnees,",
+        '                    Decimal(servies[0]["prix_min"]),\n'
+        '                    Decimal(servies[0]["prix_max"]),\n'
+        "                    donnees=donnees,",
+        "chaque salon recevrait les promotions de la première fourchette",
+    ),
+    (
+        "bot-diffuse-a-tous-les-salons",
+        "src/bot.py",
+        '            for salon_id in fourchette["salons"]:',
+        '            for salon_id in [s for f in servies for s in f["salons"]]:',
+        "un salon recevrait les promotions de toutes les fourchettes",
+    ),
+    (
+        "bot-fourchette-sans-salon-publiee",
+        "src/bot.py",
+        '        servies = [f for f in fourchettes if f["salons"]]',
+        "        servies = list(fourchettes)",
+        "une fourchette sans salon ferait échouer un envoi à chaque passage",
+    ),
+    (
+        "bot-export-recharge-par-fourchette",
+        "src/bot.py",
+        "                    donnees=donnees,\n"
+        "                )\n"
+        "            except Exception as erreur:",
+        "                    donnees=await self.charger(),\n"
+        "                )\n"
+        "            except Exception as erreur:",
+        "l'export serait téléchargé une fois par fourchette",
+    ),
+    (
+        "bot-apercu-une-seule-fourchette",
+        "src/bot.py",
+        "        for fourchette in fourchettes:\n"
+        "            embeds, contenu, repli = await bot.construire_publication(",
+        "        for fourchette in fourchettes[:1]:\n"
+        "            embeds, contenu, repli = await bot.construire_publication(",
+        "l'aperçu mentirait sur ce que chaque salon recevra",
+    ),
+    (
+        "bot-promos-une-seule-fourchette",
+        "src/bot.py",
+        'else builtins.max(Decimal(f["prix_max"]) for f in fourchettes)',
+        'else Decimal(fourchettes[0]["prix_max"])',
+        "`/promos` masquerait les promotions des autres fourchettes",
+    ),
+    (
+        "bot-compte-rendu-dedouble-les-envois",
+        "src/bot.py",
+        '        total = sum(len(f["salons"]) for f in servies)',
+        '        total = len({s for f in servies for s in f["salons"]})',
+        "le compte rendu annoncerait moins d'envois qu'il n'en est parti",
+    ),
+    (
+        "journal-compte-des-salons",
+        "src/journal.py",
+        'entete = f"✅ **Publication** · {sujet} · {len(reussis)}/{total} envoi"',
+        'entete = f"✅ **Publication** · {sujet} · {len(reussis)}/{total} salon"',
+        "le journal annoncerait plus de salons qu'il n'en existe",
     ),
     (
         "api-champ-interdit-accepte",

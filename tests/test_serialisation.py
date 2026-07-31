@@ -118,32 +118,57 @@ def test_repechage_expose():
 
 def test_config_en_json():
     config = {
-        "prix_min": "1e14",
-        "prix_max": "6e15",
         "heure": "09:00",
         "fuseau": "Europe/Paris",
         "role_id": "123",
         "logs_salon_id": None,
     }
-    rendu = config_en_json(config, salons=["111", "222"])
+    fourchettes = [
+        {"nom": "grosses", "prix_min": "1e14", "prix_max": "6e15",
+         "salons": ["111", "222"]},
+    ]
+    rendu = config_en_json(config, fourchettes=fourchettes)
+    fourchette = rendu["fourchettes"][0]
 
-    assert rendu["prix_min_brut"] == "100000000000000"   # 1e14 développé, pas "1e14"
-    assert rendu["prix_min"] == "100,00 TØ"
+    assert fourchette["nom"] == "grosses"
+    assert fourchette["salons"] == ["111", "222"]
+    assert fourchette["prix_min_brut"] == "100000000000000"   # 1e14 développé
+    assert fourchette["prix_min"] == "100,00 TØ"
     assert rendu["heure"] == "09:00"
-    assert rendu["salons"] == ["111", "222"]
     assert rendu["role_id"] == "123"
     assert rendu["logs_salon_id"] is None
     assert json.dumps(rendu)   # sérialisable
 
 
+def test_config_en_json_sans_fourchette():
+    """Un bot neuf : liste vide, et surtout pas de fourchette inventée."""
+    rendu = config_en_json(
+        {"heure": "09:00", "fuseau": "Europe/Paris"}, fourchettes=[]
+    )
+    assert rendu["fourchettes"] == []
+
+
+def test_config_en_json_ne_garde_pas_les_prix_a_la_racine():
+    """Les laisser ferait afficher au site une fourchette qui n'existe plus.
+
+    Le champ resterait alimenté par les défauts d'usine : plausible et faux,
+    le pire des deux mondes.
+    """
+    rendu = config_en_json(
+        {"heure": "09:00", "fuseau": "Europe/Paris",
+         "prix_min": "1e14", "prix_max": "6e15"},
+        fourchettes=[],
+    )
+    for champ in ("prix_min", "prix_max", "prix_min_brut", "prix_max_brut"):
+        assert champ not in rendu, champ
+
+
 def test_config_sans_mention_ni_journal():
     rendu = config_en_json(
-        {"prix_min": "1", "prix_max": "2", "heure": "09:00",
-         "fuseau": "Europe/Paris"},
-        salons=[],
+        {"heure": "09:00", "fuseau": "Europe/Paris"}, fourchettes=[]
     )
     assert rendu["role_id"] is None
-    assert rendu["salons"] == []
+    assert rendu["fourchettes"] == []
 
 
 def test_etat_en_json():
@@ -239,23 +264,32 @@ def test_contrat_promo_champs_attendus():
 def test_contrat_config_champs_attendus():
     rendu = config_en_json(
         {
-            "prix_min": "100000", "prix_max": "1e14", "heure": "09:00",
-            "fuseau": "Europe/Paris", "role_id": "42", "logs_salon_id": "7",
-            "autorises": ["1"],
+            "heure": "09:00", "fuseau": "Europe/Paris", "role_id": "42",
+            "logs_salon_id": "7", "autorises": ["1"],
         },
-        salons=["123"],
+        fourchettes=[
+            {"nom": "grosses", "prix_min": "100000", "prix_max": "1e14",
+             "salons": ["123"]},
+        ],
     )
 
     for champ in ("heure", "fuseau"):
         assert isinstance(rendu[champ], str), champ
-    for nom in ("prix_min", "prix_max"):
-        for suffixe in ("", "_long", "_brut"):
-            assert isinstance(rendu[f"{nom}{suffixe}"], str), f"{nom}{suffixe}"
-    for champ in ("salons", "autorises"):
-        assert isinstance(rendu[champ], list), champ
+    assert isinstance(rendu["autorises"], list)
     # `str | None` côté site : ni 0, ni "", ni False.
     for champ in ("role_id", "logs_salon_id"):
         assert rendu[champ] is None or isinstance(rendu[champ], str), champ
+
+    # Une fourchette porte son nom, ses salons et ses deux bornes en trois
+    # formes : c'est ce que `Fourchette` déclare dans `D:\eiweb\lib\fourchettes.ts`.
+    assert isinstance(rendu["fourchettes"], list)
+    fourchette = rendu["fourchettes"][0]
+    assert isinstance(fourchette["nom"], str)
+    assert isinstance(fourchette["salons"], list)
+    for nom in ("prix_min", "prix_max"):
+        for suffixe in ("", "_long", "_brut"):
+            champ = f"{nom}{suffixe}"
+            assert isinstance(fourchette[champ], str), champ
 
 
 def test_contrat_etat_champs_attendus():

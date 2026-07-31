@@ -65,6 +65,27 @@ async def test_publication_reussie_est_journalisee():
     assert "#promos" in message and "#vip" in message
 
 
+async def test_compte_rendu_parle_denvois_et_non_de_salons():
+    """Un salon servant deux fourchettes reçoit deux posts.
+
+    Le compte porte donc sur les **envois**, pas sur les salons : dire « 3/3
+    salons » quand il n'y en a que deux ferait chercher un salon fantôme dans la
+    liste — et l'incohérence saute aux yeux puisque les noms sont juste à côté.
+    """
+    salon = SalonFactice()
+    journal, _ = await _journal(salon)
+
+    await journal.publication(
+        promos=2,
+        reussis=["<#111> (petits)", "<#222> (petits)", "<#222> (grosses)"],
+        echecs={},
+    )
+
+    message = salon.messages[0]
+    assert "3/3 envois" in message, message
+    assert "salon" not in message.lower(), message
+
+
 async def test_publication_partielle_signale_les_echecs():
     salon = SalonFactice()
     journal, _ = await _journal(salon)
