@@ -3,6 +3,9 @@
 # Les logs d'accès aiohttp contiennent /tick?token=… en clair.
 *.log
 
+# Brouillons d'exécution des plans (ledger, briefs, diffs de relecture).
+.superpowers/
+
 # Python
 __pycache__/
 *.py[cod]
