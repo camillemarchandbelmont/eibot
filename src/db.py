@@ -354,6 +354,60 @@ class Store:
         config["logs_salon_id"] = None
         await self.set("config", config)
 
+    # --- Mention : un rôle par serveur -------------------------------------
+
+    async def roles(self) -> dict[str, str]:
+        """Rôle à mentionner par serveur, `{}` si aucun n'est réglé.
+
+        Pas de défaut d'usine pour cette clé : un dict vide serait
+        indistinguable de « jamais réglé », et le matérialiser en base est ce
+        que `_enregistree` évite partout ailleurs.
+        """
+        table = (await self.config()).get("roles") or {}
+        return {str(serveur): str(role) for serveur, role in table.items() if role}
+
+    async def role_du_serveur(self, serveur_id: str | int | None) -> str | None:
+        """Rôle à mentionner dans ce serveur, ou None.
+
+        `role_id` (config d'avant le multi-serveurs) sert de **repli**, il n'est
+        pas converti : savoir à quel serveur appartient un rôle demanderait de
+        résoudre un salon, donc un accès à Discord que `Store` n'a pas.
+
+        Le repli ne joue que si `roles` est vide. Sinon un rôle qu'on croit
+        remplacé continuerait d'être mentionné dans les serveurs non réglés.
+        """
+        table = await self.roles()
+        if table:
+            return table.get(str(serveur_id)) if serveur_id else None
+
+        ancien = (await self.config()).get("role_id")
+        return str(ancien) if ancien else None
+
+    async def _ecrire_roles(self, table: dict[str, str]) -> None:
+        """Écrit la table et retire `role_id`, devenu ambigu.
+
+        Écriture directe et non `maj_config` : celui-ci ignore les valeurs
+        vides, donc une table vidée ne serait jamais enregistrée et le rôle
+        reviendrait au redémarrage.
+        """
+        config = await self._enregistree()
+        config["roles"] = table
+        config.pop("role_id", None)
+        await self.set("config", config)
+
+    async def definir_role(self, serveur_id: str | int, role_id: str | int) -> None:
+        await self._ecrire_roles({**await self.roles(), str(serveur_id): str(role_id)})
+
+    async def effacer_role(self, serveur_id: str | int) -> bool:
+        """Retire le rôle d'un serveur. False s'il n'en avait pas."""
+        table = await self.roles()
+        if str(serveur_id) not in table:
+            return False
+        await self._ecrire_roles(
+            {s: r for s, r in table.items() if s != str(serveur_id)}
+        )
+        return True
+
     # --- Membres autorisés à utiliser les commandes ------------------------
 
     async def autorises(self) -> list[str]:
