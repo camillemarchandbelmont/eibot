@@ -418,6 +418,84 @@ class Store:
 
         return False
 
+    # --- Noms de salons et de serveurs, pour le site -----------------------
+
+    async def salons_connus(self) -> dict[str, dict]:
+        """`{id_salon: {"nom": …, "serveur": …}}`, pour l'affichage du site.
+
+        Deux tables plates (celle-ci et `serveurs`) plutôt qu'un objet par salon
+        dans chaque fourchette : un salon servant deux fourchettes a son nom
+        stocké **une seule fois**, et `fourchette["salons"]` reste une liste
+        d'ids — ce dont dépendent la boucle de publication et le site.
+        """
+        table = (await self.config()).get("salons_connus") or {}
+        return {
+            str(salon): {
+                "nom": str(details.get("nom", "")),
+                "serveur": str(details.get("serveur", "")),
+            }
+            for salon, details in table.items()
+            if isinstance(details, dict)
+        }
+
+    async def serveurs(self) -> dict[str, str]:
+        """`{id_serveur: nom}` des serveurs dont un salon est connu."""
+        table = (await self.config()).get("serveurs") or {}
+        return {str(serveur): str(nom) for serveur, nom in table.items() if nom}
+
+    async def memoriser_salon(
+        self,
+        salon_id: str | int,
+        nom: str,
+        serveur_id: str | int,
+        serveur_nom: str,
+    ) -> None:
+        """Retient le nom d'un salon et de son serveur.
+
+        Appelé au réglage **et** à chaque résolution : un salon renommé garde
+        sinon son ancien nom indéfiniment. Les noms se corrigent donc d'eux-mêmes
+        au premier post.
+        """
+        config = await self._enregistree()
+        salons = dict(config.get("salons_connus") or {})
+        salons[str(salon_id)] = {"nom": str(nom), "serveur": str(serveur_id)}
+        config["salons_connus"] = salons
+
+        noms = dict(config.get("serveurs") or {})
+        noms[str(serveur_id)] = str(serveur_nom)
+        config["serveurs"] = noms
+
+        await self.set("config", config)
+
+    async def oublier_salons_orphelins(self) -> int:
+        """Efface les salons qu'aucune fourchette ne sert. Renvoie le compte.
+
+        Sans ça la table grossit indéfiniment avec des salons dont plus personne
+        ne parle. Un serveur dont plus aucun salon ne dépend disparaît aussi.
+        """
+        servis = {
+            str(salon)
+            for fourchette in await self.fourchettes()
+            for salon in fourchette["salons"]
+        }
+        connus = await self.salons_connus()
+        gardes = {
+            salon: details for salon, details in connus.items() if salon in servis
+        }
+        if len(gardes) == len(connus):
+            return 0
+
+        config = await self._enregistree()
+        config["salons_connus"] = gardes
+        utiles = {details["serveur"] for details in gardes.values()}
+        config["serveurs"] = {
+            serveur: nom
+            for serveur, nom in (await self.serveurs()).items()
+            if serveur in utiles
+        }
+        await self.set("config", config)
+        return len(connus) - len(gardes)
+
     # --- Membres autorisés à utiliser les commandes ------------------------
 
     async def autorises(self) -> list[str]:
