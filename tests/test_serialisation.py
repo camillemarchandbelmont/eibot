@@ -281,12 +281,13 @@ def test_contrat_config_champs_attendus():
     assert rendu["logs_salon_id"] is None or isinstance(rendu["logs_salon_id"], str)
 
     # `roles`, `serveurs` et `salons_connus` sont des dicts dont clés et valeurs
-    # sont des chaînes.
+    # sont des chaînes. `role_global` est `str | None`.
     for champ in ("roles", "serveurs"):
         assert isinstance(rendu[champ], dict), champ
         for cle, valeur in rendu[champ].items():
             assert isinstance(cle, str), f"{champ}: clé {cle}"
             assert isinstance(valeur, str), f"{champ}: valeur {valeur}"
+    assert rendu["role_global"] is None or isinstance(rendu["role_global"], str)
     assert isinstance(rendu["salons_connus"], dict)
     for cle, valeur in rendu["salons_connus"].items():
         assert isinstance(cle, str), f"salons_connus: clé {cle}"
@@ -365,7 +366,79 @@ def test_contrat_role_id_plat_devient_un_role_par_serveur_connu():
         [],
     )
 
-    assert rendu["roles"] == {"111": "7"}
+    # Après la correction : le rôle global est exposé explicitement, et
+    # `roles` ne contient plus d'étalement. Le site affiche désormais le
+    # rôle global comme tel, au lieu de le dupliquer par serveur.
+    assert rendu["roles"] == {}
+    assert rendu["role_global"] == "7"
+
+
+def test_contrat_role_global_expose_quand_aucun_serveur_connu():
+    """Le jour du déploiement : un role_id existe, mais aucun serveur connu.
+
+    Sans `role_global`, le site afficherait « aucune mention » alors que le
+    bot pingue bien. Le rôle global est donc exposé explicitement.
+    """
+    rendu = config_en_json(
+        {"heure": "09:00", "fuseau": "Europe/Paris", "role_id": "7", "salons": ["1"]},
+        [],
+    )
+
+    assert rendu["roles"] == {}
+    assert rendu["role_global"] == "7"
+
+
+def test_contrat_role_global_absent_quand_roles_par_serveur():
+    """Une fois la table `roles` remplie, `role_global` est `None`."""
+    rendu = config_en_json(
+        {
+            "heure": "09:00",
+            "fuseau": "Europe/Paris",
+            "roles": {"111": "42"},
+        },
+        [],
+    )
+
+    assert rendu["roles"] == {"111": "42"}
+    assert rendu["role_global"] is None
+
+
+def test_contrat_role_global_absent_quand_rien_regle():
+    """Ni role_id, ni roles : aucune mention."""
+    rendu = config_en_json(
+        {"heure": "09:00", "fuseau": "Europe/Paris"},
+        [],
+    )
+
+    assert rendu["roles"] == {}
+    assert rendu["role_global"] is None
+
+
+def test_contrat_role_global_coerce_en_texte():
+    """JSONB peut restituer un int : le site compare des chaînes."""
+    rendu = config_en_json(
+        {"heure": "09:00", "fuseau": "Europe/Paris", "role_id": 42},
+        [],
+    )
+
+    assert rendu["role_global"] == "42"
+
+
+def test_contrat_role_global_absent_quand_table_existe():
+    """Une fois la table `roles` remplie, même si `role_id` subsiste (migration
+    partielle), c'est la table qui fait foi : `role_global` doit être `None`."""
+    rendu = config_en_json(
+        {
+            "heure": "09:00",
+            "fuseau": "Europe/Paris",
+            "role_id": "7",
+            "roles": {"111": "42"},
+        },
+        [],
+    )
+
+    assert rendu["roles"] == {"111": "42"}
+    assert rendu["role_global"] is None
 
 
 def test_contrat_salons_connus():

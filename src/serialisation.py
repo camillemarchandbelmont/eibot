@@ -132,19 +132,15 @@ def fourchette_en_json(fourchette: dict) -> dict[str, Any]:
 def _roles_en_json(config: dict) -> dict[str, str]:
     """Rôle mentionné par serveur, ids en texte.
 
-    Un `role_id` d'avant le multi-serveurs est étendu aux serveurs connus : sans
-    ça le site afficherait « aucune mention » alors que le bot pingue bien. Ce
-    n'est qu'un affichage — la publication applique le repli elle-même, via
-    `Store.role_du_serveur`.
+    Quand un `role_id` plat existe sans table `roles`, il n'est PLUS étendu :
+    le site le reçoit via `role_global` et peut l'afficher comme tel, au lieu
+    de mentir en le dupliquant par serveur connu (ce qui casserait le jour du
+    déploiement, quand aucun serveur n'est connu).
     """
     table = config.get("roles") or {}
     if table:
         return {str(serveur): str(role) for serveur, role in table.items() if role}
-
-    ancien = config.get("role_id")
-    if not ancien:
-        return {}
-    return {str(serveur): str(ancien) for serveur in (config.get("serveurs") or {})}
+    return {}
 
 
 def config_en_json(config: dict, fourchettes: list[dict]) -> dict[str, Any]:
@@ -161,12 +157,24 @@ def config_en_json(config: dict, fourchettes: list[dict]) -> dict[str, Any]:
     `roles`, `serveurs` et `salons_connus` exposent un rôle par serveur et les
     noms mémorisés en base au moment du réglage, plutôt qu'une résolution Discord
     qui ne dirait pas quel salon vit sur quel serveur.
+
+    `role_global` expose le `role_id` plat d'avant le multi-serveurs : ce rôle
+    pingue sur tous les serveurs, mais la table `roles` ne peut pas le représenter
+    (elle dirait « par serveur » alors qu'il est global). Le site l'affiche comme
+    tel — « s'applique à tous les serveurs » — au lieu de dire « aucune mention ».
     """
+    # Le rôle global : exposer le role_id plat seulement quand la table roles
+    # est vide. Une fois qu'elle est remplie, le rôle global n'est plus utilisé.
+    table_roles = config.get("roles") or {}
+    role_id_plat = config.get("role_id")
+    role_global = str(role_id_plat) if (role_id_plat and not table_roles) else None
+
     return {
         "heure": config.get("heure", ""),
         "fuseau": config.get("fuseau", ""),
         "fourchettes": [fourchette_en_json(f) for f in fourchettes],
         "roles": _roles_en_json(config),
+        "role_global": role_global,
         "serveurs": {
             str(serveur): str(nom)
             for serveur, nom in (config.get("serveurs") or {}).items()
