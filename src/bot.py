@@ -125,15 +125,38 @@ class EmpireBot(discord.Client):
 
     async def setup_hook(self) -> None:
         if settings.GUILD_IDS:
+            # Filtrer les ids non numériques : une faute de frappe dans Render
+            # (un point-virgule au lieu d'une virgule, un caractère invisible
+            # collé) ne doit jamais empêcher le bot de démarrer et de publier.
+            # Un id invalide coûte les commandes sur ce serveur ; le bot entier
+            # lever au démarrage coûte la publication quotidienne, découverte
+            # le lendemain seulement.
+            serveurs_valides = []
             for serveur_id in settings.GUILD_IDS:
-                guild = discord.Object(id=int(serveur_id))
-                self.tree.copy_global_to(guild=guild)
-                await self.tree.sync(guild=guild)
-            log.info(
-                "Commandes synchronisées sur %d serveur(s) : %s",
-                len(settings.GUILD_IDS),
-                ", ".join(settings.GUILD_IDS),
-            )
+                if serveur_id.isdigit():
+                    serveurs_valides.append(int(serveur_id))
+                else:
+                    log.warning(
+                        "Id de serveur invalide ignoré : %r (pas un nombre)",
+                        serveur_id,
+                    )
+
+            if serveurs_valides:
+                for guild_id in serveurs_valides:
+                    guild = discord.Object(id=guild_id)
+                    self.tree.copy_global_to(guild=guild)
+                    await self.tree.sync(guild=guild)
+                log.info(
+                    "Commandes synchronisées sur %d serveur(s) : %s",
+                    len(serveurs_valides),
+                    ", ".join(str(g) for g in serveurs_valides),
+                )
+            else:
+                log.error(
+                    "Aucun serveur valide dans GUILD_IDS=%r : "
+                    "commandes non synchronisées.",
+                    settings.GUILD_IDS,
+                )
         else:
             await self.tree.sync()
             log.info("Commandes synchronisées globalement.")

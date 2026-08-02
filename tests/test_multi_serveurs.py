@@ -104,3 +104,27 @@ async def test_liste_vide_synchronise_globalement(monkeypatch):
 
     assert bot.tree.syncs == [None]
     assert bot.tree.copies == []
+
+
+async def test_id_non_numerique_est_ignore(monkeypatch):
+    """Un caractère parasite dans Render (« 111;222 » au lieu de « 111,222 »)
+    ne doit pas empêcher le bot de démarrer. Le serveur invalide est simplement ignoré.
+    """
+    bot = await _bot_avec_arbre(monkeypatch, ["111", "abc"])
+
+    await bot.setup_hook()
+
+    assert bot.tree.syncs == [111]
+    assert bot.tree.copies == [111]
+
+
+async def test_aucun_id_valide_ne_synchronise_rien(monkeypatch):
+    """Si tous les ids sont invalides, on ne synchronise rien — surtout pas
+    globalement, ce qui serait l'inverse de ce que l'opérateur a demandé.
+    """
+    bot = await _bot_avec_arbre(monkeypatch, ["abc"])
+
+    await bot.setup_hook()
+
+    assert bot.tree.syncs == []
+    assert bot.tree.copies == []
