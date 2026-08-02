@@ -274,7 +274,14 @@ class EmpireBot(discord.Client):
                     if repli:
                         await salon.send(repli)
                     else:
-                        await envoyer(salon, embeds, contenu, config.get("role_id"))
+                        # Le rôle du serveur **du salon**, et non un rôle global :
+                        # un rôle n'existe que dans son serveur, et `<@&123>`
+                        # envoyé ailleurs s'affiche en `@deleted-role`.
+                        serveur = getattr(salon, "guild", None)
+                        role_id = await self.store.role_du_serveur(
+                            getattr(serveur, "id", None)
+                        )
+                        await envoyer(salon, embeds, contenu, role_id)
                 except Exception as erreur:
                     # Un salon cassé ne doit pas priver les autres : on note et
                     # on continue. Le détail part dans le salon de logs.

@@ -128,3 +128,133 @@ async def test_aucun_id_valide_ne_synchronise_rien(monkeypatch):
 
     assert bot.tree.syncs == []
     assert bot.tree.copies == []
+
+
+# --- Publication : chaque salon mentionne le rôle de son serveur ------------
+
+from decimal import Decimal
+
+from src.bot import EmpireBot
+from src.db import Store
+
+CSV = """# nom: Empire Immo - M8
+# mise_a_jour: 2026-07-29 12:00:07
+type,nom,niveau,valeur,loyer,charge,impot,promotion,construction,embellissement,reparation
+zones,"Technopôle",0,2710572934559948,0,0,0,17,0,0,0
+zones,"Zone portuaire",0,124467906332,0,0,0,17,0,0,0
+"""
+
+
+class ServeurFactice:
+    def __init__(self, serveur_id: int):
+        self.id = serveur_id
+        self.name = f"Serveur {serveur_id}"
+
+
+class SalonFactice:
+    """Salon qui connaît son serveur, comme un vrai `TextChannel`."""
+
+    def __init__(self, salon_id: int, serveur_id: int, nom: str = "promos"):
+        self.id = salon_id
+        self.name = nom
+        self.guild = ServeurFactice(serveur_id)
+        self.mention = f"<#{salon_id}>"
+        self.envois: list[dict] = []
+
+    async def send(self, contenu=None, **options):
+        self.envois.append({"contenu": contenu, **options})
+
+    @property
+    def mentions(self) -> list[str]:
+        """Contenu des messages reçus, pour voir *qui* a été mentionné."""
+        return [envoi.get("content") or "" for envoi in self.envois]
+
+
+class SourceFactice:
+    async def fetch(self) -> str:
+        return CSV
+
+
+class JournalFactice:
+    async def publication(self, promos, reussis, echecs):
+        pass
+
+    async def erreur(self, message):
+        pass
+
+
+async def _bot(salons: dict[int, SalonFactice]) -> EmpireBot:
+    store = Store(dsn="")
+    await store.connect()
+
+    bot = object.__new__(EmpireBot)
+    bot.store = store
+    bot.source = SourceFactice()
+    bot.journal = JournalFactice()
+    bot.get_channel = salons.get
+    return bot
+
+
+async def test_publie_dans_deux_serveurs():
+    """Le besoin de base : une fourchette, deux salons, deux serveurs."""
+    salons = {1: SalonFactice(1, 111), 2: SalonFactice(2, 222)}
+    bot = await _bot(salons)
+    await bot.store.ajouter_fourchette("a", Decimal("0"), Decimal("6e15"))
+    await bot.store.ajouter_salon_fourchette("a", "1")
+    await bot.store.ajouter_salon_fourchette("a", "2")
+
+    await bot.publier_si_lheure(forcer=True)
+
+    assert salons[1].envois and salons[2].envois
+
+
+async def test_chaque_salon_mentionne_le_role_de_son_serveur():
+    """La propriété qui fait l'intérêt du changement.
+
+    Mentionner le rôle de A dans un salon de B afficherait `@deleted-role`
+    dans le post — sans erreur, sans log, visible seulement en le lisant.
+    """
+    salons = {1: SalonFactice(1, 111), 2: SalonFactice(2, 222)}
+    bot = await _bot(salons)
+    await bot.store.definir_role("111", "42")
+    await bot.store.definir_role("222", "43")
+    await bot.store.ajouter_fourchette("a", Decimal("0"), Decimal("6e15"))
+    await bot.store.ajouter_salon_fourchette("a", "1")
+    await bot.store.ajouter_salon_fourchette("a", "2")
+
+    await bot.publier_si_lheure(forcer=True)
+
+    assert "<@&42>" in salons[1].mentions[0]
+    assert "<@&43>" not in salons[1].mentions[0]
+    assert "<@&43>" in salons[2].mentions[0]
+    assert "<@&42>" not in salons[2].mentions[0]
+
+
+async def test_serveur_sans_role_ne_mentionne_personne():
+    """Pas de mention vide non plus : le post part sans ping."""
+    salons = {1: SalonFactice(1, 111), 2: SalonFactice(2, 222)}
+    bot = await _bot(salons)
+    await bot.store.definir_role("111", "42")
+    await bot.store.ajouter_fourchette("a", Decimal("0"), Decimal("6e15"))
+    await bot.store.ajouter_salon_fourchette("a", "1")
+    await bot.store.ajouter_salon_fourchette("a", "2")
+
+    await bot.publier_si_lheure(forcer=True)
+
+    assert "<@&" in salons[1].mentions[0]
+    assert "<@&" not in salons[2].mentions[0]
+
+
+async def test_role_id_plat_mentionne_partout():
+    """Compatibilité : une config d'avant garde son comportement."""
+    salons = {1: SalonFactice(1, 111), 2: SalonFactice(2, 222)}
+    bot = await _bot(salons)
+    await bot.store.set("config", {"role_id": "7"})
+    await bot.store.ajouter_fourchette("a", Decimal("0"), Decimal("6e15"))
+    await bot.store.ajouter_salon_fourchette("a", "1")
+    await bot.store.ajouter_salon_fourchette("a", "2")
+
+    await bot.publier_si_lheure(forcer=True)
+
+    assert "<@&7>" in salons[1].mentions[0]
+    assert "<@&7>" in salons[2].mentions[0]
