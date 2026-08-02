@@ -76,8 +76,17 @@ local, mais elle repart des valeurs de `.env` à chaque redémarrage.
 3. Onglet **OAuth2 → URL Generator** : scopes `bot` + `applications.commands`,
    permissions **Send Messages** et **Embed Links**. Ouvre l'URL générée pour
    inviter le bot.
-4. Renseigne `GUILD_ID` avec l'ID de ton serveur : les commandes y
-   apparaissent immédiatement au lieu d'attendre la propagation globale.
+   
+   **⚠️ Inviter le bot sur un serveur revient à en donner les clés.** `est_admin`
+   vient des permissions du serveur où la commande est tapée et la config est
+   globale, donc un administrateur de **n'importe quel** serveur déclaré dans
+   `GUILD_IDS` peut changer les prix, l'heure, le template et la liste d'accès —
+   pour tous les serveurs. Un serveur **non** déclaré dans `GUILD_IDS` n'a aucune
+   commande du bot.
+   
+4. Renseigne `GUILD_IDS` avec les IDs de tes serveurs (séparés par des virgules) :
+   les commandes y apparaissent immédiatement au lieu d'attendre la propagation
+   globale. `GUILD_ID` (singulier) reste accepté en repli pour un seul serveur.
 
 ## Commandes
 
@@ -172,6 +181,23 @@ sinon le passage suivant reposterait là où ça avait marché. Si **tous** les 
 Un même salon peut servir deux fourchettes : il reçoit alors deux posts. C'est
 pourquoi le compte rendu parle d'**envois** et non de salons.
 
+## Plusieurs serveurs
+
+Les salons peuvent vivre sur plusieurs serveurs Discord. Le bot résout les IDs
+de salons à travers tous les serveurs où il est présent — **la publication n'a
+rien de spécial à faire**.
+
+La **mention de rôle** (`/config mention`) se règle **par serveur** : elle vaut
+pour le serveur où la commande est tapée. Chaque serveur peut donc avoir son
+propre rôle mentionné, ou aucun.
+
+De même, `/fourchette salon ajouter` doit être tapé **dans le serveur du salon** :
+Discord propose l'autocomplétion des salons du serveur courant uniquement.
+
+Le site affiche **quel salon vit sur quel serveur** en se basant sur les noms
+mémorisés au moment du réglage : le site n'a pas accès à Discord et ne peut pas
+résoudre les IDs lui-même.
+
 ### Migration depuis la fourchette unique
 
 Une configuration d'avant ce changement (`prix_min`/`prix_max`/`salons` à la
@@ -245,7 +271,7 @@ Un placeholder mal orthographié est laissé tel quel et signalé au chargement.
 Le dépôt contient `render.yaml` : **New → Blueprint** crée le web service et
 la base Postgres d'un coup.
 
-1. Renseigne `DISCORD_TOKEN`, `GUILD_ID` et `EMPIRE_API_KEY` dans le dashboard.
+1. Renseigne `DISCORD_TOKEN`, `GUILD_IDS` et `EMPIRE_API_KEY` dans le dashboard.
 2. Récupère les valeurs générées de `TICK_TOKEN` et `API_SECRET`. La seconde se
    recopie dans le projet Vercel du site.
 3. Sur [cron-job.org](https://cron-job.org), crée un job **toutes les
@@ -253,6 +279,12 @@ la base Postgres d'un coup.
    ```
    https://<ton-service>.onrender.com/tick?token=<TICK_TOKEN>
    ```
+
+**Note :** Après un déploiement, les commandes précédemment synchronisées
+**globalement** subsistent **en plus** de celles par serveur et apparaissent en
+double dans le sélecteur de Discord. Ce n'est pas une erreur — simplement quelque
+chose à remarquer après le déploiement. Les commandes globales se propagent
+lentement et finissent par disparaître.
 
 ### Une seconde instance de test
 
@@ -266,7 +298,7 @@ qu'un `render.yaml` partagé fasse un jour converger les deux déploiements.
 | Build / Start | `pip install -r requirements.txt` / `python -m src.main` |
 | Health check | `/health` |
 | `DISCORD_TOKEN` | **une autre application Discord** (voir ci-dessous) |
-| `GUILD_ID` | l'ID d'un serveur Discord de test |
+| `GUILD_IDS` | l'ID d'un serveur Discord de test |
 | `API_SECRET` | une valeur **différente** de la prod |
 | `DATABASE_URL` | **laissé vide** |
 | `EMPIRE_API_KEY` | vide → le bot lit le CSV du dépôt, sans toucher à l'API du jeu |
@@ -279,7 +311,7 @@ Trois pièges, dans l'ordre de gravité :
 - **Jamais le `DATABASE_URL` de la prod.** La table `bot_state` n'a qu'une seule
   clé `config`, sans distinction de serveur : le bot de test écraserait la
   fourchette, l'heure et le template de la prod.
-- **`GUILD_ID` sur un serveur de test.** Sinon les commandes du bot de test
+- **`GUILD_IDS` sur un serveur de test.** Sinon les commandes du bot de test
   apparaissent en double dans le serveur réel.
 
 Sans `DATABASE_URL`, la configuration vit en mémoire et repart des valeurs par
@@ -459,7 +491,7 @@ pip install -r requirements-dev.txt
 python -m pytest -q
 ```
 
-418 tests couvrent la notation monétaire, le parsing du CSV (entiers de
+470 tests couvrent la notation monétaire, le parsing du CSV (entiers de
 21 chiffres, notation scientifique), le calcul des remises, le repêchage hors
 fourchette, le rendu du template, les limites Discord, le planning (fenêtre
 de rattrapage, idempotence quotidienne), l'API du jeu (construction de l'URL,
@@ -490,13 +522,13 @@ daté, sans écraser l'ancien.
 ### Vérifier que les tests mordent
 
 ```bash
-python tests/mutations.py          # les 45 mutations
+python tests/mutations.py          # les 51 mutations
 python tests/mutations.py acces    # celles dont le nom contient « acces »
 ```
 
 Une suite verte prouve que le code passe les tests, pas que les tests
 vérifieraient quoi que ce soit. `tests/mutations.py` introduit une à une
-45 fautes plausibles dans `src/` (inverser une comparaison, ôter une garde,
+51 fautes plausibles dans `src/` (inverser une comparaison, ôter une garde,
 supprimer un masquage de secret) et exige que la suite échoue à chaque fois. Un
 **survivant** est un trou de couverture, pas un faux positif.
 

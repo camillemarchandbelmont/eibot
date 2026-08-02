@@ -380,6 +380,52 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
         "le journal annoncerait plus de salons qu'il n'en existe",
     ),
     (
+        "bot-guild-ids-tronque",
+        "src/bot.py",
+        "            for serveur_id in settings.GUILD_IDS:",
+        "            for serveur_id in settings.GUILD_IDS[:1]:",
+        "les commandes manqueraient sur le second serveur, sans erreur",
+    ),
+    (
+        "bot-role-du-mauvais-serveur",
+        "src/bot.py",
+        "                        role_id = await self.store.role_du_serveur(\n"
+        '                            getattr(serveur, "id", None)\n'
+        "                        )",
+        "                        role_id = next(\n"
+        "                            iter((await self.store.roles()).values()), None\n"
+        "                        )",
+        "un salon mentionnerait le rôle d'un autre serveur (@deleted-role)",
+    ),
+    (
+        "db-role-id-plat-ecrase-les-roles",
+        "src/db.py",
+        "        table = await self.roles()\n        if table:",
+        "        table = await self.roles()\n        if False:",
+        "un rôle qu'on croit remplacé serait mentionné dans les autres serveurs",
+    ),
+    (
+        "db-nom-de-salon-jamais-rafraichi",
+        "src/bot.py",
+        "        if serveur is not None and getattr(salon, \"name\", None):",
+        "        if False:",
+        "un salon renommé garderait son ancien nom sur le site indéfiniment",
+    ),
+    (
+        "db-salons-orphelins-non-nettoyes",
+        "src/db.py",
+        "        if len(gardes) == len(connus):\n            return 0",
+        "        return 0",
+        "la table des noms grossirait sans fin avec des salons abandonnés",
+    ),
+    (
+        "serial-role-global-toujours-none",
+        "src/serialisation.py",
+        "    role_global = str(role_id_plat) if (role_id_plat and not table_roles) else None",
+        "    role_global = None",
+        "le site dirait « aucune mention » alors que le bot pingue bien",
+    ),
+    (
         "api-champ-interdit-accepte",
         "src/api.py",
         "        inconnus = sorted(set(charge) - set(CHAMPS_MODIFIABLES))",
