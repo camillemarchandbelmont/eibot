@@ -140,3 +140,30 @@ async def test_resoudre_salon_memorise_son_nom():
     await bot.resoudre_salon("1")
 
     assert (await store.salons_connus())["1"]["nom"] == "bonnes-affaires"
+
+
+async def test_resoudre_salon_survit_a_un_echec_de_memorisation():
+    """Un cache de noms cosmétique ne doit jamais empêcher un post.
+
+    Si Postgres est indisponible (connexion fermée, pool épuisé), la
+    mémorisation échoue, mais le salon est quand même retourné : le post part.
+    """
+    from src.bot import EmpireBot
+
+    salon = SalonFactice(1, "promos", ServeurFactice(111, "Empire Immo"))
+    store = await _store()
+
+    # Faire échouer memoriser_salon
+    store.memoriser_salon = lambda *a, **k: (_ for _ in ()).throw(
+        RuntimeError("connection was closed")
+    )
+
+    bot = object.__new__(EmpireBot)
+    bot.store = store
+    bot.get_channel = {1: salon}.get
+
+    # L'appel ne doit pas lever
+    resultat = await bot.resoudre_salon("1")
+
+    # Le salon est retourné malgré l'échec de mémorisation
+    assert resultat is salon

@@ -212,9 +212,16 @@ class EmpireBot(discord.Client):
 
         serveur = getattr(salon, "guild", None)
         if serveur is not None and getattr(salon, "name", None):
-            await self.store.memoriser_salon(
-                salon_id, salon.name, serveur.id, getattr(serveur, "name", "")
-            )
+            try:
+                await self.store.memoriser_salon(
+                    salon_id, salon.name, serveur.id, getattr(serveur, "name", "")
+                )
+            except Exception:
+                # Un cache de noms cosmétique ne doit jamais empêcher un post :
+                # si Postgres est indisponible, on log et on continue.
+                log.warning(
+                    "Impossible de mémoriser le nom du salon %s.", salon_id, exc_info=True
+                )
         return salon
 
     async def publier_si_lheure(self, forcer: bool = False) -> str:
@@ -524,6 +531,14 @@ def enregistrer_commandes(bot: EmpireBot) -> None:
             role = "\n".join(
                 f"{noms.get(serveur, serveur)} : <@&{role_id}>"
                 for serveur, role_id in roles.items()
+            )
+        elif config.get("role_id"):
+            # Repli plat : role_id existe, mais roles est vide. Ce rôle est
+            # mentionné sur tous les serveurs (config d'avant le multi-serveurs).
+            role = (
+                f"<@&{config['role_id']}>\n"
+                "-# Réglage d'avant le multi-serveurs, appliqué à tous les serveurs. "
+                "Utilise `/config mention` pour le rendre par serveur."
             )
         else:
             role = "*aucune*"
@@ -892,11 +907,24 @@ def enregistrer_commandes(bot: EmpireBot) -> None:
         interaction: discord.Interaction, role: discord.Role | None = None
     ):
         if role is None:
+            # Lire avant d'effacer pour savoir si on tape dans le repli plat
+            roles = await bot.store.roles()
+            config = await bot.store.config()
+            etait_plat = not roles and config.get("role_id")
+
             if await bot.store.effacer_role(str(interaction.guild.id)):
-                message = (
-                    "✅ Mention désactivée **sur ce serveur** : les posts n'y "
-                    "pingueront plus personne."
-                )
+                if etait_plat:
+                    message = (
+                        "✅ Mention désactivée **sur tous les serveurs** : les posts ne "
+                        "pingueront plus personne.\n"
+                        "-# Ce réglage datait d'avant le multi-serveurs. "
+                        "Utilise `/config mention` pour régler par serveur."
+                    )
+                else:
+                    message = (
+                        "✅ Mention désactivée **sur ce serveur** : les posts n'y "
+                        "pingueront plus personne."
+                    )
             else:
                 message = "ℹ️ Aucune mention n'était réglée sur ce serveur."
             await interaction.response.send_message(message, ephemeral=True)
