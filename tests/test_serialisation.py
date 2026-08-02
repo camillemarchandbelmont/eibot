@@ -323,6 +323,26 @@ def test_contrat_roles_par_serveur():
     assert "role_id" not in rendu
 
 
+def test_contrat_un_role_vide_est_masque_et_non_affiche_vide():
+    """Un serveur sans rôle ne doit pas apparaître dans `roles`.
+
+    JSONB restitue tel quel ce qu'on y a mis : une entrée `{"222": null}` (écriture
+    partielle, réglage à moitié effacé) traverserait la sérialisation. Le site
+    afficherait « Second serveur : <@&None> », donc un rôle qui n'existe pas, au
+    lieu de dire simplement que ce serveur ne pingue personne.
+    """
+    rendu = config_en_json(
+        {
+            "heure": "09:00",
+            "fuseau": "Europe/Paris",
+            "roles": {"111": "42", "222": None, "333": ""},
+        },
+        [],
+    )
+
+    assert rendu["roles"] == {"111": "42"}
+
+
 def test_contrat_roles_absents_donnent_un_dict_vide():
     """Et non `null` : le site itère dessus sans garde."""
     rendu = config_en_json({"heure": "09:00", "fuseau": "Europe/Paris"}, [])
