@@ -20,7 +20,11 @@ services:
       # circule dans une query string, donc dans les journaux d'accès.
       - key: API_SECRET
         generateValue: true
-      - key: GUILD_ID
+      # Les serveurs où déclarer les commandes, séparés par des virgules. Un
+      # serveur absent de cette liste n'a aucune commande du bot. Si seul
+      # `GUILD_ID` (singulier) est renseigné, il reste lu en repli : renommer
+      # la clé ici ne coupe donc pas un déploiement existant.
+      - key: GUILD_IDS
         sync: false
       - key: DATABASE_URL
         fromDatabase:
