@@ -135,7 +135,8 @@ def test_config_en_json():
     assert fourchette["prix_min_brut"] == "100000000000000"   # 1e14 développé
     assert fourchette["prix_min"] == "100,00 TØ"
     assert rendu["heure"] == "09:00"
-    assert rendu["role_id"] == "123"
+    assert rendu["roles"] == {}
+    assert "role_id" not in rendu
     assert rendu["logs_salon_id"] is None
     assert json.dumps(rendu)   # sérialisable
 
@@ -167,7 +168,7 @@ def test_config_sans_mention_ni_journal():
     rendu = config_en_json(
         {"heure": "09:00", "fuseau": "Europe/Paris"}, fourchettes=[]
     )
-    assert rendu["role_id"] is None
+    assert rendu["roles"] == {}
     assert rendu["fourchettes"] == []
 
 
@@ -277,8 +278,21 @@ def test_contrat_config_champs_attendus():
         assert isinstance(rendu[champ], str), champ
     assert isinstance(rendu["autorises"], list)
     # `str | None` côté site : ni 0, ni "", ni False.
-    for champ in ("role_id", "logs_salon_id"):
-        assert rendu[champ] is None or isinstance(rendu[champ], str), champ
+    assert rendu["logs_salon_id"] is None or isinstance(rendu["logs_salon_id"], str)
+
+    # `roles`, `serveurs` et `salons_connus` sont des dicts dont clés et valeurs
+    # sont des chaînes.
+    for champ in ("roles", "serveurs"):
+        assert isinstance(rendu[champ], dict), champ
+        for cle, valeur in rendu[champ].items():
+            assert isinstance(cle, str), f"{champ}: clé {cle}"
+            assert isinstance(valeur, str), f"{champ}: valeur {valeur}"
+    assert isinstance(rendu["salons_connus"], dict)
+    for cle, valeur in rendu["salons_connus"].items():
+        assert isinstance(cle, str), f"salons_connus: clé {cle}"
+        assert isinstance(valeur, dict), f"salons_connus: valeur {valeur}"
+        assert isinstance(valeur.get("nom"), str), f"salons_connus[{cle}].nom"
+        assert isinstance(valeur.get("serveur"), str), f"salons_connus[{cle}].serveur"
 
     # Une fourchette porte son nom, ses salons et ses deux bornes en trois
     # formes : c'est ce que `Fourchette` déclare dans `D:\eiweb\lib\fourchettes.ts`.
@@ -290,6 +304,83 @@ def test_contrat_config_champs_attendus():
         for suffixe in ("", "_long", "_brut"):
             champ = f"{nom}{suffixe}"
             assert isinstance(fourchette[champ], str), champ
+
+
+def test_contrat_roles_par_serveur():
+    """Le site doit pouvoir dire quel serveur mentionne quoi.
+
+    Un `role_id` unique laisserait croire que les deux serveurs sont pingués
+    alors qu'un seul l'est.
+    """
+    rendu = config_en_json(
+        {"heure": "09:00", "fuseau": "Europe/Paris", "roles": {"111": "42"}},
+        [],
+    )
+
+    assert rendu["roles"] == {"111": "42"}
+    # `role_id` ne doit plus exister : le laisser inviterait le site à
+    # l'afficher, donc à mentir dès qu'il y a deux serveurs.
+    assert "role_id" not in rendu
+
+
+def test_contrat_roles_absents_donnent_un_dict_vide():
+    """Et non `null` : le site itère dessus sans garde."""
+    rendu = config_en_json({"heure": "09:00", "fuseau": "Europe/Paris"}, [])
+
+    assert rendu["roles"] == {}
+    assert rendu["serveurs"] == {}
+    assert rendu["salons_connus"] == {}
+
+
+def test_contrat_role_id_plat_devient_un_role_par_serveur_connu():
+    """Compatibilité d'affichage : une config d'avant ne doit pas afficher
+    « aucune mention » alors que le bot pingue bien."""
+    rendu = config_en_json(
+        {
+            "heure": "09:00",
+            "fuseau": "Europe/Paris",
+            "role_id": "7",
+            "serveurs": {"111": "Empire Immo"},
+        },
+        [],
+    )
+
+    assert rendu["roles"] == {"111": "7"}
+
+
+def test_contrat_salons_connus():
+    rendu = config_en_json(
+        {
+            "heure": "09:00",
+            "fuseau": "Europe/Paris",
+            "serveurs": {"111": "Empire Immo"},
+            "salons_connus": {"1": {"nom": "promos", "serveur": "111"}},
+        },
+        [],
+    )
+
+    assert rendu["serveurs"] == {"111": "Empire Immo"}
+    assert rendu["salons_connus"]["1"]["nom"] == "promos"
+    assert rendu["salons_connus"]["1"]["serveur"] == "111"
+
+
+def test_contrat_ids_toujours_en_texte():
+    """JSONB peut restituer un int : le site compare des chaînes, et `111 !=
+    "111"` en TypeScript ferait échouer le groupement sans erreur."""
+    rendu = config_en_json(
+        {
+            "heure": "09:00",
+            "fuseau": "Europe/Paris",
+            "roles": {111: 42},
+            "serveurs": {111: "Empire Immo"},
+            "salons_connus": {1: {"nom": "promos", "serveur": 111}},
+        },
+        [],
+    )
+
+    assert rendu["roles"] == {"111": "42"}
+    assert rendu["serveurs"] == {"111": "Empire Immo"}
+    assert rendu["salons_connus"]["1"]["serveur"] == "111"
 
 
 def test_contrat_etat_champs_attendus():

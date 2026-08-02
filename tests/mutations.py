@@ -229,11 +229,11 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
         "la colonne « Loyer net » du site serait vide, sans erreur",
     ),
     (
-        "serial-role-id-vide-au-lieu-de-null",
+        "serial-roles-role-vide-au-lieu-de-filtrer",
         "src/serialisation.py",
-        '"role_id": str(config.get("role_id")) if config.get("role_id") else None,',
-        '"role_id": str(config.get("role_id")),',
-        "le site afficherait « rôle None » au lieu de « aucune »",
+        "return {str(serveur): str(role) for serveur, role in table.items() if role}",
+        "return {str(serveur): str(role) for serveur, role in table.items()}",
+        "le site afficherait un rôle vide au lieu de le masquer",
     ),
     # --- src/db.py : la migration d'une config plate -----------------------
     #

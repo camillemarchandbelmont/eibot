@@ -129,6 +129,24 @@ def fourchette_en_json(fourchette: dict) -> dict[str, Any]:
     return rendu
 
 
+def _roles_en_json(config: dict) -> dict[str, str]:
+    """Rôle mentionné par serveur, ids en texte.
+
+    Un `role_id` d'avant le multi-serveurs est étendu aux serveurs connus : sans
+    ça le site afficherait « aucune mention » alors que le bot pingue bien. Ce
+    n'est qu'un affichage — la publication applique le repli elle-même, via
+    `Store.role_du_serveur`.
+    """
+    table = config.get("roles") or {}
+    if table:
+        return {str(serveur): str(role) for serveur, role in table.items() if role}
+
+    ancien = config.get("role_id")
+    if not ancien:
+        return {}
+    return {str(serveur): str(ancien) for serveur in (config.get("serveurs") or {})}
+
+
 def config_en_json(config: dict, fourchettes: list[dict]) -> dict[str, Any]:
     """La configuration, telle que la page de réglages la consomme.
 
@@ -139,14 +157,29 @@ def config_en_json(config: dict, fourchettes: list[dict]) -> dict[str, Any]:
     Aucun `prix_min`/`prix_max` à la racine : ils appartiennent désormais à une
     fourchette. Les exposer quand même les ferait alimenter par les défauts
     d'usine, donc afficher une fourchette plausible que personne n'a réglée.
+
+    `roles`, `serveurs` et `salons_connus` exposent un rôle par serveur et les
+    noms mémorisés en base au moment du réglage, plutôt qu'une résolution Discord
+    qui ne dirait pas quel salon vit sur quel serveur.
     """
     return {
         "heure": config.get("heure", ""),
         "fuseau": config.get("fuseau", ""),
         "fourchettes": [fourchette_en_json(f) for f in fourchettes],
-        # `or None` : la config stocke indifféremment "" ou None pour « aucun »,
-        # et le site n'a pas à distinguer les deux.
-        "role_id": str(config.get("role_id")) if config.get("role_id") else None,
+        "roles": _roles_en_json(config),
+        "serveurs": {
+            str(serveur): str(nom)
+            for serveur, nom in (config.get("serveurs") or {}).items()
+            if nom
+        },
+        "salons_connus": {
+            str(salon): {
+                "nom": str(details.get("nom", "")),
+                "serveur": str(details.get("serveur", "")),
+            }
+            for salon, details in (config.get("salons_connus") or {}).items()
+            if isinstance(details, dict)
+        },
         "logs_salon_id": (
             str(config.get("logs_salon_id")) if config.get("logs_salon_id") else None
         ),
