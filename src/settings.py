@@ -14,9 +14,23 @@ RACINE = Path(__file__).resolve().parent.parent
 
 # --- Discord ---------------------------------------------------------------
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN", "")
-#: Optionnel : synchronise les commandes sur un seul serveur (immédiat au lieu
-#: d'attendre la propagation globale). Pratique en développement.
+#: Serveurs sur lesquels synchroniser les commandes, séparés par des virgules.
+#:
+#: Une liste explicite plutôt que la synchronisation globale, pour trois
+#: raisons : elle est immédiate (la propagation globale met jusqu'à une heure),
+#: les commandes n'existent que sur les serveurs déclarés — un serveur où le bot
+#: serait invité par ailleurs n'a aucune prise sur la configuration —, et vide,
+#: elle retombe sur la synchro globale, donc un déploiement qui ne déclare rien
+#: continue de fonctionner.
+#:
+#: `GUILD_ID` (singulier) reste lu en repli : il est déjà défini dans le `.env`
+#: local et sur Render.
 GUILD_ID = os.getenv("GUILD_ID", "")
+GUILD_IDS = [
+    serveur.strip()
+    for serveur in os.getenv("GUILD_IDS", GUILD_ID).split(",")
+    if serveur.strip()
+]
 
 # --- Base de données -------------------------------------------------------
 DATABASE_URL = os.getenv("DATABASE_URL", "")

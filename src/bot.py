@@ -124,11 +124,16 @@ class EmpireBot(discord.Client):
         log.info("Connecté en tant que %s.", self.user)
 
     async def setup_hook(self) -> None:
-        if settings.GUILD_ID:
-            guild = discord.Object(id=int(settings.GUILD_ID))
-            self.tree.copy_global_to(guild=guild)
-            await self.tree.sync(guild=guild)
-            log.info("Commandes synchronisées sur le serveur %s", settings.GUILD_ID)
+        if settings.GUILD_IDS:
+            for serveur_id in settings.GUILD_IDS:
+                guild = discord.Object(id=int(serveur_id))
+                self.tree.copy_global_to(guild=guild)
+                await self.tree.sync(guild=guild)
+            log.info(
+                "Commandes synchronisées sur %d serveur(s) : %s",
+                len(settings.GUILD_IDS),
+                ", ".join(settings.GUILD_IDS),
+            )
         else:
             await self.tree.sync()
             log.info("Commandes synchronisées globalement.")
