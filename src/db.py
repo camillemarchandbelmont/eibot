@@ -401,12 +401,22 @@ class Store:
     async def effacer_role(self, serveur_id: str | int) -> bool:
         """Retire le rôle d'un serveur. False s'il n'en avait pas."""
         table = await self.roles()
-        if str(serveur_id) not in table:
-            return False
-        await self._ecrire_roles(
-            {s: r for s, r in table.items() if s != str(serveur_id)}
-        )
-        return True
+        config = await self.config()
+
+        # Cas mixte : le serveur a un rôle dans `roles`
+        if str(serveur_id) in table:
+            await self._ecrire_roles(
+                {s: r for s, r in table.items() if s != str(serveur_id)}
+            )
+            return True
+
+        # Repli plat : `role_id` existe et `roles` est vide
+        # On l'efface même si on ne connaît pas son serveur d'origine
+        if not table and config.get("role_id"):
+            await self._ecrire_roles({})
+            return True
+
+        return False
 
     # --- Membres autorisés à utiliser les commandes ------------------------
 

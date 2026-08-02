@@ -108,3 +108,48 @@ async def test_dernier_role_efface_reste_efface():
 
     assert await store.roles() == {}
     assert (await store.get("config", {})).get("roles") == {}
+
+
+async def test_effacer_role_avec_role_id_plat_le_neutralise():
+    """Le défaut découvert : avec `role_id` plat, `effacer_role` revenait False
+    sans toucher à rien — et le bot continuait de pinguer.
+
+    Pire qu'un crash : une commande qui ment silencieusement.
+    """
+    store = await _store()
+    await store.set("config", {"role_id": "7"})
+
+    # Avant : le bot mentionne <@&7>
+    assert await store.role_du_serveur("999") == "7"
+
+    # L'utilisateur veut arrêter les pings sur ce serveur
+    resultat = await store.effacer_role("999")
+
+    # Le défaut : renvoie False ("rien n'était réglé")
+    # alors que le bot va continuer de pinguer.
+    assert resultat is True, "doit signaler qu'il a fait quelque chose"
+
+    # Le vrai test : le rôle doit disparaître
+    assert await store.role_du_serveur("999") is None
+
+
+async def test_effacer_role_id_plat_neutralise_tous_les_serveurs():
+    """Avec un `role_id` plat : impossible de savoir à quel serveur il appartient
+    (ça demanderait de résoudre un salon, donc Discord, que `Store` n'a pas).
+
+    Comportement choisi : effacer un `role_id` plat l'efface PARTOUT, car c'était
+    déjà global. Sinon un `/config mention` (sans arg) sur 999 laisserait 888
+    continuer de pinguer un rôle qu'on croyait supprimé — pire que de tout couper.
+    """
+    store = await _store()
+    await store.set("config", {"role_id": "7"})
+
+    # Le rôle plat s'applique partout
+    assert await store.role_du_serveur("999") == "7"
+    assert await store.role_du_serveur("888") == "7"
+
+    # On l'efface depuis n'importe quel serveur
+    await store.effacer_role("999")
+
+    # Il doit disparaître PARTOUT
+    assert await store.role_du_serveur("888") is None
