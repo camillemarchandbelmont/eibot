@@ -364,7 +364,10 @@ def enregistrer_routes(app: web.Application, bot) -> None:
 
         embeds, contenu = construire_embeds(trouvees, meta, modele, date)
         config = await bot.store.config()
-        role_id = config.get("role_id")
+        # Aucune mention dans un aperçu : il n'appartient à aucun salon, donc à
+        # aucun serveur, et un rôle n'existe que dans le sien. Mentionner « le »
+        # rôle voudrait en choisir un arbitrairement.
+        role_id = None
 
         # Découpé comme à la publication : l'aperçu doit montrer les vrais
         # messages, y compris quand les limites Discord en imposent plusieurs.

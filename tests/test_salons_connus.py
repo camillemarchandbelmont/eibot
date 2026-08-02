@@ -101,3 +101,42 @@ async def test_oublier_sans_rien_a_faire_renvoie_zero():
     """Et n'écrit pas en base pour rien."""
     store = await _store()
     assert await store.oublier_salons_orphelins() == 0
+
+
+class ServeurFactice:
+    def __init__(self, serveur_id: int, nom: str):
+        self.id = serveur_id
+        self.name = nom
+
+
+class SalonFactice:
+    def __init__(self, salon_id: int, nom: str, serveur: ServeurFactice):
+        self.id = salon_id
+        self.name = nom
+        self.guild = serveur
+        self.mention = f"<#{salon_id}>"
+        self.envois: list[dict] = []
+
+    async def send(self, contenu=None, **options):
+        self.envois.append({"contenu": contenu, **options})
+
+
+async def test_resoudre_salon_memorise_son_nom():
+    """Le rafraîchissement : chaque résolution met le nom à jour.
+
+    C'est ce qui corrige un salon renommé au premier post suivant, sans
+    intervention.
+    """
+    from src.bot import EmpireBot
+
+    salon = SalonFactice(1, "bonnes-affaires", ServeurFactice(111, "Empire Immo"))
+    store = await _store()
+    await store.memoriser_salon("1", "promos", "111", "Empire Immo")
+
+    bot = object.__new__(EmpireBot)
+    bot.store = store
+    bot.get_channel = {1: salon}.get
+
+    await bot.resoudre_salon("1")
+
+    assert (await store.salons_connus())["1"]["nom"] == "bonnes-affaires"

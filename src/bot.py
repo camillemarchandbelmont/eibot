@@ -197,10 +197,24 @@ class EmpireBot(discord.Client):
         return embeds, contenu, ""
 
     async def resoudre_salon(self, salon_id: str):
-        """Salon Discord depuis son id, via le cache puis l'API."""
+        """Salon Discord depuis son id, via le cache puis l'API.
+
+        Traverse tous les serveurs où le bot est présent : c'est ce qui rend le
+        multi-serveurs possible sans rien changer à la publication.
+
+        Mémorise au passage le nom du salon et de son serveur, pour le site. Ici
+        plutôt qu'au seul réglage : un salon renommé garderait sinon son ancien
+        nom indéfiniment, alors qu'il se corrige de lui-même au premier post.
+        """
         salon = self.get_channel(int(salon_id))
         if salon is None:
             salon = await self.fetch_channel(int(salon_id))
+
+        serveur = getattr(salon, "guild", None)
+        if serveur is not None and getattr(salon, "name", None):
+            await self.store.memoriser_salon(
+                salon_id, salon.name, serveur.id, getattr(serveur, "name", "")
+            )
         return salon
 
     async def publier_si_lheure(self, forcer: bool = False) -> str:
@@ -502,7 +516,17 @@ def enregistrer_commandes(bot: EmpireBot) -> None:
         config = await bot.store.config()
         fourchettes = await bot.store.fourchettes()
         logs = await bot.store.salon_logs()
-        role = f"<@&{config['role_id']}>" if config.get("role_id") else "*aucun*"
+        roles = await bot.store.roles()
+        # Une ligne par serveur : une valeur unique laisserait croire que tous
+        # les serveurs pinguent, ou qu'aucun ne le fait.
+        if roles:
+            noms = await bot.store.serveurs()
+            role = "\n".join(
+                f"{noms.get(serveur, serveur)} : <@&{role_id}>"
+                for serveur, role_id in roles.items()
+            )
+        else:
+            role = "*aucune*"
         stockage = "Postgres" if bot.store.persistant else "⚠️ mémoire (perdue au redémarrage)"
 
         embed = discord.Embed(title="Configuration", color=0x5865F2)
@@ -728,6 +752,12 @@ def enregistrer_commandes(bot: EmpireBot) -> None:
             )
             return
 
+        # Mémorisé pour le site, qui n'a pas accès à Discord et ne pourrait
+        # afficher qu'un id nu.
+        await bot.store.memoriser_salon(
+            str(salon.id), salon.name, str(interaction.guild.id), interaction.guild.name
+        )
+
         await interaction.response.send_message(
             f"✅ **{nom.strip()}** sera publiée dans {salon.mention}.", ephemeral=True
         )
@@ -749,6 +779,10 @@ def enregistrer_commandes(bot: EmpireBot) -> None:
                 ephemeral=True,
             )
             return
+
+        # Le salon n'est peut-être plus servi par aucune fourchette : son nom
+        # n'a alors plus à occuper la config.
+        await bot.store.oublier_salons_orphelins()
 
         await interaction.response.send_message(
             f"✅ **{nom.strip()}** ne sera plus publiée dans {salon.mention}.",
@@ -858,18 +892,21 @@ def enregistrer_commandes(bot: EmpireBot) -> None:
         interaction: discord.Interaction, role: discord.Role | None = None
     ):
         if role is None:
-            config = await bot.store.config()
-            config["role_id"] = None
-            await bot.store.set("config", config)
-            await interaction.response.send_message(
-                "✅ Mention désactivée : les posts ne pingueront plus personne.",
-                ephemeral=True,
-            )
+            if await bot.store.effacer_role(str(interaction.guild.id)):
+                message = (
+                    "✅ Mention désactivée **sur ce serveur** : les posts n'y "
+                    "pingueront plus personne."
+                )
+            else:
+                message = "ℹ️ Aucune mention n'était réglée sur ce serveur."
+            await interaction.response.send_message(message, ephemeral=True)
             return
 
-        await bot.store.maj_config(role_id=str(role.id))
+        await bot.store.definir_role(str(interaction.guild.id), str(role.id))
         await interaction.response.send_message(
-            f"✅ {role.mention} sera mentionné à chaque post.", ephemeral=True
+            f"✅ {role.mention} sera mentionné à chaque post **sur ce serveur**.\n"
+            "-# Les autres serveurs gardent leur propre réglage.",
+            ephemeral=True,
         )
 
     @config_groupe.command(

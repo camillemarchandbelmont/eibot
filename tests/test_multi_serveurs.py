@@ -258,3 +258,19 @@ async def test_role_id_plat_mentionne_partout():
 
     assert "<@&7>" in salons[1].mentions[0]
     assert "<@&7>" in salons[2].mentions[0]
+
+
+async def test_publication_memorise_les_noms_des_deux_serveurs():
+    """Après un post, le site sait nommer les salons des deux serveurs."""
+    salons = {1: SalonFactice(1, 111, "promos"), 2: SalonFactice(2, 222, "annonces")}
+    bot = await _bot(salons)
+    await bot.store.ajouter_fourchette("a", Decimal("0"), Decimal("6e15"))
+    await bot.store.ajouter_salon_fourchette("a", "1")
+    await bot.store.ajouter_salon_fourchette("a", "2")
+
+    await bot.publier_si_lheure(forcer=True)
+
+    connus = await bot.store.salons_connus()
+    assert connus["1"] == {"nom": "promos", "serveur": "111"}
+    assert connus["2"] == {"nom": "annonces", "serveur": "222"}
+    assert len(await bot.store.serveurs()) == 2

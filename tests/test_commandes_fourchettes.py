@@ -60,6 +60,7 @@ class SalonFactice:
         peut_integrer: bool | None = None,
     ):
         self.id = salon_id
+        self.name = f"salon-{salon_id}"
         self.mention = f"<#{salon_id}>"
         self._peut_ecrire = peut_ecrire
         self._peut_integrer = peut_ecrire if peut_integrer is None else peut_integrer
@@ -72,11 +73,18 @@ class SalonFactice:
         return Permissions()
 
 
+class ServeurFactice:
+    def __init__(self, serveur_id: int = 999):
+        self.id = serveur_id
+        self.name = f"Serveur {serveur_id}"
+
+
 class InteractionFactice:
     def __init__(self, admin: bool = True, membre_id: int = 1):
         self.user = Utilisateur(admin, membre_id)
         self.response = Reponse()
         self.followup = Followup()
+        self.guild = ServeurFactice()
 
     @property
     def embeds(self) -> list:
