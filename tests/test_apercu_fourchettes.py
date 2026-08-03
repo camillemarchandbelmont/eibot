@@ -131,8 +131,27 @@ async def test_promos_union_ne_se_reduit_pas_a_la_premiere_fourchette():
     est justement la plus large : ici la plus haute est la seconde et la plus
     basse la première, donc une seule fourchette consultée fait disparaître le
     Technopôle de la liste.
+
+    Le CSV est propre à ce test, et contient **deux** promotions dans la
+    fourchette « moyennes » : le repêchage est ainsi désactivé (son minimum est
+    atteint), et le Technopôle ne peut apparaître que par l'union. Sans ça, le
+    test passait même avec une borne tronquée — le repêchage rattrapait le
+    Technopôle et masquait le bug.
     """
-    bot = await _bot()
+    store = Store(dsn="")
+    await store.connect()
+    bot = EmpireBot(
+        store,
+        SourceFactice(
+            """# nom: Empire Immo - M8
+# mise_a_jour: 2026-07-29 12:00:07
+type,nom,niveau,valeur,loyer,charge,impot,promotion,construction,embellissement,reparation
+zones,"Technopôle",0,2710572934559948,0,0,0,17,0,0,0
+zones,"Zone portuaire",0,124467906332,0,0,0,17,0,0,0
+zones,"Friche moyenne",0,500000000000,0,0,0,17,0,0,0
+"""
+        ),
+    )
     await bot.store.ajouter_fourchette("moyennes", Decimal("1e11"), Decimal("1e12"))
     await bot.store.ajouter_fourchette("grosses", Decimal("1e15"), Decimal("6e15"))
     interaction = InteractionFactice()
@@ -142,6 +161,7 @@ async def test_promos_union_ne_se_reduit_pas_a_la_premiere_fourchette():
     titres = " ".join(interaction.titres)
     assert "Technopôle" in titres        # borne haute de « grosses »
     assert "Zone portuaire" in titres    # borne basse de « moyennes »
+    assert "Friche moyenne" in titres    # dedans dans les deux cas
 
 
 async def test_promos_avec_arguments_ignore_les_fourchettes():

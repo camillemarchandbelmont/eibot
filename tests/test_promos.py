@@ -314,6 +314,103 @@ def test_aucune_promo_du_tout():
     assert find_promos(batiments, Decimal(100), Decimal(200)) == []
 
 
+# --- Le repêchage classe en proportion, pas en distance --------------------
+#
+# Une distance en Ø n'a pas le même sens en bas et en haut de l'échelle : sur la
+# fourchette 100 TØ → 6 PØ, un bâtiment à 1 Ø est « à 100 TØ » du bord bas, donc
+# aussi proche qu'un bâtiment à 6,1 PØ l'est du bord haut. Il est pourtant cent
+# mille milliards de fois trop petit, alors que l'autre n'est qu'à 1,7 % au-dessus
+# du budget. Le classement se fait donc sur le **facteur** qui sépare le prix du
+# bord, pas sur leur différence.
+
+def test_repechage_prefere_le_plus_proche_en_proportion():
+    """1 Ø est ×100 000 000 000 000 sous le bord ; 6,101 PØ est ×1,017 au-dessus.
+
+    En distance, les deux sont « à ~100 TØ » du bord et le tri retenait le
+    minuscule — un bâtiment inutilisable — en écartant celui qui dépasse le
+    budget de 1,7 %.
+    """
+    _, batiments = parse_csv(
+        _csv(
+            'bureaux,"Minuscule",0,1,0,0,0,17,0,0,0',
+            'bureaux,"Juste au-dessus",0,6101000000000000,0,0,0,17,0,0,0',
+        )
+    )
+    promos = find_promos(batiments, Decimal("1e14"), Decimal("6e15"), minimum=1)
+
+    assert [p.building.nom for p in promos] == ["Juste au-dessus"]
+
+
+def test_repechage_symetrique_de_part_et_dautre():
+    """Un même facteur d'écart des deux côtés : le plus cher passe devant.
+
+    50 est ×2 sous 100, 400 est ×2 au-dessus de 200. À facteur égal, la
+    règle existante s'applique — le plus cher d'abord.
+    """
+    _, batiments = parse_csv(
+        _csv(
+            'bureaux,"Moitie",0,50,0,0,0,17,0,0,0',
+            'bureaux,"Double",0,400,0,0,0,17,0,0,0',
+        )
+    )
+    promos = find_promos(batiments, Decimal(100), Decimal(200), minimum=2)
+
+    assert [p.building.nom for p in promos] == ["Double", "Moitie"]
+
+
+def test_repechage_un_prix_nul_passe_en_dernier():
+    """Un prix de 0 rendrait le facteur infini : il ne doit ni planter ni gagner.
+
+    Le jeu n'affiche pas de bâtiment gratuit, mais un export corrompu ou une
+    colonne décalée en produirait un — et une division par zéro couperait la
+    publication du matin.
+    """
+    _, batiments = parse_csv(
+        _csv(
+            'bureaux,"Gratuit",0,0,0,0,0,17,0,0,0',
+            'bureaux,"Loin mais fini",0,1000000,0,0,0,17,0,0,0',
+        )
+    )
+    promos = find_promos(batiments, Decimal(100), Decimal(200), minimum=1)
+
+    assert [p.building.nom for p in promos] == ["Loin mais fini"]
+
+
+def test_repechage_borne_basse_nulle_ne_plante_pas():
+    """`/fourchette prix min:0` est accepté : 0/x doit rester calculable.
+
+    Avec un bord bas à 0, aucun bâtiment n'est « sous » la fourchette ; seuls
+    ceux qui dépassent le bord haut sont repêchés.
+    """
+    _, batiments = parse_csv(
+        _csv(
+            'bureaux,"Un peu trop cher",0,250,0,0,0,17,0,0,0',
+            'bureaux,"Beaucoup trop cher",0,20000,0,0,0,17,0,0,0',
+        )
+    )
+    promos = find_promos(batiments, Decimal(0), Decimal(200), minimum=1)
+
+    assert [p.building.nom for p in promos] == ["Un peu trop cher"]
+
+
+def test_ecart_reste_une_distance_en_or():
+    """Le tri change, pas le champ affiché.
+
+    `{ecart}` est un montant dans le template Discohook : y mettre un facteur
+    afficherait « 803 Ø » pour un ratio de ×803, un chiffre absurde.
+    """
+    _, batiments = parse_csv(
+        _csv(
+            'bureaux,"Sous",0,90,0,0,0,17,0,0,0',
+            'bureaux,"Sur",0,230,0,0,0,17,0,0,0',
+        )
+    )
+    promos = {p.building.nom: p for p in find_promos(batiments, Decimal(100), Decimal(200))}
+
+    assert promos["Sous"].ecart == Decimal(10)
+    assert promos["Sur"].ecart == Decimal(30)
+
+
 def test_csv_fige_fourchette_100T_6P_repeche_une_seconde(fige):
     """Seul le Technopole est dans 100T-6P : on complete avec le plus proche."""
     _, batiments = fige

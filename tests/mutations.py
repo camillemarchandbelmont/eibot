@@ -166,6 +166,35 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
         'return _erreur(f"Erreur inattendue : {erreur}", 500)',
         "un message d'exception peut contenir l'URL avec la clé d'API",
     ),
+    # --- src/promos.py : le repêchage classe en proportion -----------------
+    (
+        "promos-repechage-en-distance",
+        "src/promos.py",
+        "            key=lambda b: (_facteur_ecart(b.valeur, prix_min, prix_max), -b.valeur)",
+        "            key=lambda b: (_ecart_a_la_fourchette(b.valeur, prix_min, prix_max), -b.valeur)",
+        "le post repêcherait un bâtiment inutilisable en écartant l'intéressant",
+    ),
+    (
+        "promos-facteur-inverse",
+        "src/promos.py",
+        "        return prix_min / valeur",
+        "        return valeur / prix_min",
+        "les moins chers passeraient devant : le repêchage prendrait le pire",
+    ),
+    (
+        "promos-prix-nul-divise",
+        "src/promos.py",
+        '        if valeur <= 0:\n            return Decimal("Infinity")',
+        '        if False:\n            return Decimal("Infinity")',
+        "un export corrompu (prix 0) couperait la publication du matin",
+    ),
+    (
+        "promos-ecart-devient-un-facteur",
+        "src/promos.py",
+        '                "ecart": _ecart_a_la_fourchette(b.valeur, prix_min, prix_max),',
+        '                "ecart": _facteur_ecart(b.valeur, prix_min, prix_max),',
+        "le post afficherait « 803 Ø » pour un facteur de ×803",
+    ),
     # --- src/serialisation.py : les montants ne doivent rien perdre --------
     (
         "serial-prix-en-float",
