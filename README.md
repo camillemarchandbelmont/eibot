@@ -24,15 +24,8 @@ Les promotions retenues sont triées **du plus cher au moins cher**.
 ### Quand la fourchette est trop pauvre
 
 Le bot vise **au moins 2 promotions** par post. S'il en trouve moins dans ta
-fourchette, il complète avec celles dont le prix **rate le moins un des bords**
-— à facteur égal, la plus chère.
-
-« Rater le moins » se mesure en **proportion**, pas en Ø. Sur 100 TØ → 6 PØ, un
-bâtiment à 1 Ø est à 100 TØ du bord bas, exactement comme un bâtiment à 6,1 PØ
-l'est du bord haut ; mais le premier est cent mille milliards de fois trop petit
-(×100 000 000 000 000) quand le second ne dépasse le budget que de 1,7 % (×1,017).
-En distance, le bot repêchait l'inutilisable et écartait l'intéressant. Il classe
-donc sur le facteur.
+fourchette, il complète avec celles dont le prix est **le plus proche d'un des
+bords** — à écart égal, la plus chère.
 
 Le repêchage est **par fourchette** : chacune complète le sien, indépendamment
 des autres. Un même bâtiment peut donc apparaître dans deux posts, ce qui est
@@ -498,7 +491,7 @@ pip install -r requirements-dev.txt
 python -m pytest -q
 ```
 
-475 tests couvrent la notation monétaire, le parsing du CSV (entiers de
+470 tests couvrent la notation monétaire, le parsing du CSV (entiers de
 21 chiffres, notation scientifique), le calcul des remises, le repêchage hors
 fourchette, le rendu du template, les limites Discord, le planning (fenêtre
 de rattrapage, idempotence quotidienne), l'API du jeu (construction de l'URL,
@@ -529,13 +522,13 @@ daté, sans écraser l'ancien.
 ### Vérifier que les tests mordent
 
 ```bash
-python tests/mutations.py          # les 55 mutations
+python tests/mutations.py          # les 51 mutations
 python tests/mutations.py acces    # celles dont le nom contient « acces »
 ```
 
 Une suite verte prouve que le code passe les tests, pas que les tests
 vérifieraient quoi que ce soit. `tests/mutations.py` introduit une à une
-55 fautes plausibles dans `src/` (inverser une comparaison, ôter une garde,
+51 fautes plausibles dans `src/` (inverser une comparaison, ôter une garde,
 supprimer un masquage de secret) et exige que la suite échoue à chaque fois. Un
 **survivant** est un trou de couverture, pas un faux positif.
 

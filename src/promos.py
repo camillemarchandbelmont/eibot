@@ -152,43 +152,12 @@ def to_promo(batiment: Building) -> Promo:
 def _ecart_a_la_fourchette(
     valeur: Decimal, prix_min: Decimal, prix_max: Decimal
 ) -> Decimal:
-    """Distance au bord le plus proche ; 0 si la valeur est dans la fourchette.
-
-    Reste une distance en Ø : c'est le `{ecart}` du template Discohook, donc un
-    montant. Le **classement** du repêchage, lui, passe par `_facteur_ecart`.
-    """
+    """Distance au bord le plus proche ; 0 si la valeur est dans la fourchette."""
     if valeur < prix_min:
         return prix_min - valeur
     if valeur > prix_max:
         return valeur - prix_max
     return Decimal(0)
-
-
-def _facteur_ecart(
-    valeur: Decimal, prix_min: Decimal, prix_max: Decimal
-) -> Decimal:
-    """Combien de fois le prix rate le bord le plus proche ; 1 s'il est dedans.
-
-    Une distance en Ø n'a pas le même sens en bas et en haut de l'échelle des
-    prix du jeu, qui couvre plus de vingt ordres de grandeur. Sur 100 TØ → 6 PØ,
-    un bâtiment à 1 Ø est « à 100 TØ » du bord bas, soit la même distance qu'un
-    bâtiment à 6,1 PØ du bord haut — alors qu'il est cent mille milliards de fois
-    trop petit, quand l'autre ne dépasse le budget que de 1,7 %. Classer sur la
-    différence faisait donc repêcher l'inutilisable et écarter l'intéressant.
-
-    Le facteur corrige ça : ×100 000 000 000 000 contre ×1,017.
-    """
-    if valeur < prix_min:
-        # `valeur <= 0` : le jeu n'affiche pas de bâtiment gratuit, mais un export
-        # corrompu en produirait un, et une division par zéro couperait la
-        # publication du matin. L'infini le relègue en dernier sans lever.
-        if valeur <= 0:
-            return Decimal("Infinity")
-        return prix_min / valeur
-    if valeur > prix_max:
-        # `prix_max <= 0` est impossible ici : valeur > prix_max et valeur > 0.
-        return valeur / prix_max
-    return Decimal(1)
 
 
 def find_promos(
@@ -216,9 +185,9 @@ def find_promos(
     dehors: list[Building] = []
     if len(dedans) < minimum:
         candidats = [b for b in en_promo if not (prix_min <= b.valeur <= prix_max)]
-        # Le plus proche **en proportion** d'abord ; à facteur égal, le plus cher.
+        # Le plus proche d'abord ; à égalité d'écart, le plus cher.
         candidats.sort(
-            key=lambda b: (_facteur_ecart(b.valeur, prix_min, prix_max), -b.valeur)
+            key=lambda b: (_ecart_a_la_fourchette(b.valeur, prix_min, prix_max), -b.valeur)
         )
         dehors = candidats[: minimum - len(dedans)]
 
