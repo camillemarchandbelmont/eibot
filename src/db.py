@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import json
 import logging
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from src import settings
@@ -46,18 +46,56 @@ def _cle_nom(nom: str) -> str:
     return str(nom).strip().casefold()
 
 
+def _montant_ou_rien(brut: Any) -> Decimal | None:
+    """Lit un montant facultatif ; `None` si absent ou illisible.
+
+    Sert aux bornes tolérées, les seules qui ont le droit de ne pas être là. Une
+    valeur illisible est traitée comme absente plutôt que levée : la config est
+    du JSON retouchable à la main, et une faute de frappe doit coûter la zone de
+    tolérance du jour, pas la publication.
+    """
+    texte = str(brut or "").strip()
+    if not texte:
+        return None
+    try:
+        return Decimal(texte)
+    except InvalidOperation:
+        return None
+
+
 def _normaliser_fourchette(brute: dict) -> dict:
     """Fourchette aux champs garantis, quelle que soit l'origine du JSON.
 
     La config peut avoir été écrite par une version antérieure ou retouchée à
     la main. Chaque champ absent vaut mieux qu'un `KeyError` dans la boucle de
     publication, qui ferait sauter le post du jour.
+
+    La zone de tolérance est facultative et **des deux bornes ou d'aucune** :
+    une seule ne décrirait pas une plage, et `find_promos` l'ignorerait de
+    toute façon. Elle est aussi recadrée pour englober la fourchette idéale —
+    une zone plus étroite exclurait une partie de ce que la passe idéale
+    accepte, incohérence que rien ne signalerait à l'exécution.
     """
+    prix_min = str(brute.get("prix_min", "0"))
+    prix_max = str(brute.get("prix_max", "0"))
+
+    tolere_min = _montant_ou_rien(brute.get("tolere_min"))
+    tolere_max = _montant_ou_rien(brute.get("tolere_max"))
+    if tolere_min is None or tolere_max is None:
+        tolere_min = tolere_max = None
+    else:
+        if tolere_min > tolere_max:
+            tolere_min, tolere_max = tolere_max, tolere_min
+        tolere_min = min(tolere_min, _montant_ou_rien(prix_min) or Decimal(0))
+        tolere_max = max(tolere_max, _montant_ou_rien(prix_max) or Decimal(0))
+
     return {
         "nom": str(brute.get("nom", "")).strip(),
-        "prix_min": str(brute.get("prix_min", "0")),
-        "prix_max": str(brute.get("prix_max", "0")),
+        "prix_min": prix_min,
+        "prix_max": prix_max,
         "salons": [str(salon) for salon in brute.get("salons") or [] if salon],
+        "tolere_min": "" if tolere_min is None else str(tolere_min),
+        "tolere_max": "" if tolere_max is None else str(tolere_max),
     }
 
 
@@ -310,7 +348,61 @@ class Store:
         if prix_min > prix_max:
             prix_min, prix_max = prix_max, prix_min
 
-        liste[index] = {**liste[index], "prix_min": str(prix_min), "prix_max": str(prix_max)}
+        # `_normaliser_fourchette` repoussera les bornes tolérées si les
+        # nouvelles bornes idéales les dépassent.
+        liste[index] = _normaliser_fourchette(
+            {**liste[index], "prix_min": str(prix_min), "prix_max": str(prix_max)}
+        )
+        await self._ecrire_fourchettes(liste)
+        return True
+
+    async def majtolerance_fourchette(
+        self, nom: str, tolere_min: Decimal, tolere_max: Decimal
+    ) -> bool:
+        """Règle la zone de tolérance. False si la fourchette est inconnue.
+
+        Lève `ValueError` si la zone est plus étroite que la fourchette : la
+        tolérance n'a le droit que d'**ajouter** des candidats quand la
+        fourchette est trop pauvre. Une zone plus étroite serait acceptée sans
+        effet visible, alors qu'elle trahit une faute de saisie — typiquement
+        les bornes idéales retapées à la place des tolérées.
+        """
+        liste = await self.fourchettes()
+        index = self._index(liste, nom)
+        if index < 0:
+            return False
+
+        if tolere_min > tolere_max:
+            tolere_min, tolere_max = tolere_max, tolere_min
+
+        fourchette = liste[index]
+        if tolere_min > Decimal(fourchette["prix_min"]) or tolere_max < Decimal(
+            fourchette["prix_max"]
+        ):
+            raise ValueError(
+                "La zone de tolérance doit être plus large que la fourchette "
+                f"(« {fourchette['nom']} » va de {fourchette['prix_min']} à "
+                f"{fourchette['prix_max']})."
+            )
+
+        liste[index] = {
+            **fourchette,
+            "tolere_min": str(tolere_min),
+            "tolere_max": str(tolere_max),
+        }
+        await self._ecrire_fourchettes(liste)
+        return True
+
+    async def effacer_tolerance_fourchette(self, nom: str) -> bool:
+        """Retire la zone de tolérance. False si la fourchette est inconnue ou
+        n'en avait pas — pour que la commande n'annonce pas un effacement
+        imaginaire."""
+        liste = await self.fourchettes()
+        index = self._index(liste, nom)
+        if index < 0 or not liste[index].get("tolere_min"):
+            return False
+
+        liste[index] = {**liste[index], "tolere_min": "", "tolere_max": ""}
         await self._ecrire_fourchettes(liste)
         return True
 

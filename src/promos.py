@@ -54,6 +54,11 @@ class Building:
 #: avec les promos les plus proches de la fourchette (voir `find_promos`).
 CIBLE_MINIMUM = 2
 
+#: Provenance d'une promo, par ordre de préférence décroissante.
+ZONE_IDEALE = "ideale"      # dans [prix_min, prix_max]
+ZONE_TOLEREE = "toleree"    # hors fourchette mais dans la zone de tolérance
+ZONE_REPECHEE = "repechee"  # au-delà des deux, repêchée faute de mieux
+
 
 @dataclass(frozen=True)
 class Promo:
@@ -71,6 +76,9 @@ class Promo:
     dans_fourchette: bool = True
     #: Écart au plus proche bord de la fourchette (0 si dedans).
     ecart: Decimal = Decimal(0)
+    #: D'où vient la promo : `ideale` (dans la fourchette), `toleree` (dans la
+    #: zone de tolérance) ou `repechee` (au-delà, faute de mieux).
+    zone: str = ZONE_IDEALE
 
 
 def _nombre(brut: str | None) -> Decimal:
@@ -165,37 +173,59 @@ def find_promos(
     prix_min: Decimal,
     prix_max: Decimal,
     minimum: int = CIBLE_MINIMUM,
+    tolere_min: Decimal | None = None,
+    tolere_max: Decimal | None = None,
 ) -> list[Promo]:
     """Promotions dont le prix payé tombe dans [prix_min, prix_max].
 
     Triées du plus cher au moins cher, bornes incluses.
 
-    Si la fourchette en contient moins que `minimum`, on complète avec les
-    promotions les plus proches d'un de ses bords — mieux vaut proposer un
-    bâtiment un peu hors budget que de poster une liste quasi vide. Ces
-    repêchées portent `dans_fourchette=False` et leur `ecart`.
+    Trois passes, chacune ne se déclenchant que si la précédente n'a pas atteint
+    `minimum` :
 
-    `minimum=0` désactive le repêchage (filtre strict).
+    1. **idéale** — dans [prix_min, prix_max] ;
+    2. **tolérée** — dans la zone de tolérance quand elle est réglée, les plus
+       proches de la fourchette idéale d'abord ;
+    3. **repêchage** — le reste, par distance à la fourchette idéale.
+
+    Mieux vaut proposer un bâtiment un peu hors budget que de poster une liste
+    quasi vide. Les deux dernières passes portent `dans_fourchette=False`, leur
+    `ecart` et leur `zone`.
+
+    `minimum=0` désactive tolérance et repêchage (filtre strict).
     """
     en_promo = [b for b in batiments if b.promotion > 0]
+    ecart = lambda b: _ecart_a_la_fourchette(b.valeur, prix_min, prix_max)  # noqa: E731
 
     dedans = [b for b in en_promo if prix_min <= b.valeur <= prix_max]
     dedans.sort(key=lambda b: b.valeur, reverse=True)
 
-    dehors: list[Building] = []
-    if len(dedans) < minimum:
-        candidats = [b for b in en_promo if not (prix_min <= b.valeur <= prix_max)]
-        # Le plus proche d'abord ; à égalité d'écart, le plus cher.
-        candidats.sort(
-            key=lambda b: (_ecart_a_la_fourchette(b.valeur, prix_min, prix_max), -b.valeur)
-        )
-        dehors = candidats[: minimum - len(dedans)]
+    # Les deux passes suivantes puisent dans le même reste, chacune y prenant
+    # ce que la précédente a laissé.
+    reste = [b for b in en_promo if not (prix_min <= b.valeur <= prix_max)]
 
-    retenus = dedans + dehors
+    toleres: list[Building] = []
+    if len(dedans) < minimum and tolere_min is not None and tolere_max is not None:
+        candidats = [b for b in reste if tolere_min <= b.valeur <= tolere_max]
+        # Le plus proche de la fourchette idéale d'abord ; à égalité, le plus
+        # cher. Même notion de distance que le repêchage : une seule règle.
+        candidats.sort(key=lambda b: (ecart(b), -b.valeur))
+        toleres = candidats[: minimum - len(dedans)]
+        pris = {id(b) for b in toleres}
+        reste = [b for b in reste if id(b) not in pris]
+
+    repeches: list[Building] = []
+    if len(dedans) + len(toleres) < minimum:
+        reste.sort(key=lambda b: (ecart(b), -b.valeur))
+        repeches = reste[: minimum - len(dedans) - len(toleres)]
+
+    retenus = dedans + toleres + repeches
     total = len(retenus)
     # Identité plutôt qu'égalité : deux lignes du CSV peuvent avoir les mêmes
     # valeurs sans être le même bâtiment.
-    ids_dedans = {id(b) for b in dedans}
+    zones = {id(b): ZONE_IDEALE for b in dedans}
+    zones.update({id(b): ZONE_TOLEREE for b in toleres})
+    zones.update({id(b): ZONE_REPECHEE for b in repeches})
 
     return [
         Promo(
@@ -203,8 +233,9 @@ def find_promos(
                 **to_promo(b).__dict__,
                 "rang": index,
                 "total": total,
-                "dans_fourchette": id(b) in ids_dedans,
-                "ecart": _ecart_a_la_fourchette(b.valeur, prix_min, prix_max),
+                "dans_fourchette": zones[id(b)] == ZONE_IDEALE,
+                "ecart": ecart(b),
+                "zone": zones[id(b)],
             }
         )
         for index, b in enumerate(retenus, start=1)

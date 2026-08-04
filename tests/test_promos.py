@@ -325,3 +325,160 @@ def test_csv_fige_fourchette_100T_6P_repeche_une_seconde(fige):
     # (173,02 EØ) ne l'est de 6 PØ.
     assert promos[1].building.nom == "Zone portuaire désaffectée"
     assert promos[1].dans_fourchette is False
+
+
+# --- Zone de tolérance ------------------------------------------------------
+#
+# Une fourchette peut porter une zone plus large qu'elle. Quand la fourchette
+# idéale ne fournit pas assez de promotions, on va d'abord chercher **dans** la
+# zone tolérée avant de repêcher au hasard de la distance : un bâtiment que
+# l'utilisateur a déclaré acceptable vaut mieux qu'un bâtiment simplement
+# proche.
+
+
+def test_sans_tolerance_les_zones_sont_ideale_ou_repechee():
+    """La zone nomme d'où vient chaque promo, tolérance ou pas."""
+    _, batiments = parse_csv(
+        _csv(
+            'bureaux,"Dedans",0,150,0,0,0,17,0,0,0',
+            'bureaux,"Loin",0,900,0,0,0,17,0,0,0',
+        )
+    )
+    promos = {p.building.nom: p for p in find_promos(batiments, Decimal(100), Decimal(200))}
+    assert promos["Dedans"].zone == "ideale"
+    assert promos["Loin"].zone == "repechee"
+
+
+def test_la_zone_toleree_passe_avant_le_repechage():
+    """Un bâtiment plus loin mais toléré bat un bâtiment proche non toléré."""
+    _, batiments = parse_csv(
+        _csv(
+            'bureaux,"Dedans",0,150,0,0,0,17,0,0,0',
+            'bureaux,"Juste en-dessous",0,95,0,0,0,17,0,0,0',
+            'bureaux,"Tolere loin",0,400,0,0,0,17,0,0,0',
+        )
+    )
+    # Tolérance étendue vers le haut seulement : on accepte de payer plus cher,
+    # pas d'acheter plus petit que le budget.
+    promos = find_promos(
+        batiments,
+        Decimal(100),
+        Decimal(200),
+        tolere_min=Decimal(100),
+        tolere_max=Decimal(500),
+    )
+    # « Juste en-dessous » a un écart de 5 contre 200, mais il est hors zone.
+    assert [p.building.nom for p in promos] == ["Dedans", "Tolere loin"]
+    assert promos[1].zone == "toleree"
+    # La promo tolérée reste hors de la fourchette idéale : le site et le post
+    # ne doivent pas la présenter comme un bâtiment du budget demandé.
+    assert promos[1].dans_fourchette is False
+    assert promos[1].ecart == Decimal(200)
+
+
+def test_la_fourchette_pleine_ignore_la_tolerance():
+    """Le minimum étant atteint, on ne descend pas dans la zone tolérée."""
+    _, batiments = parse_csv(
+        _csv(
+            'bureaux,"A",0,150,0,0,0,17,0,0,0',
+            'bureaux,"B",0,180,0,0,0,17,0,0,0',
+            'bureaux,"Tolere",0,400,0,0,0,17,0,0,0',
+        )
+    )
+    promos = find_promos(
+        batiments, Decimal(100), Decimal(200),
+        tolere_min=Decimal(100), tolere_max=Decimal(500),
+    )
+    assert [p.building.nom for p in promos] == ["B", "A"]
+
+
+def test_la_tolerance_ne_prend_que_ce_qui_manque():
+    """Une seule promo dans la fourchette : une seule tolérée pour compléter."""
+    _, batiments = parse_csv(
+        _csv(
+            'bureaux,"Dedans",0,150,0,0,0,17,0,0,0',
+            'bureaux,"Tolere proche",0,250,0,0,0,17,0,0,0',
+            'bureaux,"Tolere loin",0,450,0,0,0,17,0,0,0',
+        )
+    )
+    promos = find_promos(
+        batiments, Decimal(100), Decimal(200),
+        tolere_min=Decimal(100), tolere_max=Decimal(500),
+    )
+    # Le plus proche de la borne idéale gagne, pas le plus cher de la zone.
+    assert [p.building.nom for p in promos] == ["Dedans", "Tolere proche"]
+
+
+def test_la_tolerance_epuisee_on_repeche_encore():
+    """La zone tolérée ne suffit pas : le repêchage prend la suite."""
+    _, batiments = parse_csv(
+        _csv(
+            'bureaux,"Tolere unique",0,400,0,0,0,17,0,0,0',
+            'bureaux,"Hors tout",0,900,0,0,0,17,0,0,0',
+        )
+    )
+    promos = find_promos(
+        batiments, Decimal(100), Decimal(200),
+        tolere_min=Decimal(100), tolere_max=Decimal(500),
+    )
+    assert [p.zone for p in promos] == ["toleree", "repechee"]
+    assert [p.building.nom for p in promos] == ["Tolere unique", "Hors tout"]
+
+
+def test_un_tolere_n_est_jamais_repeche_deux_fois():
+    """Le même bâtiment ne peut pas occuper deux places de la liste."""
+    _, batiments = parse_csv(
+        _csv(
+            'bureaux,"Tolere unique",0,400,0,0,0,17,0,0,0',
+        )
+    )
+    promos = find_promos(
+        batiments, Decimal(100), Decimal(200),
+        tolere_min=Decimal(100), tolere_max=Decimal(500),
+    )
+    assert len(promos) == 1
+    assert promos[0].total == 1
+    assert promos[0].zone == "toleree"
+
+
+def test_minimum_zero_desactive_aussi_la_tolerance():
+    _, batiments = parse_csv(_csv('bureaux,"Tolere",0,400,0,0,0,17,0,0,0'))
+    promos = find_promos(
+        batiments, Decimal(100), Decimal(200), minimum=0,
+        tolere_min=Decimal(100), tolere_max=Decimal(500),
+    )
+    assert promos == []
+
+
+def test_la_tolerance_ne_prend_que_des_promos():
+    """Un bâtiment dans la zone mais sans remise n'est pas une promotion."""
+    _, batiments = parse_csv(
+        _csv(
+            'bureaux,"Tolere sans promo",0,400,0,0,0,0,0,0,0',
+            'bureaux,"Hors tout avec promo",0,900,0,0,0,17,0,0,0',
+        )
+    )
+    promos = find_promos(
+        batiments, Decimal(100), Decimal(200),
+        tolere_min=Decimal(100), tolere_max=Decimal(500),
+    )
+    assert [p.building.nom for p in promos] == ["Hors tout avec promo"]
+
+
+def test_une_seule_borne_toleree_ne_suffit_pas():
+    """Une zone à moitié réglée est ignorée plutôt qu'à demi appliquée.
+
+    `_normaliser_fourchette` garantit les deux ou aucune, mais un appel direct
+    ne doit pas inventer la borne manquante : la déduire de la fourchette
+    idéale élargirait la zone dans un sens que personne n'a demandé.
+    """
+    _, batiments = parse_csv(
+        _csv(
+            'bureaux,"Proche",0,205,0,0,0,17,0,0,0',
+            'bureaux,"Tolere",0,400,0,0,0,17,0,0,0',
+        )
+    )
+    for bornes in ({"tolere_min": Decimal(100)}, {"tolere_max": Decimal(500)}):
+        promos = find_promos(batiments, Decimal(100), Decimal(200), **bornes)
+        assert [p.zone for p in promos] == ["repechee", "repechee"], bornes
+        assert promos[0].building.nom == "Proche", bornes
