@@ -73,6 +73,10 @@ def promo_en_json(promo: Promo) -> dict[str, Any]:
         # Le site peut vouloir distinguer une promo repêchée, même si le post
         # Discord ne le signale plus.
         "dans_fourchette": bool(promo.dans_fourchette),
+        # Trois valeurs là où `dans_fourchette` n'en distingue que deux : une
+        # promo tolérée et une repêchée sont toutes deux hors fourchette, mais
+        # la première a été choisie, la seconde subie.
+        "zone": str(promo.zone),
     }
 
     for nom, valeur in _montants(promo).items():
@@ -117,6 +121,10 @@ def fourchette_en_json(fourchette: dict) -> dict[str, Any]:
 
     Les salons sont **dans** la fourchette et non à côté : c'est ce qui permet
     au site de dire quel salon reçoit quelles promotions.
+
+    Les bornes tolérées ne sont exposées **que si elles existent** : les rendre
+    à `0 Ø` donnerait à voir une zone que personne n'a réglée, et qui, étant
+    sous `prix_min`, prétendrait élargir la fourchette vers le bas.
     """
     rendu: dict[str, Any] = {
         "nom": str(fourchette.get("nom", "")),
@@ -126,6 +134,11 @@ def fourchette_en_json(fourchette: dict) -> dict[str, Any]:
         rendu.update(
             montant_en_json(champ, _montant_ou_zero(fourchette.get(champ, 0)))
         )
+    for champ in ("tolere_min", "tolere_max"):
+        if str(fourchette.get(champ) or "").strip():
+            rendu.update(
+                montant_en_json(champ, _montant_ou_zero(fourchette[champ]))
+            )
     return rendu
 
 

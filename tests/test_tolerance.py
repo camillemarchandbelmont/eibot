@@ -17,6 +17,8 @@ from decimal import Decimal
 import pytest
 
 from src.db import Store
+from src.money import format_money
+from src.promos import find_promos
 
 
 @pytest.fixture
@@ -261,3 +263,107 @@ async def test_tolerance_illisible_ignoree_plutot_que_de_couper_la_publication(s
     # réglée, et le repêchage habituel reprend la main.
     assert fourchette["tolere_min"] == ""
     assert fourchette["tolere_max"] == ""
+
+
+# --- Publication ------------------------------------------------------------
+#
+# Le `Store` peut stocker la zone sans que la boucle du matin la lise : la
+# tolérance serait alors réglable, visible dans `/fourchette liste`, et sans
+# aucun effet sur ce qui est publié. Ces tests passent par la publication réelle.
+
+CSV_TOLERANCE = """# nom: Empire Immo - M8
+# mise_a_jour: 2026-07-29 12:00:07
+type,nom,niveau,valeur,loyer,charge,impot,promotion,construction,embellissement,reparation
+zones,"Dedans",0,150,0,0,0,17,0,0,0
+zones,"Juste en-dessous",0,95,0,0,0,17,0,0,0
+zones,"Tolere loin",0,400,0,0,0,17,0,0,0
+"""
+
+
+class SourceFigee:
+    def __init__(self, texte: str = CSV_TOLERANCE):
+        self.texte = texte
+
+    async def fetch(self) -> str:
+        return self.texte
+
+
+@pytest.mark.asyncio
+async def test_la_boucle_de_publication_lit_la_tolerance():
+    """Sans ça, la zone serait réglable et sans effet sur le post du matin."""
+    from tests.test_publication_fourchettes import JournalFactice, SalonFactice
+
+    from src.bot import EmpireBot
+
+    salon = SalonFactice(1)
+    store = Store(dsn="")
+    await store.connect()
+
+    bot = object.__new__(EmpireBot)
+    bot.store = store
+    bot.source = SourceFigee()
+    bot.journal = JournalFactice()
+    bot.get_channel = {1: salon}.get
+
+    await store.ajouter_fourchette("cible", Decimal(100), Decimal(200))
+    await store.majtolerance_fourchette("cible", Decimal(100), Decimal(500))
+    await store.ajouter_salon_fourchette("cible", "1")
+
+    await bot.publier_si_lheure(forcer=True)
+
+    # « Juste en-dessous » (95) est le plus proche mais hors zone ; c'est
+    # « Tolere loin » (400) qui doit compléter. Les titres portent l'emoji du
+    # template par défaut, d'où la recherche par sous-chaîne.
+    assert len(salon.titres) == 2
+    assert "Dedans" in salon.titres[0]
+    assert "Tolere loin" in salon.titres[1]
+
+
+# --- Sérialisation ----------------------------------------------------------
+
+
+def test_la_zone_est_exposee_au_site():
+    """Le site doit pouvoir dessiner la zone, sinon son rail contredirait le
+    post Discord."""
+    from src.serialisation import fourchette_en_json
+
+    rendu = fourchette_en_json(
+        {
+            "nom": "grosses",
+            "prix_min": "1e14",
+            "prix_max": "6e15",
+            "salons": [],
+            "tolere_min": "5e13",
+            "tolere_max": "8e15",
+        }
+    )
+    assert rendu["tolere_min_brut"] == "50000000000000"
+    assert rendu["tolere_max_brut"] == "8000000000000000"
+    # Formaté par le bot, comme toutes les bornes : le site ne reformate jamais.
+    assert rendu["tolere_min"] == format_money(Decimal("5e13"))
+
+
+def test_une_fourchette_sans_zone_n_expose_pas_de_bornes_a_zero():
+    """`0 Ø` donnerait à voir une zone réglée que personne n'a demandée — et,
+    étant sous `prix_min`, une zone qui élargit vers le bas."""
+    from src.serialisation import fourchette_en_json
+
+    rendu = fourchette_en_json(
+        {"nom": "grosses", "prix_min": "1e14", "prix_max": "6e15", "salons": []}
+    )
+    assert "tolere_min" not in rendu
+    assert "tolere_max" not in rendu
+
+
+def test_la_zone_d_une_promo_est_exposee_au_site():
+    """Trois valeurs et non un booléen : `dans_fourchette` ne distingue pas une
+    promo tolérée d'une repêchée, alors que le site les colore autrement."""
+    from src.promos import parse_csv as _parse
+    from src.serialisation import promo_en_json
+
+    _, batiments = _parse(CSV_TOLERANCE)
+    promos = find_promos(
+        batiments, Decimal(100), Decimal(200),
+        tolere_min=Decimal(100), tolere_max=Decimal(500),
+    )
+    assert [promo_en_json(p)["zone"] for p in promos] == ["ideale", "toleree"]

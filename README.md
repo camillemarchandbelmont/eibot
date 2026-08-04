@@ -24,12 +24,47 @@ Les promotions retenues sont triées **du plus cher au moins cher**.
 ### Quand la fourchette est trop pauvre
 
 Le bot vise **au moins 2 promotions** par post. S'il en trouve moins dans ta
-fourchette, il complète avec celles dont le prix est **le plus proche d'un des
-bords** — à écart égal, la plus chère.
+fourchette, il cherche ailleurs, dans cet ordre :
+
+1. **la zone de tolérance**, si tu en as réglé une (voir ci-dessous) ;
+2. **le repêchage** : les promotions dont le prix est le plus proche d'un des
+   bords de la fourchette — à écart égal, la plus chère.
 
 Le repêchage est **par fourchette** : chacune complète le sien, indépendamment
 des autres. Un même bâtiment peut donc apparaître dans deux posts, ce qui est
 préférable à un post vide dans un salon qui attend sa liste.
+
+### La zone de tolérance
+
+Le repêchage prend le plus proche, quel qu'il soit. Sur une fourchette
+`100T → 6P`, un bâtiment à 10 MØ est dix millions de fois trop petit mais reste
+« proche » de 100 TØ à l'échelle des prix du jeu, et il sera choisi.
+
+La zone de tolérance sert à dire ce que tu accepterais vraiment :
+
+```
+/fourchette tolerance nom:grosses min:50T max:8P
+```
+
+Désormais, quand « grosses » n'a pas ses deux promotions, le bot cherche
+**d'abord entre 50 TØ et 8 PØ** — les plus proches de la fourchette idéale
+d'abord. Il ne repêche au-delà que si la zone ne suffit pas.
+
+La zone doit être **plus large que la fourchette** : elle n'a le droit que
+d'ajouter des candidats, jamais d'en retirer. Une zone plus étroite est refusée,
+parce que c'est presque toujours les bornes idéales retapées par erreur. Tu
+peux l'élargir d'un seul côté (`min:100T max:8P` : accepter de payer plus cher,
+sans accepter d'acheter plus petit).
+
+Sans bornes, la commande efface la zone :
+
+```
+/fourchette tolerance nom:grosses
+```
+
+Si `/fourchette prix` élargit ensuite les bornes idéales au-delà de la zone,
+celle-ci est élargie d'autant et la commande le signale — une zone qui exclut
+une partie de sa propre fourchette n'aurait aucun sens.
 
 Ces promos repêchées **ne sont pas signalées** : elles apparaissent comme les
 autres. Le placeholder `{ecart}` reste disponible si tu veux malgré tout
@@ -95,6 +130,7 @@ local, mais elle repart des valeurs de `.env` à chaque redémarrage.
 | `/promos [min] [max]` | Promotions à la demande ; sans argument, l'**union** des fourchettes |
 | `/fourchette ajouter nom min max` | Crée une fourchette (ex : `nom:grosses min:100T max:6P`) |
 | `/fourchette prix nom min max` | Modifie ses bornes, en gardant ses salons |
+| `/fourchette tolerance nom [min] [max]` | Zone acceptée quand la fourchette est trop pauvre ; sans bornes, l'efface |
 | `/fourchette supprimer nom` | Supprime une fourchette et ses salons |
 | `/fourchette liste` | Les fourchettes, leurs bornes et leurs salons |
 | `/fourchette salon ajouter nom salon` | Publie **cette** fourchette dans ce salon |

@@ -99,6 +99,20 @@ def _normaliser_fourchette(brute: dict) -> dict:
     }
 
 
+def bornes_tolerees(fourchette: dict) -> tuple[Decimal | None, Decimal | None]:
+    """Zone de tolérance d'une fourchette, `(None, None)` si elle n'en a pas.
+
+    Le stockage garde des chaînes — y compris vides — et `find_promos` attend
+    des `Decimal` ou rien. Cette traduction est faite ici plutôt qu'à chaque
+    appel : elle est appelée depuis la boucle de publication, l'aperçu et
+    l'API, et une conversion oubliée quelque part rendrait la zone silencieuse
+    de ce côté-là seulement.
+    """
+    return _montant_ou_rien(fourchette.get("tolere_min")), _montant_ou_rien(
+        fourchette.get("tolere_max")
+    )
+
+
 class Store:
     """Dictionnaire persistant clé -> JSON."""
 

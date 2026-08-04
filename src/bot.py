@@ -15,7 +15,7 @@ from discord import app_commands
 
 from src import settings
 from src.acces import acces_autorise, gere_la_liste
-from src.db import Store
+from src.db import Store, bornes_tolerees
 from src.journal import Journal
 from src.money import MoneyError, format_money, parse_money
 from src.promos import Building, Meta, find_promos, parse_csv
@@ -176,15 +176,23 @@ class EmpireBot(discord.Client):
         prix_min: Decimal,
         prix_max: Decimal,
         donnees: tuple[Meta, list[Building]] | None = None,
+        tolere_min: Decimal | None = None,
+        tolere_max: Decimal | None = None,
     ) -> tuple[list[dict], str, str]:
         """Renvoie (embeds, contenu, message de repli si aucune promo).
 
         `donnees` permet de réutiliser un export déjà chargé : avec plusieurs
         fourchettes, recharger à chaque tour multiplierait les appels à l'API du
         jeu pour des données identiques.
+
+        `tolere_min`/`tolere_max` décrivent la zone de tolérance de la
+        fourchette, où l'on cherche avant de repêcher au hasard de la distance.
         """
         meta, batiments = donnees if donnees is not None else await self.charger()
-        promos = find_promos(batiments, prix_min, prix_max)
+        promos = find_promos(
+            batiments, prix_min, prix_max,
+            tolere_min=tolere_min, tolere_max=tolere_max,
+        )
         modele = await self.store.template()
         date = maintenant_local((await self.store.config())["fuseau"]).strftime("%Y-%m-%d")
 
@@ -271,10 +279,13 @@ class EmpireBot(discord.Client):
 
         for fourchette in servies:
             try:
+                tolere_min, tolere_max = bornes_tolerees(fourchette)
                 embeds, contenu, repli = await self.construire_publication(
                     Decimal(fourchette["prix_min"]),
                     Decimal(fourchette["prix_max"]),
                     donnees=donnees,
+                    tolere_min=tolere_min,
+                    tolere_max=tolere_max,
                 )
             except Exception as erreur:
                 # Rendu impossible pour *cette* fourchette (template appliqué à
@@ -417,6 +428,12 @@ def _lister_fourchettes(bot: EmpireBot, fourchettes: list[dict]) -> str:
             f"{format_money(Decimal(fourchette['prix_max']))}"
         )
         lignes.append(f"**{fourchette['nom']}** — {bornes}")
+        # Seul endroit où relire la zone : les posts ne la mentionnent pas.
+        tolere_min, tolere_max = bornes_tolerees(fourchette)
+        if tolere_min is not None and tolere_max is not None:
+            lignes.append(
+                f"-# tolérance : {format_money(tolere_min)} → {format_money(tolere_max)}"
+            )
         if not fourchette["salons"]:
             lignes.append("⚠️ aucun salon : ne publiera rien")
             continue
@@ -711,15 +728,107 @@ def enregistrer_commandes(bot: EmpireBot) -> None:
             )
             return
 
+        avant = await bot.store.fourchettes()
+        index_avant = bot.store._index(avant, nom)
+        zone_avant = (
+            bornes_tolerees(avant[index_avant]) if index_avant >= 0 else (None, None)
+        )
+
         if not await bot.store.majprix_fourchette(nom, prix_min, prix_max):
             await _refuser_nom_inconnu(interaction, nom)
             return
 
         if prix_min > prix_max:
             prix_min, prix_max = prix_max, prix_min
-        await interaction.response.send_message(
+        message = (
             f"✅ **{nom.strip()}** : **{format_money(prix_min)}** → "
-            f"**{format_money(prix_max)}**",
+            f"**{format_money(prix_max)}**"
+        )
+
+        # Les nouvelles bornes ont pu repousser la zone de tolérance. Le taire
+        # laisserait croire qu'elle est restée là où on l'avait réglée.
+        apres = await bot.store.fourchettes()
+        zone_apres = bornes_tolerees(apres[bot.store._index(apres, nom)])
+        if zone_apres != zone_avant and zone_apres[0] is not None:
+            message += (
+                f"\n-# Zone de tolérance élargie d'autant : "
+                f"{format_money(zone_apres[0])} → {format_money(zone_apres[1])}"
+            )
+
+        await interaction.response.send_message(message, ephemeral=True)
+
+    @fourchette_groupe.command(
+        name="tolerance",
+        description="Zone acceptée quand la fourchette est trop pauvre (sans bornes : efface)",
+    )
+    @app_commands.describe(
+        min="Prix minimum toléré (ex: 50T) ; laisser vide pour effacer la zone",
+        max="Prix maximum toléré (ex: 8P) ; laisser vide pour effacer la zone",
+    )
+    @app_commands.autocomplete(nom=_completer_nom)
+    async def fourchette_tolerance(
+        interaction: discord.Interaction,
+        nom: str,
+        min: str | None = None,
+        max: str | None = None,
+    ):
+        """Règle ou efface la zone de tolérance d'une fourchette.
+
+        Les deux bornes ou aucune : une seule ne décrit pas une plage, et
+        `find_promos` ignorerait la zone à moitié réglée — la commande aurait
+        alors confirmé un réglage sans effet.
+        """
+        if (min is None) != (max is None):
+            await interaction.response.send_message(
+                "❌ Donne les **deux** bornes, ou aucune pour effacer la zone.\n"
+                "-# `/fourchette tolerance nom:… min:50T max:8P`",
+                ephemeral=True,
+            )
+            return
+
+        if min is None:
+            if not await bot.store.effacer_tolerance_fourchette(nom):
+                fourchettes = await bot.store.fourchettes()
+                if bot.store._index(fourchettes, nom) < 0:
+                    await _refuser_nom_inconnu(interaction, nom)
+                else:
+                    await interaction.response.send_message(
+                        f"ℹ️ **{nom.strip()}** n'avait pas de zone de tolérance.",
+                        ephemeral=True,
+                    )
+                return
+
+            await interaction.response.send_message(
+                f"✅ Zone de tolérance de **{nom.strip()}** effacée.\n"
+                "-# Le repêchage reprend au plus proche, dans les deux sens.",
+                ephemeral=True,
+            )
+            return
+
+        try:
+            tolere_min, tolere_max = parse_money(min), parse_money(max)
+        except MoneyError as erreur:
+            await interaction.response.send_message(
+                f"❌ {erreur}\n{_aide_montants()}", ephemeral=True
+            )
+            return
+
+        try:
+            regle = await bot.store.majtolerance_fourchette(nom, tolere_min, tolere_max)
+        except ValueError as erreur:
+            await interaction.response.send_message(f"❌ {erreur}", ephemeral=True)
+            return
+
+        if not regle:
+            await _refuser_nom_inconnu(interaction, nom)
+            return
+
+        if tolere_min > tolere_max:
+            tolere_min, tolere_max = tolere_max, tolere_min
+        await interaction.response.send_message(
+            f"✅ **{nom.strip()}** tolère **{format_money(tolere_min)}** → "
+            f"**{format_money(tolere_max)}**.\n"
+            "-# Cherché là en priorité quand la fourchette n'a pas assez de promos.",
             ephemeral=True,
         )
 
@@ -1195,10 +1304,13 @@ def enregistrer_commandes(bot: EmpireBot) -> None:
             return
 
         for fourchette in fourchettes:
+            tolere_min, tolere_max = bornes_tolerees(fourchette)
             embeds, contenu, repli = await bot.construire_publication(
                 Decimal(fourchette["prix_min"]),
                 Decimal(fourchette["prix_max"]),
                 donnees=donnees,
+                tolere_min=tolere_min,
+                tolere_max=tolere_max,
             )
 
             # Le nom en tête de chaque aperçu : deux posts d'affilée seraient
