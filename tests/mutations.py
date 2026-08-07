@@ -510,6 +510,123 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
         "        if True:",
         "le site dessinerait une zone à 0 Ø que personne n'a réglée",
     ),
+    # --- Le convertisseur et les frais de gestion --------------------------
+    #
+    # `rounding` est passé en chaîne (`"ROUND_DOWN"`) et non par la constante :
+    # `decimal` accepte les deux, et la constante n'est pas importée dans
+    # `money.py` — la mutation échouerait sur un NameError, donc pour la
+    # mauvaise raison.
+    (
+        "money-convertir-rebascule-de-palier",
+        "src/money.py",
+        "    entier, _, decimales = f\"{mantisse:.2f}\".partition(\".\")",
+        "    if mantisse >= 1000:\n        return format_money(valeur)\n"
+        "    entier, _, decimales = f\"{mantisse:.2f}\".partition(\".\")",
+        "convertir redeviendrait format_money : le palier demandé serait ignoré",
+    ),
+    (
+        "money-convertir-tronque",
+        "src/money.py",
+        "    mantisse = (abs(valeur) / Decimal(10) ** exposant).quantize(\n"
+        "        Decimal(\"0.01\"), rounding=ROUND_HALF_UP\n"
+        "    )",
+        "    mantisse = (abs(valeur) / Decimal(10) ** exposant).quantize(\n"
+        "        Decimal(\"0.01\"), rounding=\"ROUND_DOWN\"\n"
+        "    )",
+        "2 710,578 TØ s'afficherait 2 710,57 au lieu de 2 710,58",
+    ),
+    (
+        "money-convertir-perd-le-signe",
+        "src/money.py",
+        "    signe = \"-\" if valeur < 0 else \"\"\n    mantisse",
+        "    signe = \"\"\n    mantisse",
+        "un montant négatif serait rendu positif",
+    ),
+    (
+        "money-convertir-unite-refusee",
+        "src/money.py",
+        "    if cible in (\"Ø\", \"O\", \"0\", \"\"):",
+        "    if False:",
+        "demander l'unité lèverait « symbole inconnu » alors que le jeu l'affiche",
+    ),
+    (
+        "money-convertir-symbole-inconnu-accepte",
+        "src/money.py",
+        "    else:\n"
+        "        raise MoneyError(\n"
+        "            f\"Symbole monétaire inconnu : « {symbole} ». \"\n"
+        "            f\"Symboles valides : {_symboles_valides()}.\"\n"
+        "        )\n"
+        "\n"
+        "    valeur = Decimal(montant)",
+        "    else:\n"
+        "        exposant, affiche = 0, cible\n"
+        "\n"
+        "    valeur = Decimal(montant)",
+        "« B » serait converti en silence au lieu de lister les symboles valides",
+    ),
+    (
+        "money-frais-tronque",
+        "src/money.py",
+        "    return (Decimal(montant) * taux / CENT_POURCENT).quantize(\n"
+        "        Decimal(1), rounding=ROUND_HALF_UP\n"
+        "    )",
+        "    return (Decimal(montant) * taux / CENT_POURCENT).quantize(\n"
+        "        Decimal(1), rounding=\"ROUND_DOWN\"\n"
+        "    )",
+        "les frais seraient arrondis vers le bas, contre la règle du bot",
+    ),
+    (
+        "money-frais-garde-les-decimales",
+        "src/money.py",
+        "    return (Decimal(montant) * taux / CENT_POURCENT).quantize(\n"
+        "        Decimal(1), rounding=ROUND_HALF_UP\n"
+        "    )",
+        "    return Decimal(montant) * taux / CENT_POURCENT",
+        "le jeu ne facture pas de fraction d'Ø ; on afficherait 70,07",
+    ),
+    (
+        "money-taux-de-gestion-faux",
+        "src/money.py",
+        "TAUX_GESTION = Decimal(7)",
+        "TAUX_GESTION = Decimal(10)",
+        "les frais seraient calculés à 10 % et personne ne le verrait",
+    ),
+    (
+        "bot-frais-taux-recopie-en-dur",
+        "src/bot.py",
+        "        frais = frais_de_gestion(valeur)",
+        "        frais = valeur * Decimal(10) / Decimal(100)",
+        "le message afficherait 7 % et le calcul en appliquerait un autre",
+    ),
+    (
+        "bot-convertir-ignore-le-palier",
+        "src/bot.py",
+        "            rendu = convertir(valeur, vers)",
+        "            rendu = format_money(valeur)",
+        "/convertir rendrait le palier que le bot choisit, pas celui demandé",
+    ),
+    (
+        "bot-convertir-ne-rappelle-pas-la-saisie",
+        "src/bot.py",
+        "            f\"**{format_money(valeur)}** = **{rendu}**\\n\"",
+        "            f\"**{rendu}**\\n\"",
+        "on ne pourrait plus vérifier que « 50 6P » a été lu comme 506 PØ",
+    ),
+    (
+        "bot-frais-public",
+        "src/bot.py",
+        "            f\"-# {format_money_long(frais)}\",\n            ephemeral=True,",
+        "            f\"-# {format_money_long(frais)}\",\n            ephemeral=False,",
+        "un calcul personnel encombrerait le salon",
+    ),
+    (
+        "bot-convertir-sans-l-unite",
+        "src/bot.py",
+        "    return [app_commands.Choice(name=\"Ø — unité\", value=\"Ø\"), *choix]",
+        "    return choix",
+        "l'unité disparaîtrait du menu, sans autre moyen de la demander",
+    ),
 ]
 
 

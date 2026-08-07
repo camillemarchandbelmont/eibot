@@ -7,6 +7,9 @@ import pytest
 from src.money import (
     ECHELLE,
     MoneyError,
+    TAUX_GESTION,
+    convertir,
+    frais_de_gestion,
     format_money,
     format_money_brut,
     format_money_long,
@@ -191,3 +194,116 @@ def test_message_erreur_liste_les_symboles():
 def test_parse_grand_entier_sans_perte():
     grand = "138131471904669765329"
     assert parse_money(grand) == Decimal(grand)
+
+
+# --- Conversion d'un palier à l'autre ---------------------------------------
+#
+# `format_money` choisit toujours le palier le plus grand qui tient. Convertir,
+# c'est imposer le palier d'arrivée : on veut lire « 1 000 000 MØ » là où le bot
+# écrirait « 1,00 TØ », parce que le jeu affiche parfois l'autre.
+
+@pytest.mark.parametrize(
+    "montant, symbole, attendu",
+    [
+        # Un palier vers le suivant, dans les deux sens.
+        ("1" + "0" * 15, "T", "1 000,00 TØ"),
+        ("1" + "0" * 12, "M", "1 000 000,00 MØ"),
+        # Le cas du jeu : une promo à 2,71 PØ lue en TØ.
+        ("2710572934559948", "T", "2 710,57 TØ"),
+        # Palier d'arrivée plus grand que le montant : la mantisse descend
+        # sous 1 plutôt que de basculer sur un autre symbole.
+        ("1" + "0" * 12, "P", "0,00 PØ"),
+        ("5" + "0" * 14, "P", "0,50 PØ"),
+        # Vingt-et-un ordres de grandeur d'écart, la limite de la table.
+        ("1" + "0" * 45, "K", "1 000 000 000 000 000 000 000 000 000 000 000 000 000 000,00 KØ"),
+    ],
+)
+def test_convertir_vers_un_palier(montant, symbole, attendu):
+    assert convertir(Decimal(montant), symbole) == attendu
+
+
+def test_convertir_accepte_le_symbole_en_minuscule():
+    """On tape vite dans Discord ; la saisie des montants tolère déjà la casse."""
+    assert convertir(Decimal("1" + "0" * 15), "t") == "1 000,00 TØ"
+
+
+def test_convertir_vers_l_unite():
+    """`Ø` seul est un palier légitime : c'est ce que le jeu affiche en dur."""
+    assert convertir(Decimal("2500"), "Ø") == "2 500,00 Ø"
+
+
+def test_convertir_symbole_inconnu_liste_les_valides():
+    """Le message doit donner la table : `B` n'existe pas dans ce jeu, et rien
+    dans l'interface ne dit lesquels existent."""
+    with pytest.raises(MoneyError, match="B"):
+        convertir(Decimal(1000), "B")
+
+    with pytest.raises(MoneyError) as capture:
+        convertir(Decimal(1000), "B")
+    assert "billion" in str(capture.value)
+
+
+def test_convertir_arrondit_au_plus_proche():
+    """Même règle que `format_money` : une troncature aurait donné 2 710,57.
+
+    Discriminant, contrairement aux autres cas de la table : 2 710,578 tombe
+    au-dessus de la moitié, là où 2 710,5729 s'arrondit pareil dans les deux
+    sens et ne prouverait donc rien.
+    """
+    assert convertir(Decimal("2710578000000000"), "T") == "2 710,58 TØ"
+
+
+def test_convertir_garde_le_signe():
+    assert convertir(Decimal("-1" + "0" * 15), "T") == "-1 000,00 TØ"
+
+
+def test_convertir_zero():
+    assert convertir(Decimal(0), "T") == "0,00 TØ"
+
+
+# --- Frais de gestion -------------------------------------------------------
+#
+# 7 % du montant, sans décimales : c'est ce que le jeu prélève. Le taux vit dans
+# `money.py` avec la table de l'échelle plutôt que dans la commande, pour que le
+# calcul soit testable sans Discord.
+
+def test_frais_de_gestion_sur_un_montant_rond():
+    assert frais_de_gestion(Decimal(1000)) == Decimal(70)
+
+
+def test_frais_de_gestion_sans_decimales():
+    """La raison d'être de la fonction : le jeu ne facture pas de fraction."""
+    # 7 % de 1 001 = 70,07
+    assert frais_de_gestion(Decimal(1001)) == Decimal(70)
+
+
+def test_frais_de_gestion_arrondi_au_plus_proche():
+    """Même règle que `format_money` partout ailleurs dans le bot."""
+    # 7 % de 1 008 = 70,56 -> 71, et non 70.
+    assert frais_de_gestion(Decimal(1008)) == Decimal(71)
+    # 7 % de 1 007 = 70,49 -> 70.
+    assert frais_de_gestion(Decimal(1007)) == Decimal(70)
+
+
+def test_frais_de_gestion_sur_un_montant_du_jeu_sans_perte():
+    """21 chiffres : un float aurait perdu les derniers avant l'arrondi."""
+    # 7 % de 2 710 572 934 559 948 = 189 740 105 419 196,36 -> 189 740 105 419 196
+    assert frais_de_gestion(Decimal("2710572934559948")) == Decimal("189740105419196")
+
+
+def test_frais_de_gestion_de_zero():
+    assert frais_de_gestion(Decimal(0)) == Decimal(0)
+
+
+def test_frais_de_gestion_renvoie_un_entier_exact():
+    """Un `Decimal` à exposant nul, pas `70.00` : il est reformaté ensuite, et
+    `format_money_long` ne doit pas avoir à réarrondir."""
+    frais = frais_de_gestion(Decimal(1001))
+    assert frais == frais.to_integral_value()
+    assert str(frais) == "70"
+
+
+def test_taux_de_gestion_expose():
+    """Pour que la commande affiche le taux sans le recopier en dur : deux
+    valeurs différentes dans le message et dans le calcul seraient invisibles."""
+    assert TAUX_GESTION == Decimal(7)

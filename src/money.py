@@ -18,6 +18,10 @@ getcontext().prec = 60
 
 DEVISE = "Ø"
 
+#: Diviseur des pourcentages. `promos.py` a sa propre constante `CENT` ; les
+#: deux modules restent indépendants, ce qui est le contrat de `money.py`.
+CENT_POURCENT = Decimal(100)
+
 #: (exposant décimal, symbole), du plus grand au plus petit.
 ECHELLE: list[tuple[int, str]] = [
     (45, "D"),  # septilliard
@@ -108,6 +112,57 @@ def format_money(montant: Decimal) -> str:
 
     # Inatteignable : valeur >= 1000 trouve toujours au moins le palier K.
     return f"{signe}{valeur:.4E}{_NBSP}{DEVISE}"  # pragma: no cover
+
+
+#: Taux des frais de gestion prélevés par le jeu, en pourcentage. Défini ici et
+#: non dans la commande : le message affiche ce taux, et deux valeurs
+#: divergentes entre le texte et le calcul ne se verraient pas.
+TAUX_GESTION = Decimal(7)
+
+
+def frais_de_gestion(montant: Decimal, taux: Decimal = TAUX_GESTION) -> Decimal:
+    """Frais de gestion sur un montant, **sans décimales**.
+
+    Le jeu ne facture pas de fraction d'Ø. On arrondit au plus proche, comme
+    `format_money` partout ailleurs, et on renvoie un `Decimal` à exposant nul
+    pour que les formateurs n'aient pas à réarrondir derrière.
+    """
+    return (Decimal(montant) * taux / CENT_POURCENT).quantize(
+        Decimal(1), rounding=ROUND_HALF_UP
+    )
+
+
+def convertir(montant: Decimal, symbole: str) -> str:
+    """Exprime un montant dans le palier demandé : (1e15, 'T') -> '1 000,00 TØ'.
+
+    `format_money` choisit toujours le plus grand palier qui tient. Convertir,
+    c'est **imposer** celui d'arrivée : le jeu affiche parfois `1 000 000 MØ` là
+    où le bot écrirait `1,00 TØ`, et recouper les deux à la main est fastidieux.
+
+    La mantisse peut donc dépasser 1000 ou tomber sous 1 — c'est le but, et on
+    ne rebascule pas sur un autre symbole comme le fait `format_money`.
+    """
+    cible = str(symbole or "").strip().upper()
+    # `Ø` (ou `O`/`0` mal tapés) désigne l'unité, un palier que le jeu affiche
+    # en dur et qui n'est pas dans la table.
+    if cible in ("Ø", "O", "0", ""):
+        exposant, affiche = 0, ""
+    elif cible in _MULTIPLICATEURS:
+        exposant, affiche = _MULTIPLICATEURS[cible].adjusted(), cible
+    else:
+        raise MoneyError(
+            f"Symbole monétaire inconnu : « {symbole} ». "
+            f"Symboles valides : {_symboles_valides()}."
+        )
+
+    valeur = Decimal(montant)
+    signe = "-" if valeur < 0 else ""
+    mantisse = (abs(valeur) / Decimal(10) ** exposant).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
+
+    entier, _, decimales = f"{mantisse:.2f}".partition(".")
+    return f"{signe}{_grouper(entier)},{decimales}{_NBSP}{affiche}{DEVISE}"
 
 
 def format_money_long(montant: Decimal) -> str:

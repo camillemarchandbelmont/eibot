@@ -93,6 +93,28 @@ La saisie est tolérante : `6P`, `6 P`, `50 6P`, `12,25M`, `1.5G`, `2,71 PØ`,
 `840`. La casse est indifférente, le `Ø` final optionnel, et un montant
 recopié depuis un message du bot est réutilisable tel quel.
 
+### Deux calculatrices
+
+Le bot affiche toujours un montant dans le plus grand palier qui tient
+(`2,71 PØ`). Le jeu, lui, en choisit parfois un autre pour le même montant, et
+recouper les deux à la main est fastidieux — d'où deux commandes qui ne touchent
+à aucun réglage.
+
+`/convertir montant vers` impose le palier d'arrivée : `2,71P` vers `T` donne
+`2 710,57 TØ`. Le palier se choisit dans un menu déroulant — les symboles ne
+suivent pas les préfixes SI, donc personne ne les tape de mémoire. La mantisse
+peut dépasser 1 000 ou tomber sous 1 : c'est le but, et le bot ne rebascule pas
+sur un autre symbole comme il le fait ailleurs.
+
+`/frais montant` calcule les frais de gestion, **7 % sans décimales** — le jeu
+ne facture pas de fraction d'Ø. L'arrondi est au plus proche, comme partout dans
+le bot.
+
+Les deux rappellent le montant de départ tel qu'elles l'ont compris (la seule
+façon de vérifier que `50 6P` a bien été lu comme 506 PØ), donnent le résultat en
+notation courte **et** en chiffres complets (on ne paie pas « 189,70 TØ »), et
+répondent en privé.
+
 ## Installation
 
 ```bash
@@ -127,6 +149,8 @@ local, mais elle repart des valeurs de `.env` à chaque redémarrage.
 
 | Commande | Effet |
 |---|---|
+| `/convertir montant vers` | Exprime un montant dans un autre palier (`2,71P` → `2 710,57 TØ`) |
+| `/frais montant` | Frais de gestion sur un montant (7 %, sans décimales) |
 | `/promos [min] [max]` | Promotions à la demande ; sans argument, l'**union** des fourchettes |
 | `/fourchette ajouter nom min max` | Crée une fourchette (ex : `nom:grosses min:100T max:6P`) |
 | `/fourchette prix nom min max` | Modifie ses bornes, en gardant ses salons |

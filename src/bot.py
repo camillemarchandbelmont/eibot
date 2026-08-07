@@ -17,7 +17,17 @@ from src import settings
 from src.acces import acces_autorise, gere_la_liste
 from src.db import Store, bornes_tolerees
 from src.journal import Journal
-from src.money import MoneyError, format_money, parse_money
+from src.money import (
+    ECHELLE,
+    NOMS,
+    TAUX_GESTION,
+    MoneyError,
+    convertir,
+    format_money,
+    format_money_long,
+    frais_de_gestion,
+    parse_money,
+)
 from src.promos import Building, Meta, find_promos, parse_csv
 from src.publish import construire_embeds, envoyer, message_aucune_promo
 from src.schedule import (
@@ -490,8 +500,83 @@ def _aide_montants() -> str:
     )
 
 
+def _choix_symboles() -> list[app_commands.Choice]:
+    """Les 15 paliers du jeu, plus l'unité, en menu déroulant.
+
+    Une liste de choix plutôt qu'un champ libre : les symboles ne suivent pas
+    les préfixes SI (`G` est un milliard, `E` vaut 10^18), donc personne ne les
+    devine, et Discord plafonne à 25 choix — la table en compte 16.
+    """
+    choix = [
+        app_commands.Choice(name=f"{symbole}Ø — {NOMS[symbole]}", value=symbole)
+        for _, symbole in reversed(ECHELLE)
+    ]
+    # L'unité en tête : c'est le palier qu'on demande pour « voir tous les
+    # chiffres », et il n'est pas dans la table.
+    return [app_commands.Choice(name="Ø — unité", value="Ø"), *choix]
+
+
 def enregistrer_commandes(bot: EmpireBot) -> None:
     tree = bot.tree
+
+    # --- /convertir et /frais : deux calculatrices, sans état -------------
+
+    @tree.command(
+        name="convertir", description="Exprime un montant dans un autre palier (P → T, Z → M…)"
+    )
+    @app_commands.describe(
+        montant="Montant de départ (ex: 2,71P, 50 6P, 840)",
+        vers="Palier d'arrivée",
+    )
+    @app_commands.choices(vers=_choix_symboles())
+    async def convertir_commande(
+        interaction: discord.Interaction, montant: str, vers: str
+    ):
+        try:
+            valeur = parse_money(montant)
+        except MoneyError as erreur:
+            await interaction.response.send_message(
+                f"❌ {erreur}\n{_aide_montants()}", ephemeral=True
+            )
+            return
+
+        try:
+            rendu = convertir(valeur, vers)
+        except MoneyError as erreur:
+            await interaction.response.send_message(f"❌ {erreur}", ephemeral=True)
+            return
+
+        # Le montant de départ est rappelé sous sa forme comprise : c'est le
+        # seul moyen de vérifier que `50 6P` a bien été lu comme 506 PØ.
+        await interaction.response.send_message(
+            f"**{format_money(valeur)}** = **{rendu}**\n"
+            f"-# {format_money_long(valeur)}",
+            ephemeral=True,
+        )
+
+    @tree.command(
+        name="frais", description="Frais de gestion sur un montant (7 %, sans décimales)"
+    )
+    @app_commands.describe(montant="Montant sur lequel calculer (ex: 2,71P, 100T)")
+    async def frais_commande(interaction: discord.Interaction, montant: str):
+        try:
+            valeur = parse_money(montant)
+        except MoneyError as erreur:
+            await interaction.response.send_message(
+                f"❌ {erreur}\n{_aide_montants()}", ephemeral=True
+            )
+            return
+
+        frais = frais_de_gestion(valeur)
+        # Les deux formes : la courte pour lire, la longue pour recopier dans le
+        # jeu — on ne paie pas « 189,70 TØ ».
+        await interaction.response.send_message(
+            f"Frais de gestion sur **{format_money(valeur)}** "
+            f"({TAUX_GESTION.normalize():f} %) :\n"
+            f"**{format_money(frais)}**\n"
+            f"-# {format_money_long(frais)}",
+            ephemeral=True,
+        )
 
     # --- /promos ----------------------------------------------------------
 
