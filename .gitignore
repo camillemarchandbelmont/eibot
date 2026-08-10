@@ -6,6 +6,13 @@
 # Brouillons d'exécution des plans (ledger, briefs, diffs de relecture).
 .superpowers/
 
+# Vérifications au navigateur : captures, arbres d'accessibilité, journaux de
+# console. Jetables — elles décrivent un instant, pas le code.
+.playwright-mcp/
+*.png
+# Vidage de pile de Git Bash sous Windows.
+*.stackdump
+
 # Python
 __pycache__/
 *.py[cod]
