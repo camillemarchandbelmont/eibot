@@ -139,7 +139,7 @@ async def test_ajouter_confirme_avec_les_bornes_formatees():
 
     texte = " ".join(interaction.textes)
     assert "grosses" in texte
-    assert "100,00" in texte and "6,00" in texte
+    assert "100.00" in texte and "6.00" in texte
     assert [f["nom"] for f in await bot.store.fourchettes()] == ["grosses"]
 
 
@@ -356,7 +356,7 @@ async def test_liste_montre_bornes_et_salons():
     embed = interaction.embeds[0]
     rendu = embed.description or "".join(c.value for c in embed.fields)
     assert "grosses" in rendu
-    assert "100,00" in rendu
+    assert "100.00" in rendu
     assert "<#111>" in rendu
 
 

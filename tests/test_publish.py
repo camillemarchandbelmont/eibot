@@ -94,8 +94,8 @@ def test_embed_unique_trop_gros_reste_seul():
 def test_message_aucune_promo_affiche_la_fourchette(donnees):
     meta, _ = donnees
     texte = message_aucune_promo(Decimal("1e14"), Decimal("6e15"), meta)
-    assert "100,00 TØ" in texte
-    assert "6,00 PØ" in texte
+    assert "100.00 TØ" in texte
+    assert "6.00 PØ" in texte
     assert "Empire Immo - M8" in texte
 
 

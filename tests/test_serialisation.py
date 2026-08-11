@@ -80,10 +80,10 @@ def test_json_sans_perte_apres_aller_retour():
 
 def test_montant_formate_et_brut():
     """Le site affiche `prix` et trie sur `prix_brut` : un tri lexicographique
-    sur « 2,71 PØ » donnerait un ordre absurde."""
+    sur « 2.71 PØ » donnerait un ordre absurde."""
     rendu = promo_en_json(to_promo(_batiment("2710572934559948")))
 
-    assert rendu["prix"] == "2,71 PØ"      # espace insécable, comme dans Discord
+    assert rendu["prix"] == "2.71 PØ"      # espace insécable, comme dans Discord
     assert rendu["prix_brut"] == "2710572934559948"
 
 
@@ -98,7 +98,7 @@ def test_calculs_conformes_au_jeu():
     rendu = promo_en_json(to_promo(_batiment("302620")))
 
     assert rendu["prix_brut"] == "302620"
-    assert rendu["prix_origine"].startswith("364,6")
+    assert rendu["prix_origine"].startswith("364.6")
     assert Decimal(rendu["economie_brut"]) > 0
 
 
@@ -133,7 +133,7 @@ def test_config_en_json():
     assert fourchette["nom"] == "grosses"
     assert fourchette["salons"] == ["111", "222"]
     assert fourchette["prix_min_brut"] == "100000000000000"   # 1e14 développé
-    assert fourchette["prix_min"] == "100,00 TØ"
+    assert fourchette["prix_min"] == "100.00 TØ"
     assert rendu["heure"] == "09:00"
     assert rendu["roles"] == {}
     assert "role_id" not in rendu

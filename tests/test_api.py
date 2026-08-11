@@ -306,7 +306,7 @@ async def test_promos_prix_intacts(api):
 
     megapole = next(p for p in corps["promos"] if p["nom"] == "Mégapôle")
     assert megapole["prix_brut"] == "173019538387120000000"
-    assert megapole["prix"] == f"173,02{NBSP}EØ"
+    assert megapole["prix"] == f"173.02{NBSP}EØ"
 
 
 async def test_erreur_inattendue_ne_fuit_pas_la_cle_dapi(monkeypatch, client_pour):
@@ -543,7 +543,7 @@ async def test_apercu_rend_le_post_sans_publier(api):
     corps = await reponse.json()
     assert corps["messages"], "l'aperçu doit contenir au moins un message"
     rendu = json.dumps(corps["messages"], ensure_ascii=False)
-    assert "Mégapôle" in rendu and f"173,02{NBSP}EØ" in rendu
+    assert "Mégapôle" in rendu and f"173.02{NBSP}EØ" in rendu
     # Rien n'a été publié ni enregistré.
     assert bot.publications == []
 

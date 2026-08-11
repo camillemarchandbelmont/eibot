@@ -75,10 +75,12 @@ def _grouper(chiffres: str) -> str:
 
 
 def format_money(montant: Decimal) -> str:
-    """Notation courte du jeu : 2710572934559948 -> '2,71 PØ'.
+    """Notation courte du jeu : 2710572934559948 -> '2.71 PØ'.
 
-    Arrondi au plus proche sur 2 décimales, virgule comme séparateur
-    décimal, espace insécable avant le symbole.
+    Arrondi au plus proche sur 2 décimales, **point** comme séparateur décimal
+    — c'est ce que le jeu affiche (`4.58P`), et le bot doit se recouper à l'œil
+    avec le tableau du jeu. La saisie, elle, accepte les deux (voir
+    `parse_money`). Espace insécable avant le symbole.
     """
     signe = "-" if montant < 0 else ""
     valeur = abs(Decimal(montant))
@@ -96,7 +98,7 @@ def format_money(montant: Decimal) -> str:
             Decimal("0.01"), rounding=ROUND_HALF_UP
         )
         # L'arrondi peut pousser la mantisse au palier supérieur :
-        # 999,996 GØ doit s'afficher 1,00 TØ, pas 1000,00 GØ.
+        # 999.996 GØ doit s'afficher 1.00 TØ, pas 1000.00 GØ.
         if mantisse >= 1000:
             if rang == 0:
                 # Plus rien au-dessus dans la table : notation scientifique,
@@ -107,8 +109,7 @@ def format_money(montant: Decimal) -> str:
                 Decimal("0.01"), rounding=ROUND_HALF_UP
             )
 
-        texte = f"{mantisse:.2f}".replace(".", ",")
-        return f"{signe}{texte}{_NBSP}{symbole}{DEVISE}"
+        return f"{signe}{mantisse:.2f}{_NBSP}{symbole}{DEVISE}"
 
     # Inatteignable : valeur >= 1000 trouve toujours au moins le palier K.
     return f"{signe}{valeur:.4E}{_NBSP}{DEVISE}"  # pragma: no cover
@@ -133,11 +134,11 @@ def frais_de_gestion(montant: Decimal, taux: Decimal = TAUX_GESTION) -> Decimal:
 
 
 def convertir(montant: Decimal, symbole: str) -> str:
-    """Exprime un montant dans le palier demandé : (1e15, 'T') -> '1 000,00 TØ'.
+    """Exprime un montant dans le palier demandé : (1e15, 'T') -> '1 000.00 TØ'.
 
     `format_money` choisit toujours le plus grand palier qui tient. Convertir,
     c'est **imposer** celui d'arrivée : le jeu affiche parfois `1 000 000 MØ` là
-    où le bot écrirait `1,00 TØ`, et recouper les deux à la main est fastidieux.
+    où le bot écrirait `1.00 TØ`, et recouper les deux à la main est fastidieux.
 
     La mantisse peut donc dépasser 1000 ou tomber sous 1 — c'est le but, et on
     ne rebascule pas sur un autre symbole comme le fait `format_money`.
@@ -162,7 +163,7 @@ def convertir(montant: Decimal, symbole: str) -> str:
     )
 
     entier, _, decimales = f"{mantisse:.2f}".partition(".")
-    return f"{signe}{_grouper(entier)},{decimales}{_NBSP}{affiche}{DEVISE}"
+    return f"{signe}{_grouper(entier)}.{decimales}{_NBSP}{affiche}{DEVISE}"
 
 
 def format_money_long(montant: Decimal) -> str:
@@ -185,9 +186,12 @@ def _symboles_valides() -> str:
 def parse_money(texte: str) -> Decimal:
     """Lit un montant saisi dans Discord.
 
-    Tolérant par conception : `50 6P`, `12,25M`, `1.5 gø`, `840`, ou un
-    montant recopié depuis un message du bot. Les espaces sont traités
-    comme des séparateurs de milliers, d'où `50 6P` == `506 PØ`.
+    Tolérant par conception : `50 6P`, `12.25M`, `1,5 gø`, `840`, ou un
+    montant recopié depuis un message du bot. Le point et la virgule sont
+    acceptés tous deux comme séparateur décimal — l'affichage a tranché pour le
+    point (celui du jeu), mais un clavier français tape plus vite la virgule.
+    Les espaces sont traités comme des séparateurs de milliers, d'où
+    `50 6P` == `506 PØ`.
     """
     if texte is None:
         raise MoneyError("Montant vide.")
@@ -234,12 +238,12 @@ def parse_money(texte: str) -> Decimal:
     if not chiffres:
         raise MoneyError(
             f"Aucun nombre dans « {brut} ». "
-            f"Exemples valides : 840, 12,25M, 100T, 50 6P."
+            f"Exemples valides : 840, 12.25M, 100T, 50 6P."
         )
     if not re.fullmatch(r"\d+(\.\d+)?", chiffres):
         raise MoneyError(
             f"Montant illisible : « {brut} ». "
-            f"Exemples valides : 840, 12,25M, 100T, 50 6P."
+            f"Exemples valides : 840, 12.25M, 100T, 50 6P."
         )
 
     try:

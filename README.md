@@ -89,19 +89,23 @@ comprend à la saisie et les utilise à l'affichage.
 | `Z` | 10²¹ | trilliard | `D` | 10⁴⁵ | septilliard |
 | `Y` | 10²⁴ | quadrillion | | | |
 
-La saisie est tolérante : `6P`, `6 P`, `50 6P`, `12,25M`, `1.5G`, `2,71 PØ`,
-`840`. La casse est indifférente, le `Ø` final optionnel, et un montant
-recopié depuis un message du bot est réutilisable tel quel.
+Le séparateur décimal affiché est le **point**, comme dans le jeu (`4.58P`) :
+les deux tableaux se recoupent ainsi à l'œil, sans traduction mentale.
+
+La saisie, elle, est tolérante : `6P`, `6 P`, `50 6P`, `12.25M`, `1,5G`,
+`2.71 PØ`, `840`. Le point et la virgule sont acceptés tous deux comme
+séparateur décimal, la casse est indifférente, le `Ø` final optionnel, et un
+montant recopié depuis un message du bot est réutilisable tel quel.
 
 ### Deux calculatrices
 
 Le bot affiche toujours un montant dans le plus grand palier qui tient
-(`2,71 PØ`). Le jeu, lui, en choisit parfois un autre pour le même montant, et
+(`2.71 PØ`). Le jeu, lui, en choisit parfois un autre pour le même montant, et
 recouper les deux à la main est fastidieux — d'où deux commandes qui ne touchent
 à aucun réglage.
 
-`/convertir montant vers` impose le palier d'arrivée : `2,71P` vers `T` donne
-`2 710,57 TØ`. Le palier se choisit dans un menu déroulant — les symboles ne
+`/convertir montant vers` impose le palier d'arrivée : `2.71P` vers `T` donne
+`2 710.57 TØ`. Le palier se choisit dans un menu déroulant — les symboles ne
 suivent pas les préfixes SI, donc personne ne les tape de mémoire. La mantisse
 peut dépasser 1 000 ou tomber sous 1 : c'est le but, et le bot ne rebascule pas
 sur un autre symbole comme il le fait ailleurs.
@@ -112,7 +116,7 @@ le bot.
 
 Les deux rappellent le montant de départ tel qu'elles l'ont compris (la seule
 façon de vérifier que `50 6P` a bien été lu comme 506 PØ), donnent le résultat en
-notation courte **et** en chiffres complets (on ne paie pas « 189,70 TØ »), et
+notation courte **et** en chiffres complets (on ne paie pas « 189.70 TØ »), et
 répondent en privé.
 
 ## Installation
@@ -149,7 +153,7 @@ local, mais elle repart des valeurs de `.env` à chaque redémarrage.
 
 | Commande | Effet |
 |---|---|
-| `/convertir montant vers` | Exprime un montant dans un autre palier (`2,71P` → `2 710,57 TØ`) |
+| `/convertir montant vers` | Exprime un montant dans un autre palier (`2.71P` → `2 710.57 TØ`) |
 | `/frais montant` | Frais de gestion sur un montant (7 %, sans décimales) |
 | `/promos [min] [max]` | Promotions à la demande ; sans argument, l'**union** des fourchettes |
 | `/fourchette ajouter nom min max` | Crée une fourchette (ex : `nom:grosses min:100T max:6P`) |
@@ -320,7 +324,7 @@ Chaque montant accepte deux variantes :
 
 | Forme | Rendu |
 |---|---|
-| `{prix}` | `302,62 KØ` |
+| `{prix}` | `302.62 KØ` |
 | `{prix_long}` | `302 620 Ø` |
 | `{prix_brut}` | `302620` |
 

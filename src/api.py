@@ -97,7 +97,7 @@ def _autorise(requete: web.Request) -> bool:
 def _montant(brut: Any, champ: str) -> Decimal:
     """Lit un montant saisi sur le site, avec la grammaire de Discord.
 
-    Une seule grammaire pour les deux façades : `100T`, `50 6P` ou `2,71 PØ`
+    Une seule grammaire pour les deux façades : `100T`, `50 6P` ou `2.71 PØ`
     recopié depuis un post fonctionnent ici comme dans `/config prix`.
     """
     try:

@@ -25,7 +25,7 @@ async def test_convertir_affiche_le_montant_dans_le_palier_demande():
     await _commande(bot, "convertir").callback(interaction, montant="1P", vers="T")
 
     texte = " ".join(interaction.textes)
-    assert "1 000,00" in texte.replace(" ", " ")
+    assert "1 000.00" in texte.replace(" ", " ")
     assert "TØ" in texte
 
 
@@ -38,8 +38,8 @@ async def test_convertir_rappelle_le_montant_de_depart():
     await _commande(bot, "convertir").callback(interaction, montant="50 6P", vers="T")
 
     texte = " ".join(interaction.textes).replace(" ", " ")
-    assert "506,00 PØ" in texte
-    assert "506 000,00 TØ" in texte
+    assert "506.00 PØ" in texte
+    assert "506 000.00 TØ" in texte
 
 
 async def test_convertir_montant_illisible_refuse_avec_l_aide():
@@ -50,7 +50,7 @@ async def test_convertir_montant_illisible_refuse_avec_l_aide():
 
     texte = " ".join(interaction.textes)
     assert "❌" in texte
-    assert "12,25M" in texte  # l'aide sur les formats
+    assert "12.25M" in texte  # l'aide sur les formats
 
 
 async def test_convertir_symbole_inconnu_liste_les_valides():
@@ -106,12 +106,12 @@ async def test_frais_affiche_le_montant_sans_decimales():
 
     texte = " ".join(interaction.textes).replace(" ", " ")
     # 7 % de 2 710 000 000 000 000 = 189 700 000 000 000
-    assert "189,70 TØ" in texte
+    assert "189.70 TØ" in texte
 
 
 async def test_frais_donne_tous_les_chiffres():
     """Le montant exact est ce qu'on recopie dans le jeu ; la notation courte
-    (`189,70 TØ`) ne suffit pas pour payer."""
+    (`189.70 TØ`) ne suffit pas pour payer."""
     bot = await _bot()
     interaction = InteractionFactice()
 
@@ -143,7 +143,7 @@ async def test_frais_rappelle_le_montant_de_depart():
     await _commande(bot, "frais").callback(interaction, montant="1P")
 
     texte = " ".join(interaction.textes).replace(" ", " ")
-    assert "1,00 PØ" in texte
+    assert "1.00 PØ" in texte
 
 
 async def test_frais_montant_illisible_refuse_avec_l_aide():
@@ -154,7 +154,7 @@ async def test_frais_montant_illisible_refuse_avec_l_aide():
 
     texte = " ".join(interaction.textes)
     assert "❌" in texte
-    assert "12,25M" in texte
+    assert "12.25M" in texte
 
 
 async def test_frais_reste_prive():

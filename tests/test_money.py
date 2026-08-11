@@ -22,32 +22,32 @@ from src.money import (
 @pytest.mark.parametrize(
     "montant, attendu",
     [
-        ("10234", "10,23 KØ"),
-        ("12250000", "12,25 MØ"),
-        ("15450000000", "15,45 GØ"),
-        ("18123000000000", "18,12 TØ"),
-        # 23 890 TØ = 23,89 PØ
-        ("23890" + "0" * 12, "23,89 PØ"),
-        # 45 560 PØ = 45,56 EØ
-        ("45560" + "0" * 15, "45,56 EØ"),
-        # 68 920 EØ = 68,92 ZØ
-        ("68920" + "0" * 18, "68,92 ZØ"),
-        # 83 320 ZØ = 83,32 YØ
-        ("83320" + "0" * 21, "83,32 YØ"),
-        # 44 520 YØ = 44,52 RØ
-        ("44520" + "0" * 24, "44,52 RØ"),
-        # 50 632 RØ = 50,63 QØ
-        ("50632" + "0" * 27, "50,63 QØ"),
-        # 79 987 QØ = 79,99 UØ
-        ("79987" + "0" * 30, "79,99 UØ"),
-        # 35 123 UØ = 35,12 SØ
-        ("35123" + "0" * 33, "35,12 SØ"),
-        # 51 432 SØ = 51,43 XØ
-        ("51432" + "0" * 36, "51,43 XØ"),
-        # 42 928 XØ = 42,93 NØ
-        ("42928" + "0" * 39, "42,93 NØ"),
-        # 59 632 NØ = 59,63 DØ
-        ("59632" + "0" * 42, "59,63 DØ"),
+        ("10234", "10.23 KØ"),
+        ("12250000", "12.25 MØ"),
+        ("15450000000", "15.45 GØ"),
+        ("18123000000000", "18.12 TØ"),
+        # 23 890 TØ = 23.89 PØ
+        ("23890" + "0" * 12, "23.89 PØ"),
+        # 45 560 PØ = 45.56 EØ
+        ("45560" + "0" * 15, "45.56 EØ"),
+        # 68 920 EØ = 68.92 ZØ
+        ("68920" + "0" * 18, "68.92 ZØ"),
+        # 83 320 ZØ = 83.32 YØ
+        ("83320" + "0" * 21, "83.32 YØ"),
+        # 44 520 YØ = 44.52 RØ
+        ("44520" + "0" * 24, "44.52 RØ"),
+        # 50 632 RØ = 50.63 QØ
+        ("50632" + "0" * 27, "50.63 QØ"),
+        # 79 987 QØ = 79.99 UØ
+        ("79987" + "0" * 30, "79.99 UØ"),
+        # 35 123 UØ = 35.12 SØ
+        ("35123" + "0" * 33, "35.12 SØ"),
+        # 51 432 SØ = 51.43 XØ
+        ("51432" + "0" * 36, "51.43 XØ"),
+        # 42 928 XØ = 42.93 NØ
+        ("42928" + "0" * 39, "42.93 NØ"),
+        # 59 632 NØ = 59.63 DØ
+        ("59632" + "0" * 42, "59.63 DØ"),
     ],
 )
 def test_exemples_officiels(montant, attendu):
@@ -62,22 +62,22 @@ def test_table_complete():
 # --- Arrondi ----------------------------------------------------------------
 
 def test_arrondi_au_plus_proche_pas_troncature():
-    # 79 987 QØ -> 79,99 (une troncature donnerait 79,98)
-    assert format_money(Decimal("79987" + "0" * 30)) == "79,99 UØ"
-    # 42 928 XØ -> 42,93 (une troncature donnerait 42,92)
-    assert format_money(Decimal("42928" + "0" * 39)) == "42,93 NØ"
+    # 79 987 QØ -> 79.99 (une troncature donnerait 79.98)
+    assert format_money(Decimal("79987" + "0" * 30)) == "79.99 UØ"
+    # 42 928 XØ -> 42.93 (une troncature donnerait 42.92)
+    assert format_money(Decimal("42928" + "0" * 39)) == "42.93 NØ"
 
 
 def test_arrondi_demi_vers_le_haut():
-    assert format_money(Decimal("1005000")) == "1,01 MØ"
-    assert format_money(Decimal("1004000")) == "1,00 MØ"
+    assert format_money(Decimal("1005000")) == "1.01 MØ"
+    assert format_money(Decimal("1004000")) == "1.00 MØ"
 
 
 def test_remontee_de_palier_apres_arrondi():
-    """999,996 GØ ne doit pas s'afficher 1000,00 GØ mais 1,00 TØ."""
-    assert format_money(Decimal("999996000000")) == "1,00 TØ"
-    # 999 999 999 arrondit à 1000,00 MØ -> doit remonter en 1,00 GØ
-    assert format_money(Decimal("999999999")) == "1,00 GØ"
+    """999.996 GØ ne doit pas s'afficher 1000.00 GØ mais 1.00 TØ."""
+    assert format_money(Decimal("999996000000")) == "1.00 TØ"
+    # 999 999 999 arrondit à 1000.00 MØ -> doit remonter en 1.00 GØ
+    assert format_money(Decimal("999999999")) == "1.00 GØ"
 
 
 # --- Petits montants et cas limites ----------------------------------------
@@ -89,11 +89,11 @@ def test_sous_mille_pas_de_symbole():
 
 
 def test_pile_mille():
-    assert format_money(Decimal("1000")) == "1,00 KØ"
+    assert format_money(Decimal("1000")) == "1.00 KØ"
 
 
 def test_negatif():
-    assert format_money(Decimal("-12250000")) == "-12,25 MØ"
+    assert format_money(Decimal("-12250000")) == "-12.25 MØ"
 
 
 def test_depassement_de_table_repli_scientifique():
@@ -104,7 +104,7 @@ def test_depassement_de_table_repli_scientifique():
 
 def test_dernier_palier_utilisable():
     # 999 DØ reste dans la table (10^45)
-    assert format_money(Decimal("999" + "0" * 45)) == "999,00 DØ"
+    assert format_money(Decimal("999" + "0" * 45)) == "999.00 DØ"
 
 
 # --- Formes longue et brute -------------------------------------------------
@@ -200,22 +200,22 @@ def test_parse_grand_entier_sans_perte():
 #
 # `format_money` choisit toujours le palier le plus grand qui tient. Convertir,
 # c'est imposer le palier d'arrivée : on veut lire « 1 000 000 MØ » là où le bot
-# écrirait « 1,00 TØ », parce que le jeu affiche parfois l'autre.
+# écrirait « 1.00 TØ », parce que le jeu affiche parfois l'autre.
 
 @pytest.mark.parametrize(
     "montant, symbole, attendu",
     [
         # Un palier vers le suivant, dans les deux sens.
-        ("1" + "0" * 15, "T", "1 000,00 TØ"),
-        ("1" + "0" * 12, "M", "1 000 000,00 MØ"),
-        # Le cas du jeu : une promo à 2,71 PØ lue en TØ.
-        ("2710572934559948", "T", "2 710,57 TØ"),
+        ("1" + "0" * 15, "T", "1 000.00 TØ"),
+        ("1" + "0" * 12, "M", "1 000 000.00 MØ"),
+        # Le cas du jeu : une promo à 2.71 PØ lue en TØ.
+        ("2710572934559948", "T", "2 710.57 TØ"),
         # Palier d'arrivée plus grand que le montant : la mantisse descend
         # sous 1 plutôt que de basculer sur un autre symbole.
-        ("1" + "0" * 12, "P", "0,00 PØ"),
-        ("5" + "0" * 14, "P", "0,50 PØ"),
+        ("1" + "0" * 12, "P", "0.00 PØ"),
+        ("5" + "0" * 14, "P", "0.50 PØ"),
         # Vingt-et-un ordres de grandeur d'écart, la limite de la table.
-        ("1" + "0" * 45, "K", "1 000 000 000 000 000 000 000 000 000 000 000 000 000 000,00 KØ"),
+        ("1" + "0" * 45, "K", "1 000 000 000 000 000 000 000 000 000 000 000 000 000 000.00 KØ"),
     ],
 )
 def test_convertir_vers_un_palier(montant, symbole, attendu):
@@ -224,12 +224,12 @@ def test_convertir_vers_un_palier(montant, symbole, attendu):
 
 def test_convertir_accepte_le_symbole_en_minuscule():
     """On tape vite dans Discord ; la saisie des montants tolère déjà la casse."""
-    assert convertir(Decimal("1" + "0" * 15), "t") == "1 000,00 TØ"
+    assert convertir(Decimal("1" + "0" * 15), "t") == "1 000.00 TØ"
 
 
 def test_convertir_vers_l_unite():
     """`Ø` seul est un palier légitime : c'est ce que le jeu affiche en dur."""
-    assert convertir(Decimal("2500"), "Ø") == "2 500,00 Ø"
+    assert convertir(Decimal("2500"), "Ø") == "2 500.00 Ø"
 
 
 def test_convertir_symbole_inconnu_liste_les_valides():
@@ -244,21 +244,21 @@ def test_convertir_symbole_inconnu_liste_les_valides():
 
 
 def test_convertir_arrondit_au_plus_proche():
-    """Même règle que `format_money` : une troncature aurait donné 2 710,57.
+    """Même règle que `format_money` : une troncature aurait donné 2 710.57.
 
-    Discriminant, contrairement aux autres cas de la table : 2 710,578 tombe
-    au-dessus de la moitié, là où 2 710,5729 s'arrondit pareil dans les deux
+    Discriminant, contrairement aux autres cas de la table : 2 710.578 tombe
+    au-dessus de la moitié, là où 2 710.5729 s'arrondit pareil dans les deux
     sens et ne prouverait donc rien.
     """
-    assert convertir(Decimal("2710578000000000"), "T") == "2 710,58 TØ"
+    assert convertir(Decimal("2710578000000000"), "T") == "2 710.58 TØ"
 
 
 def test_convertir_garde_le_signe():
-    assert convertir(Decimal("-1" + "0" * 15), "T") == "-1 000,00 TØ"
+    assert convertir(Decimal("-1" + "0" * 15), "T") == "-1 000.00 TØ"
 
 
 def test_convertir_zero():
-    assert convertir(Decimal(0), "T") == "0,00 TØ"
+    assert convertir(Decimal(0), "T") == "0.00 TØ"
 
 
 # --- Frais de gestion -------------------------------------------------------
@@ -273,21 +273,21 @@ def test_frais_de_gestion_sur_un_montant_rond():
 
 def test_frais_de_gestion_sans_decimales():
     """La raison d'être de la fonction : le jeu ne facture pas de fraction."""
-    # 7 % de 1 001 = 70,07
+    # 7 % de 1 001 = 70.07
     assert frais_de_gestion(Decimal(1001)) == Decimal(70)
 
 
 def test_frais_de_gestion_arrondi_au_plus_proche():
     """Même règle que `format_money` partout ailleurs dans le bot."""
-    # 7 % de 1 008 = 70,56 -> 71, et non 70.
+    # 7 % de 1 008 = 70.56 -> 71, et non 70.
     assert frais_de_gestion(Decimal(1008)) == Decimal(71)
-    # 7 % de 1 007 = 70,49 -> 70.
+    # 7 % de 1 007 = 70.49 -> 70.
     assert frais_de_gestion(Decimal(1007)) == Decimal(70)
 
 
 def test_frais_de_gestion_sur_un_montant_du_jeu_sans_perte():
     """21 chiffres : un float aurait perdu les derniers avant l'arrondi."""
-    # 7 % de 2 710 572 934 559 948 = 189 740 105 419 196,36 -> 189 740 105 419 196
+    # 7 % de 2 710 572 934 559 948 = 189 740 105 419 196.36 -> 189 740 105 419 196
     assert frais_de_gestion(Decimal("2710572934559948")) == Decimal("189740105419196")
 
 

@@ -7,11 +7,11 @@ signale l'erreur. Tout montant est donc une **chaîne de chiffres**, que le site
 relit tel quel (ou via `BigInt` s'il doit comparer).
 
 Chaque montant est exposé deux fois :
-  - `prix` — déjà formaté dans la notation du jeu (`2,71 PØ`), à afficher ;
+  - `prix` — déjà formaté dans la notation du jeu (`2.71 PØ`), à afficher ;
   - `prix_brut` — les chiffres seuls, pour trier ou calculer.
 
-Trier sur la forme formatée donnerait un ordre absurde (« 2,71 PØ » avant
-« 124,47 GØ » en lexicographique), d'où le doublon plutôt qu'un seul champ.
+Trier sur la forme formatée donnerait un ordre absurde (« 2.71 PØ » avant
+« 124.47 GØ » en lexicographique), d'où le doublon plutôt qu'un seul champ.
 
 Ce module ne connaît ni Discord ni HTTP : `src/api.py` l'appelle, les tests
 l'appellent directement.

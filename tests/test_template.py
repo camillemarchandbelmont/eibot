@@ -36,7 +36,7 @@ def promo():
 def test_montants_en_notation_du_jeu(promo):
     meta, p = promo
     champs = champs_promo(p, meta, "2026-07-28")
-    assert champs["prix"] == "302,62 KØ"
+    assert champs["prix"] == "302.62 KØ"
     assert champs["nom"] == "Entrepôt inexploitable"
     assert champs["remise"] == "17 %"
 
@@ -85,8 +85,8 @@ def test_substitution_dans_toutes_les_chaines(promo):
     embed = rendu["embeds"][0]
     assert rendu["content"] == "Promo : Entrepôt inexploitable"
     assert embed["title"] == "🏢 Entrepôt inexploitable"
-    assert embed["description"] == "Prix 302,62 KØ"
-    assert embed["fields"][0]["value"] == "61,98 KØ"
+    assert embed["description"] == "Prix 302.62 KØ"
+    assert embed["fields"][0]["value"] == "61.98 KØ"
     assert embed["footer"]["text"] == "1/1 • Empire Immo - M8"
     assert embed["author"]["name"] == "industriels"
     # Les non-chaînes sont préservées telles quelles.
@@ -148,7 +148,7 @@ def test_rendu_du_template_par_defaut(promo):
     embed = rendu["embeds"][0]
 
     assert embed["title"].endswith("Entrepôt inexploitable")
-    assert embed["fields"][0]["value"] == "**302,62 KØ**"
+    assert embed["fields"][0]["value"] == "**302.62 KØ**"
     assert embed["footer"]["text"].startswith("1/1")
 
     # Aucun placeholder ne doit subsister dans le rendu final.
@@ -183,8 +183,8 @@ def test_ecart_reste_disponible(repechee):
     """Utile pour un template qui veut afficher la distance, sans avertir."""
     meta, p = repechee
     champs = champs_promo(p, meta, "2026-07-28")
-    # 1 GØ - 302,62 KØ. ` ` : l'espace avant le symbole est insécable.
-    assert champs["ecart"] == "999,70 MØ"
+    # 1 GØ - 302.62 KØ. ` ` : l'espace avant le symbole est insécable.
+    assert champs["ecart"] == "999.70 MØ"
     assert champs["ecart_brut"] == "999697380"
 
 

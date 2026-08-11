@@ -28,7 +28,7 @@ async def test_regler_confirme_avec_les_bornes_formatees():
 
     texte = " ".join(interaction.textes)
     assert "grosses" in texte
-    assert "50,00" in texte and "8,00" in texte
+    assert "50.00" in texte and "8.00" in texte
 
     fourchette = (await bot.store.fourchettes())[0]
     assert Decimal(fourchette["tolere_min"]) == Decimal("5e13")
@@ -134,7 +134,7 @@ async def test_la_liste_montre_la_zone():
     await _commande(bot, "fourchette liste").callback(interaction)
 
     description = interaction.embeds[0].description
-    assert "50,00" in description and "8,00" in description
+    assert "50.00" in description and "8.00" in description
 
 
 async def test_la_liste_reste_sobre_sans_zone():
