@@ -22,6 +22,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
+from random import Random
 from typing import Any
 
 from src.money import frais_de_gestion
@@ -102,6 +103,122 @@ def retirer(filiales: list[Filiale], nom: str) -> list[Filiale]:
     if index < 0:
         return list(filiales)
     return [*filiales[:index], *filiales[index + 1 :]]
+
+
+def noms_separes(saisie: str) -> list[str]:
+    """Découpe une saisie en noms de filiales, sur les virgules et les lignes.
+
+    Discord n'offre pas de champ répétable : un retrait de masse passe donc par
+    une chaîne, où les noms arrivent séparés par des virgules ou collés d'une
+    liste, un par ligne.
+
+    Les espaces de bordure partent — ils sont invisibles à la saisie, et un nom
+    qui les garderait ne correspondrait à aucune filiale. Les **internes**
+    restent, doubles compris : c'est la clé d'import du jeu.
+
+    Les répétitions sont écartées, sans égard à la casse : deux fois le même nom
+    compterait deux retraits, ou un « inconnu » pour un nom déjà retiré. Le
+    premier écrit est celui qui reste, puisque c'est celui qu'on relira.
+    """
+    noms: list[str] = []
+    vus: set[str] = set()
+    for morceau in str(saisie).replace("\n", ",").split(","):
+        nom = morceau.strip()
+        if not nom or _cle(nom) in vus:
+            continue
+        vus.add(_cle(nom))
+        noms.append(nom)
+    return noms
+
+
+def retirer_plusieurs(filiales: list[Filiale], noms: list[str]) -> list[Filiale]:
+    """Liste privée de toutes les filiales nommées, d'un seul geste.
+
+    Un nom inconnu est ignoré plutôt que fatal : la commande dira lesquels
+    elle n'a pas trouvés, mais une faute de frappe ne doit pas annuler les
+    retraits valides de la même saisie.
+
+    Une liste de noms vide ne retire rien. C'est probablement une saisie ratée,
+    et tout effacer serait la pire interprétation possible.
+    """
+    cibles = {_cle(nom) for nom in noms}
+    return [filiale for filiale in filiales if _cle(filiale.nom) not in cibles]
+
+
+def remettre_a_zero(filiales: list[Filiale], date: str) -> list[Filiale]:
+    """Mêmes filiales, mêmes noms, bénéfices remis à zéro.
+
+    Les noms sont la clé d'import du jeu et l'assise de l'autocomplétion : les
+    garder fait qu'un nouveau cycle ne demande que de ressaisir les montants.
+    À zéro, chaque filiale compte comme en perte et le total retombe à 0 Ø.
+
+    La date est celle de la remise, non celle du relevé effacé : c'est un fait
+    nouveau, et garder l'ancienne ferait passer la ligne pour périmée le jour
+    même où on vient de la remettre.
+    """
+    return [
+        calculer(filiale.nom, Decimal(0), date) for filiale in filiales
+    ]
+
+
+#: Bornes du tirage d'essai, en nombre de chiffres.
+#:
+#: Vingt-un chiffres en haut : c'est la taille des bénéfices du Mégapôle, et
+#: au-delà de la mantisse d'un `float64` — un essai plafonné plus bas ne mettrait
+#: jamais à l'épreuve ce que la production doit encaisser. Trois en bas pour que
+#: le tableau soit vu avec des lignes de tailles très différentes, seul moyen
+#: d'éprouver à la fois son tri et les notations d'échelle du jeu.
+CHIFFRES_ESSAI = (3, 21)
+
+#: Une filiale sur cinq est tirée en perte.
+#:
+#: Une perte se marque autrement dans le tableau : sans aucune, la moitié de
+#: l'affichage resterait invisible à l'essai. Une sur cinq, et non une sur deux,
+#: pour que l'essai ressemble à un vrai jour.
+PART_EN_PERTE = 0.2
+
+
+def benefices_aleatoires(alea: Random) -> Decimal:
+    """Un montant de bénéfices tiré au hasard, pour voir le tableau à l'essai.
+
+    Le générateur est **passé** et non pris au module : sans lui, un test ne
+    pourrait pas rejouer un tirage, donc ne pourrait rien affirmer dessus.
+
+    Le tirage porte d'abord sur le **nombre de chiffres**, puis sur la valeur :
+    tirer directement entre 1 et 10²¹ ne donnerait pratiquement que des montants
+    de vingt-et-un chiffres, et toutes les lignes s'afficheraient dans la même
+    échelle.
+
+    `Decimal` et jamais `float` : un flottant perdrait les derniers chiffres d'un
+    montant de vingt-un chiffres, et l'essai afficherait un nombre que le jeu ne
+    connaît pas.
+    """
+    bas, haut = CHIFFRES_ESSAI
+    chiffres = alea.randint(bas, haut)
+    montant = Decimal(alea.randrange(10 ** (chiffres - 1), 10**chiffres))
+    if alea.random() < PART_EN_PERTE:
+        return -montant
+    return montant
+
+
+def valeurs_aleatoires(
+    filiales: list[Filiale], date: str, alea: Random
+) -> list[Filiale]:
+    """Mêmes filiales, montants tirés au hasard : le tableau à l'essai.
+
+    Les noms et leur ordre sont conservés — ils sont la clé d'import du jeu, et
+    un essai ne doit pas obliger à tous les ressaisir ensuite. Seuls les
+    montants changent, et les frais sont recalculés par `calculer` : affichés
+    sans rapport avec les bénéfices d'à côté, ils ne prouveraient rien.
+
+    La date est celle de l'essai : datées de la veille, toutes les lignes
+    s'afficheraient comme périmées et le tableau ne serait pas vu tel qu'il sort
+    d'ordinaire.
+    """
+    return [
+        calculer(filiale.nom, benefices_aleatoires(alea), date)
+        for filiale in filiales
+    ]
 
 
 def total_frais(filiales: list[Filiale]) -> Decimal:

@@ -434,3 +434,260 @@ async def test_apercu_reste_prive():
 
     messages = [*interaction.response.messages, *interaction.followup.messages]
     assert messages and all(m.get("ephemeral") for m in messages)
+
+
+# --- /filiales remise-a-zero ------------------------------------------------
+
+
+async def test_remise_a_zero_annule_les_montants_et_garde_les_noms():
+    """Un nouveau cycle ne change que les montants : reperdre les noms
+    obligerait à retaper les clés d'import du jeu."""
+    bot = await _bot()
+    await bot.store.enregistrer_filiale("A", Decimal(1000), "2026-08-11")
+    await bot.store.enregistrer_filiale("B", Decimal(2000), "2026-08-11")
+    interaction = InteractionFactice()
+
+    await _commande(bot, "filiales remise-a-zero").callback(interaction, confirmer=True)
+
+    filiales = await bot.store.filiales()
+    assert [f.nom for f in filiales] == ["A", "B"]
+    assert all(f.benefices == Decimal(0) for f in filiales)
+
+
+async def test_remise_a_zero_sans_confirmer_ne_touche_a_rien():
+    """Effacer tous les relevés du jour par mégarde coûterait une ressaisie
+    complète : la case doit être cochée pour que ça parte."""
+    bot = await _bot()
+    await bot.store.enregistrer_filiale("A", Decimal(1000), "2026-08-11")
+    interaction = InteractionFactice()
+
+    await _commande(bot, "filiales remise-a-zero").callback(interaction, confirmer=False)
+
+    assert (await bot.store.filiales())[0].benefices == Decimal(1000)
+    texte = _texte(interaction)
+    assert "❌" in texte
+    # Dit combien de relevés étaient en jeu : c'est ce qui fait mesurer le geste.
+    assert "1" in texte
+
+
+async def test_remise_a_zero_sans_filiale_le_dit():
+    """Annoncer une remise faite sur une liste vide laisserait croire qu'il y
+    avait quelque chose à remettre."""
+    bot = await _bot()
+    interaction = InteractionFactice()
+
+    await _commande(bot, "filiales remise-a-zero").callback(interaction, confirmer=True)
+
+    assert "aucune" in _texte(interaction).lower()
+
+
+async def test_remise_a_zero_confirme_combien_de_filiales():
+    bot = await _bot()
+    await bot.store.enregistrer_filiale("A", Decimal(1000), "2026-08-11")
+    await bot.store.enregistrer_filiale("B", Decimal(2000), "2026-08-11")
+    interaction = InteractionFactice()
+
+    await _commande(bot, "filiales remise-a-zero").callback(interaction, confirmer=True)
+
+    texte = _texte(interaction)
+    assert "✅" in texte
+    assert "2" in texte
+
+
+async def test_remise_a_zero_reste_privee():
+    bot = await _bot()
+    interaction = InteractionFactice()
+
+    await _commande(bot, "filiales remise-a-zero").callback(interaction, confirmer=True)
+
+    assert all(m.get("ephemeral") for m in interaction.response.messages)
+
+
+# --- /filiales retirer-plusieurs --------------------------------------------
+
+
+async def test_retirer_plusieurs_supprime_tout_le_lot():
+    bot = await _bot()
+    await bot.store.enregistrer_filiale("A", Decimal(1000), "2026-08-11")
+    await bot.store.enregistrer_filiale("B", Decimal(2000), "2026-08-11")
+    await bot.store.enregistrer_filiale("C", Decimal(3000), "2026-08-11")
+    interaction = InteractionFactice()
+
+    await _commande(bot, "filiales retirer-plusieurs").callback(
+        interaction, filiales="a, C", confirmer=True
+    )
+
+    assert [f.nom for f in await bot.store.filiales()] == ["B"]
+
+
+async def test_retirer_plusieurs_sans_confirmer_ne_touche_a_rien():
+    bot = await _bot()
+    await bot.store.enregistrer_filiale("A", Decimal(1000), "2026-08-11")
+    interaction = InteractionFactice()
+
+    await _commande(bot, "filiales retirer-plusieurs").callback(
+        interaction, filiales="A", confirmer=False
+    )
+
+    assert len(await bot.store.filiales()) == 1
+    assert "❌" in _texte(interaction)
+
+
+async def test_retirer_plusieurs_dit_les_noms_inconnus():
+    """Sans ça, on croirait une filiale supprimée alors qu'elle reste dans le
+    tableau du soir."""
+    bot = await _bot()
+    await bot.store.enregistrer_filiale("A", Decimal(1000), "2026-08-11")
+    interaction = InteractionFactice()
+
+    await _commande(bot, "filiales retirer-plusieurs").callback(
+        interaction, filiales="A, MARINE", confirmer=True
+    )
+
+    texte = _texte(interaction)
+    assert "MARINE" in texte
+    # Et le retrait valide du même lot a bien eu lieu.
+    assert await bot.store.filiales() == []
+
+
+async def test_retirer_plusieurs_accepte_le_tout():
+    """Vider le tableau d'un geste est le cas qui a motivé la commande."""
+    bot = await _bot()
+    for nom in ("A", "B", "C"):
+        await bot.store.enregistrer_filiale(nom, Decimal(1000), "2026-08-11")
+    interaction = InteractionFactice()
+
+    await _commande(bot, "filiales retirer-plusieurs").callback(
+        interaction, filiales="tout", confirmer=True
+    )
+
+    assert await bot.store.filiales() == []
+    assert "3" in _texte(interaction)
+
+
+async def test_retirer_plusieurs_sans_nom_ne_vide_pas_le_tableau():
+    """Une saisie vide est un accident : l'interpréter comme « tout » serait la
+    pire lecture possible."""
+    bot = await _bot()
+    await bot.store.enregistrer_filiale("A", Decimal(1000), "2026-08-11")
+    interaction = InteractionFactice()
+
+    await _commande(bot, "filiales retirer-plusieurs").callback(
+        interaction, filiales="  ", confirmer=True
+    )
+
+    assert len(await bot.store.filiales()) == 1
+    assert "❌" in _texte(interaction)
+
+
+async def test_retirer_plusieurs_garde_les_doubles_espaces_du_nom():
+    """La clé d'import du jeu passe par le découpage sans être normalisée."""
+    bot = await _bot()
+    await bot.store.enregistrer_filiale("ARMEE  DE TERRE", Decimal(1000), "2026-08-11")
+    interaction = InteractionFactice()
+
+    await _commande(bot, "filiales retirer-plusieurs").callback(
+        interaction, filiales="ARMEE  DE TERRE", confirmer=True
+    )
+
+    assert await bot.store.filiales() == []
+
+
+async def test_retirer_plusieurs_se_complete_avec_les_filiales_connues():
+    """Un lot se construit un nom à la fois : sans complétion, chaque nom est
+    une occasion de faute de frappe."""
+    bot = await _bot()
+    await bot.store.enregistrer_filiale("MARINE", Decimal(1000), "2026-08-11")
+
+    completer = _autocomplete(_commande(bot, "filiales retirer-plusieurs"), "filiales")
+
+    assert [c.value for c in await completer(InteractionFactice(), "")] == ["MARINE"]
+
+
+# --- /filiales test ---------------------------------------------------------
+
+
+async def test_test_remplace_les_montants_par_des_chiffres_au_hasard():
+    """Ce qu'on veut voir, c'est le tableau avec des montants d'ordres de
+    grandeur variés — pas des filiales inventées à retirer ensuite."""
+    bot = await _bot()
+    for nom in ("A", "B", "C"):
+        await bot.store.enregistrer_filiale(nom, Decimal(1000), "2026-08-11")
+    interaction = InteractionFactice()
+
+    await _commande(bot, "filiales test").callback(interaction, confirmer=True)
+
+    filiales = await bot.store.filiales()
+    assert [f.nom for f in filiales] == ["A", "B", "C"]
+    assert len({f.benefices for f in filiales}) > 1
+
+
+async def test_test_sans_confirmer_ne_touche_a_rien():
+    """La commande écrit dans la base **courante**, production comprise : elle
+    écrase de vrais relevés, donc elle se confirme."""
+    bot = await _bot()
+    await bot.store.enregistrer_filiale("A", Decimal(1000), "2026-08-11")
+    interaction = InteractionFactice()
+
+    await _commande(bot, "filiales test").callback(interaction, confirmer=False)
+
+    assert (await bot.store.filiales())[0].benefices == Decimal(1000)
+    assert "❌" in _texte(interaction)
+
+
+async def test_test_previent_que_les_vrais_releves_sont_ecrases():
+    """Le mot « test » laisserait croire à un bac à sable ; il n'y en a pas."""
+    bot = await _bot()
+    await bot.store.enregistrer_filiale("A", Decimal(1000), "2026-08-11")
+    interaction = InteractionFactice()
+
+    await _commande(bot, "filiales test").callback(interaction, confirmer=False)
+
+    assert "écras" in _texte(interaction).lower()
+
+
+async def test_test_sans_filiale_dit_qu_il_n_y_a_rien_a_tirer():
+    """Le tirage porte sur les filiales enregistrées : sans aucune, il ne se
+    passe rien, et le silence se lirait comme une panne."""
+    bot = await _bot()
+    interaction = InteractionFactice()
+
+    await _commande(bot, "filiales test").callback(interaction, confirmer=True)
+
+    texte = _texte(interaction).lower()
+    assert "aucune" in texte
+    assert "/frais" in texte
+
+
+async def test_test_montre_le_tableau_obtenu():
+    """Sinon il faudrait enchaîner sur `/filiales liste` pour voir le résultat
+    de l'essai qu'on vient de demander."""
+    bot = await _bot()
+    await bot.store.enregistrer_filiale("A", Decimal(1000), "2026-08-11")
+    interaction = InteractionFactice()
+
+    await _commande(bot, "filiales test").callback(interaction, confirmer=True)
+
+    assert interaction.embeds, "aucun tableau montré"
+    assert "A" in _texte(interaction)
+
+
+async def test_test_rappelle_comment_revenir_a_un_tableau_propre():
+    """Des chiffres au hasard laissés en base seraient publiés le soir : la
+    sortie doit être dite dans le message même."""
+    bot = await _bot()
+    await bot.store.enregistrer_filiale("A", Decimal(1000), "2026-08-11")
+    interaction = InteractionFactice()
+
+    await _commande(bot, "filiales test").callback(interaction, confirmer=True)
+
+    assert "remise-a-zero" in _texte(interaction)
+
+
+async def test_test_reste_prive():
+    bot = await _bot()
+    interaction = InteractionFactice()
+
+    await _commande(bot, "filiales test").callback(interaction, confirmer=True)
+
+    assert all(m.get("ephemeral") for m in interaction.response.messages)

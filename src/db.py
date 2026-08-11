@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import logging
 from decimal import Decimal, InvalidOperation
+from random import Random
 from typing import Any
 
 from src import settings
@@ -23,7 +24,11 @@ from src.filiales import (
     calculer,
     depuis_json,
     enregistrer,
+    index_de,
+    remettre_a_zero,
     retirer,
+    retirer_plusieurs,
+    valeurs_aleatoires,
     vers_json,
 )
 
@@ -693,6 +698,50 @@ class Store:
             return False
         await self.set("filiales", vers_json(apres))
         return True
+
+    async def retirer_filiales(self, noms: list[str]) -> tuple[int, list[str]]:
+        """Retire plusieurs relevés d'un coup. Renvoie (retirés, noms inconnus).
+
+        Les inconnus sont rendus tels qu'ils ont été saisis : c'est ce qu'on
+        relit pour trouver sa faute de frappe. Ils ne font pas échouer les
+        retraits valides de la même saisie, mais ils sont dits — sinon on
+        croirait une filiale supprimée alors qu'elle reste dans le tableau.
+        """
+        avant = await self.filiales()
+        inconnus = [nom for nom in noms if index_de(avant, nom) < 0]
+        apres = retirer_plusieurs(avant, noms)
+        if len(apres) != len(avant):
+            await self.set("filiales", vers_json(apres))
+        return len(avant) - len(apres), inconnus
+
+    async def remettre_a_zero_filiales(self, date: str) -> int:
+        """Remet tous les bénéfices à zéro en gardant les noms. Renvoie combien.
+
+        Les noms restent : ils sont la clé d'import du jeu et l'assise de
+        l'autocomplétion, si bien qu'un nouveau cycle ne demande que de
+        ressaisir les montants.
+        """
+        filiales = await self.filiales()
+        if not filiales:
+            return 0
+        await self.set("filiales", vers_json(remettre_a_zero(filiales, date)))
+        return len(filiales)
+
+    async def valeurs_aleatoires_filiales(self, date: str, alea: Random) -> int:
+        """Remplace les montants par des chiffres au hasard. Renvoie combien.
+
+        Le tirage porte sur les filiales **déjà enregistrées** : il sert à voir
+        le tableau avec des montants d'ordres de grandeur variés, pas à inventer
+        des filiales qu'il faudrait ensuite retirer une à une.
+
+        Le générateur est passé par l'appelant, pour qu'un test puisse rejouer
+        un tirage.
+        """
+        filiales = await self.filiales()
+        if not filiales:
+            return 0
+        await self.set("filiales", vers_json(valeurs_aleatoires(filiales, date, alea)))
+        return len(filiales)
 
     async def heure_filiales(self) -> str:
         """Heure du tableau des frais, distincte de celle des promotions."""

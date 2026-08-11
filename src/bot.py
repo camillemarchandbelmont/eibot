@@ -9,6 +9,7 @@ import builtins
 import json
 import logging
 from decimal import Decimal
+from random import Random
 
 import discord
 from discord import app_commands
@@ -16,7 +17,7 @@ from discord import app_commands
 from src import settings
 from src.acces import acces_autorise, gere_la_liste
 from src.db import Store, bornes_tolerees
-from src.filiales import FilialeError, index_de, total_frais
+from src.filiales import FilialeError, index_de, noms_separes, total_frais
 from src.journal import Journal
 from src.money import (
     ECHELLE,
@@ -1225,6 +1226,174 @@ def enregistrer_commandes(bot: EmpireBot) -> None:
             f"✅ **{filiale.strip()}** retirée du tableau.\n"
             f"-# Reste {len(restantes)} filiale(s), "
             f"{format_money(total_frais(restantes))} de frais.",
+            ephemeral=True,
+        )
+
+    @filiales_groupe.command(
+        name="retirer-plusieurs", description="Oublie plusieurs filiales d'un coup"
+    )
+    @app_commands.describe(
+        filiales="Noms séparés par des virgules, ou `tout` pour vider le tableau",
+        confirmer="À cocher : le retrait est définitif",
+    )
+    @app_commands.autocomplete(filiales=_completer_filiale)
+    async def filiales_retirer_plusieurs(
+        interaction: discord.Interaction, filiales: str, confirmer: bool
+    ):
+        """Retrait de masse, sur une saisie de noms.
+
+        Discord n'offre pas de champ répétable : les noms arrivent donc dans une
+        chaîne, découpée par `noms_separes`. `tout` est accepté pour vider le
+        tableau, le cas qui a motivé la commande — mais une saisie **vide** ne
+        vaut jamais `tout` : ce serait la pire lecture d'un accident.
+
+        `confirmer` est une case et non un bouton : le bot n'a aucune `View`
+        ailleurs, et un paramètre obligatoire est aussi ce qui se teste.
+        """
+        connues = await bot.store.filiales()
+        saisie = filiales.strip()
+
+        if not saisie:
+            await interaction.response.send_message(
+                "❌ Aucun nom saisi. Donne des noms séparés par des virgules, "
+                "ou `tout` pour vider le tableau.",
+                ephemeral=True,
+            )
+            return
+
+        tout = saisie.casefold() == "tout"
+        noms = [f.nom for f in connues] if tout else noms_separes(saisie)
+
+        if not noms:
+            await interaction.response.send_message(
+                "❌ Aucune filiale enregistrée : rien à retirer.\n"
+                "-# `/frais montant:… filiale:…` pour en ajouter une.",
+                ephemeral=True,
+            )
+            return
+
+        if not confirmer:
+            # Ce qui va partir, nommément : « 12 filiales » ne permettrait pas de
+            # voir qu'on s'est trompé de lot avant de le perdre.
+            liste = ", ".join(f"`{n}`" for n in noms[:15])
+            if len(noms) > 15:
+                liste += f" … (+{len(noms) - 15})"
+            await interaction.response.send_message(
+                f"❌ Rien retiré : coche `confirmer` pour aller au bout.\n"
+                f"-# {len(noms)} filiale(s) visée(s) : {liste}",
+                ephemeral=True,
+            )
+            return
+
+        retirees, inconnus = await bot.store.retirer_filiales(noms)
+
+        restantes = await bot.store.filiales()
+        message = (
+            f"✅ {retirees} filiale(s) retirée(s) du tableau.\n"
+            f"-# Reste {len(restantes)} filiale(s), "
+            f"{format_money(total_frais(restantes))} de frais."
+        )
+        if inconnus:
+            # Dits, sinon on croirait ces filiales supprimées alors qu'elles
+            # reviendront dans le tableau du soir.
+            manques = ", ".join(f"`{n}`" for n in inconnus)
+            message += f"\n-# Inconnues, donc laissées : {manques}"
+
+        await interaction.response.send_message(message, ephemeral=True)
+
+    @filiales_groupe.command(
+        name="remise-a-zero", description="Remet tous les bénéfices à 0, garde les noms"
+    )
+    @app_commands.describe(confirmer="À cocher : les relevés du cycle sont effacés")
+    async def filiales_remise_a_zero(
+        interaction: discord.Interaction, confirmer: bool
+    ):
+        """Ouvre un nouveau cycle sans perdre les noms.
+
+        Les noms sont la clé d'import du jeu et l'assise de l'autocomplétion :
+        les garder fait qu'un nouveau cycle ne demande que de ressaisir les
+        montants. À zéro, chaque filiale s'affiche « en perte » dans le tableau,
+        ce qui est exact — il n'y a rien à prélever.
+        """
+        filiales = await bot.store.filiales()
+
+        if not filiales:
+            await interaction.response.send_message(
+                "ℹ️ Aucune filiale enregistrée : rien à remettre à zéro.\n"
+                "-# `/frais montant:… filiale:…` pour en ajouter une.",
+                ephemeral=True,
+            )
+            return
+
+        if not confirmer:
+            await interaction.response.send_message(
+                f"❌ Rien effacé : coche `confirmer` pour aller au bout.\n"
+                f"-# {len(filiales)} relevé(s) seraient remis à 0 Ø, "
+                f"les noms étant gardés.",
+                ephemeral=True,
+            )
+            return
+
+        aujourdhui = maintenant_local((await bot.store.config())["fuseau"]).strftime(
+            "%Y-%m-%d"
+        )
+        combien = await bot.store.remettre_a_zero_filiales(aujourdhui)
+
+        await interaction.response.send_message(
+            f"✅ {combien} filiale(s) remise(s) à 0 Ø, noms gardés.\n"
+            f"-# `/frais montant:… filiale:…` pour saisir le nouveau cycle ; "
+            f"l'autocomplétion propose toujours les noms.",
+            ephemeral=True,
+        )
+
+    @filiales_groupe.command(
+        name="test", description="Remplit les filiales de chiffres au hasard (essai)"
+    )
+    @app_commands.describe(confirmer="À cocher : les vrais relevés sont écrasés")
+    async def filiales_test(interaction: discord.Interaction, confirmer: bool):
+        """Le tableau avec des montants d'ordres de grandeur variés.
+
+        Le tirage porte sur les filiales **déjà enregistrées** : leurs noms et
+        leur ordre sont gardés, seuls les montants changent. Inventer des
+        filiales obligerait à les retirer une à une ensuite.
+
+        Il n'y a pas de bac à sable : l'écriture va dans la base **courante**,
+        production comprise. D'où la confirmation, et le rappel de la sortie dans
+        le message — des chiffres au hasard oubliés en base seraient publiés le
+        soir comme s'ils étaient vrais.
+        """
+        filiales = await bot.store.filiales()
+
+        if not filiales:
+            await interaction.response.send_message(
+                "ℹ️ Aucune filiale enregistrée : le tirage porte sur les "
+                "filiales existantes, il n'y a rien à tirer.\n"
+                "-# `/frais montant:… filiale:…` pour en ajouter une.",
+                ephemeral=True,
+            )
+            return
+
+        if not confirmer:
+            await interaction.response.send_message(
+                f"❌ Rien tiré : coche `confirmer` pour aller au bout.\n"
+                f"-# Il n'y a pas de base d'essai — les {len(filiales)} relevé(s) "
+                f"réels seraient **écrasés** par des chiffres au hasard.",
+                ephemeral=True,
+            )
+            return
+
+        aujourdhui = maintenant_local((await bot.store.config())["fuseau"]).strftime(
+            "%Y-%m-%d"
+        )
+        combien = await bot.store.valeurs_aleatoires_filiales(aujourdhui, Random())
+
+        # Le tableau obtenu, tout de suite : sinon il faudrait enchaîner sur
+        # `/filiales liste` pour voir l'essai qu'on vient de demander.
+        await interaction.response.send_message(
+            f"🎲 {combien} filiale(s) remplie(s) de chiffres au hasard.\n"
+            f"-# `/filiales remise-a-zero` pour repartir propre — sans quoi ces "
+            f"montants seront publiés ce soir comme s'ils étaient vrais.",
+            embed=embed_filiales(await bot.store.filiales(), aujourdhui),
             ephemeral=True,
         )
 
