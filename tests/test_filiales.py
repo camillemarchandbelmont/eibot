@@ -14,6 +14,7 @@ from random import Random
 
 import pytest
 
+from src.money import format_money
 from src.filiales import (
     Filiale,
     FilialeError,
@@ -565,6 +566,113 @@ def test_les_noms_repetes_ne_sont_gardes_qu_une_fois():
     nom qu'on vient de retirer."""
     assert noms_separes("A, a, A") == ["A"]
 
+
+
+# --- le tirage d'essai borné à un palier ------------------------------------
+
+
+def test_un_tirage_a_un_palier_tient_dans_ce_palier():
+    """L'unité demandée fixe l'ordre de grandeur : tirer hors du palier
+    afficherait un autre symbole que celui qu'on a choisi de voir.
+
+    De 1 à 999 fois le palier, comme `format_money` : à 1000 il rebascule sur le
+    symbole du dessus.
+    """
+    alea = Random(1234)
+    palier = Decimal(10) ** 15  # P
+
+    for _ in range(200):
+        tirage = abs(benefices_aleatoires(alea, exposant=15))
+        assert palier <= tirage < 1000 * palier, f"{tirage} hors du palier P"
+
+
+class _AleaAuPlafond:
+    """Generateur truque qui rend toujours la plus grande valeur possible.
+
+    Le haut du palier est atteint une fois sur deux cent mille : une graine ne
+    l'exhiberait jamais, et le defaut passerait en production pour se voir un
+    jour au hasard.
+    """
+
+    def randrange(self, bas, haut):
+        return haut - 1
+
+    def randint(self, bas, haut):
+        return haut
+
+    def random(self):
+        return 1.0  # jamais de perte : c'est le signe qu'on veut lire
+
+
+def test_le_haut_d_un_palier_s_affiche_encore_dans_ce_palier():
+    """Au plafond du palier, le montant doit garder le symbole demande.
+
+    `format_money` arrondit la mantisse a deux decimales **puis** rebascule sur
+    le palier du dessus si elle atteint 1000 : 999,996 PØ s'affiche `1.00 EØ`. Un
+    tirage montant jusqu'a 1000 fois le palier afficherait donc parfois un autre
+    symbole que celui qu'on a choisi de voir.
+    """
+    montant = benefices_aleatoires(_AleaAuPlafond(), exposant=15)
+
+    assert format_money(montant).endswith("PØ"), format_money(montant)
+
+
+def test_un_tirage_a_un_palier_varie_quand_meme():
+    """Un palier imposé ne doit pas donner deux cents fois le même montant : le
+    tableau serait alors plat et n'éprouverait pas son tri."""
+    alea = Random(1234)
+    tirages = {benefices_aleatoires(alea, exposant=15) for _ in range(50)}
+
+    assert len(tirages) > 40
+
+
+def test_un_tirage_a_un_palier_comporte_des_pertes():
+    """Le palier borne l'ordre de grandeur, pas le signe : une filiale en perte
+    se marque autrement dans le tableau et doit rester visible à l'essai."""
+    alea = Random(1234)
+    tirages = [benefices_aleatoires(alea, exposant=15) for _ in range(200)]
+
+    assert any(t < 0 for t in tirages), "aucune perte tirée"
+    assert any(t > 0 for t in tirages), "aucun gain tiré"
+
+
+def test_un_tirage_au_palier_le_plus_haut_reste_un_entier_exact():
+    """Le septilliard fait quarante-six chiffres, très au-delà d'un `float64` :
+    c'est le palier où un flottant perdrait le plus."""
+    alea = Random(1234)
+
+    for _ in range(50):
+        tirage = abs(benefices_aleatoires(alea, exposant=45))
+        assert isinstance(tirage, Decimal)
+        assert tirage == tirage.to_integral_value()
+
+
+def test_un_tirage_a_l_unite_descend_sous_le_millier():
+    """L'unité est un palier comme les autres : sans lui, on ne pourrait pas
+    voir le tableau avec des montants à trois chiffres."""
+    alea = Random(1234)
+
+    for _ in range(50):
+        assert abs(benefices_aleatoires(alea, exposant=0)) < 1000
+
+
+def test_sans_palier_le_tirage_couvre_toute_l_echelle():
+    """Le comportement d'avant reste le défaut : c'est celui qui éprouve les
+    notations d'échelle du jeu, faute de quoi elles ne seraient jamais vues."""
+    alea = Random(1234)
+    tailles = {len(str(abs(benefices_aleatoires(alea)))) for _ in range(200)}
+
+    assert len(tailles) >= 10
+
+
+def test_les_valeurs_aleatoires_transmettent_le_palier():
+    """Sinon l'unité choisie dans la commande serait ignorée en silence."""
+    essai = valeurs_aleatoires(
+        [_f("A", "1000"), _f("B", "2000")], "2026-08-12", Random(1234), exposant=15
+    )
+
+    palier = Decimal(10) ** 15
+    assert all(palier <= abs(f.benefices) < 1000 * palier for f in essai)
 
 
 def _f(nom: str, benefices: str, date: str = "2026-08-11") -> Filiale:

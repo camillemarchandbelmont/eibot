@@ -9,6 +9,7 @@ from src.money import (
     MoneyError,
     TAUX_GESTION,
     convertir,
+    exposant_du_symbole,
     frais_de_gestion,
     format_money,
     format_money_brut,
@@ -307,3 +308,39 @@ def test_taux_de_gestion_expose():
     """Pour que la commande affiche le taux sans le recopier en dur : deux
     valeurs différentes dans le message et dans le calcul seraient invisibles."""
     assert TAUX_GESTION == Decimal(7)
+
+
+# --- exposant_du_symbole -----------------------------------------------------
+
+
+def test_l_exposant_d_un_symbole_du_jeu():
+    """`P` vaut 10^15 dans la table du jeu, qui ne suit pas les préfixes SI."""
+    assert exposant_du_symbole("P") == 15
+    assert exposant_du_symbole("D") == 45
+
+
+def test_l_exposant_de_l_unite_vaut_zero():
+    """L'unité est un palier que le jeu affiche en dur et qui n'est pas dans la
+    table : sans ce cas, demander « tous les chiffres » lèverait."""
+    assert exposant_du_symbole("Ø") == 0
+    assert exposant_du_symbole("") == 0
+
+
+def test_l_exposant_accepte_les_o_mal_tapes():
+    """`Ø` n'est pas sur un clavier français : `O` et `0` sont les fautes
+    attendues, et les refuser serait une leçon de dactylographie."""
+    assert exposant_du_symbole("O") == 0
+    assert exposant_du_symbole("0") == 0
+
+
+def test_l_exposant_ignore_la_casse_et_les_espaces():
+    assert exposant_du_symbole(" p ") == 15
+
+
+def test_un_symbole_inconnu_liste_les_valides():
+    """Les symboles ne suivent pas les préfixes SI : sans la liste, on ne peut
+    pas deviner sa faute."""
+    with pytest.raises(MoneyError) as erreur:
+        exposant_du_symbole("W")
+
+    assert "P" in str(erreur.value)

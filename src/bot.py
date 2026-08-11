@@ -20,11 +20,13 @@ from src.db import Store, bornes_tolerees
 from src.filiales import FilialeError, index_de, noms_separes, total_frais
 from src.journal import Journal
 from src.money import (
+    DEVISE,
     ECHELLE,
     NOMS,
     TAUX_GESTION,
     MoneyError,
     convertir,
+    exposant_du_symbole,
     format_money,
     format_money_long,
     frais_de_gestion,
@@ -1349,13 +1351,24 @@ def enregistrer_commandes(bot: EmpireBot) -> None:
     @filiales_groupe.command(
         name="test", description="Remplit les filiales de chiffres au hasard (essai)"
     )
-    @app_commands.describe(confirmer="À cocher : les vrais relevés sont écrasés")
-    async def filiales_test(interaction: discord.Interaction, confirmer: bool):
+    @app_commands.describe(
+        confirmer="À cocher : les vrais relevés sont écrasés",
+        unite="Palier des montants tirés (défaut : toute l'échelle)",
+    )
+    @app_commands.choices(unite=_choix_symboles())
+    async def filiales_test(
+        interaction: discord.Interaction, confirmer: bool, unite: str | None = None
+    ):
         """Le tableau avec des montants d'ordres de grandeur variés.
 
         Le tirage porte sur les filiales **déjà enregistrées** : leurs noms et
         leur ordre sont gardés, seuls les montants changent. Inventer des
         filiales obligerait à les retirer une à une ensuite.
+
+        `unite` fixe le palier des montants tirés — le tableau se lit alors comme
+        un vrai jour, où toutes les filiales jouent dans la même échelle. Sans
+        elle, le tirage balaye trois à vingt-un chiffres : c'est ce balayage qui
+        met à l'épreuve les notations d'échelle du jeu, donc il reste le défaut.
 
         Il n'y a pas de bac à sable : l'écriture va dans la base **courante**,
         production comprise. D'où la confirmation, et le rappel de la sortie dans
@@ -1385,12 +1398,20 @@ def enregistrer_commandes(bot: EmpireBot) -> None:
         aujourdhui = maintenant_local((await bot.store.config())["fuseau"]).strftime(
             "%Y-%m-%d"
         )
-        combien = await bot.store.valeurs_aleatoires_filiales(aujourdhui, Random())
+        exposant = exposant_du_symbole(unite) if unite else None
+        combien = await bot.store.valeurs_aleatoires_filiales(
+            aujourdhui, Random(), exposant
+        )
+
+        # L'unité obtenue est rappelée : un tableau entièrement en PØ se lit
+        # comme un vrai jour, et rien ne dirait plus que c'est celle demandée.
+        echelle = f"en {unite}{DEVISE}" if unite else "sur toute l'échelle"
 
         # Le tableau obtenu, tout de suite : sinon il faudrait enchaîner sur
         # `/filiales liste` pour voir l'essai qu'on vient de demander.
         await interaction.response.send_message(
-            f"🎲 {combien} filiale(s) remplie(s) de chiffres au hasard.\n"
+            f"🎲 {combien} filiale(s) remplie(s) de chiffres au hasard, "
+            f"{echelle}.\n"
             f"-# `/filiales remise-a-zero` pour repartir propre — sans quoi ces "
             f"montants seront publiés ce soir comme s'ils étaient vrais.",
             embed=embed_filiales(await bot.store.filiales(), aujourdhui),

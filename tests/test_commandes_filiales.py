@@ -14,6 +14,8 @@ from decimal import Decimal
 
 import pytest
 
+from src.money import ECHELLE, format_money
+
 from tests.test_commandes_fourchettes import (
     InteractionFactice,
     SalonFactice,
@@ -710,6 +712,75 @@ async def test_test_rappelle_comment_revenir_a_un_tableau_propre():
     await _commande(bot, "filiales test").callback(interaction, confirmer=True)
 
     assert "remise-a-zero" in _texte(interaction)
+
+
+async def test_test_tire_dans_l_unite_demandee():
+    """L'unite demandee fixe l'ordre de grandeur des montants tires.
+
+    Sans elle, on ne peut pas voir le tableau tel qu'il sort un jour ou toutes
+    les filiales jouent dans la meme echelle : le balayage par defaut melange
+    des montants de trois a vingt-un chiffres, et chaque ligne s'affiche dans un
+    palier different.
+    """
+    bot = await _bot()
+    for nom in ("A", "B", "C"):
+        await bot.store.enregistrer_filiale(nom, Decimal(1000), "2026-08-11")
+    interaction = InteractionFactice()
+
+    await _commande(bot, "filiales test").callback(
+        interaction, confirmer=True, unite="P"
+    )
+
+    rendus = [format_money(f.benefices) for f in await bot.store.filiales()]
+    assert all(r.endswith("PØ") for r in rendus), rendus
+
+
+async def test_test_sans_unite_couvre_toute_l_echelle():
+    """Le comportement d'avant reste le defaut : c'est lui qui met a l'epreuve
+    les notations d'echelle du jeu, faute de quoi elles ne seraient jamais vues.
+    """
+    bot = await _bot()
+    for numero in range(30):
+        await bot.store.enregistrer_filiale(
+            f"F{numero}", Decimal(1000), "2026-08-11"
+        )
+    interaction = InteractionFactice()
+
+    await _commande(bot, "filiales test").callback(interaction, confirmer=True)
+
+    paliers = {format_money(f.benefices)[-2:] for f in await bot.store.filiales()}
+    assert len(paliers) > 1, paliers
+
+
+async def test_test_propose_les_paliers_du_jeu_en_menu():
+    """Les symboles ne suivent pas les prefixes SI (`E` vaut 10^18) : personne ne
+    les devine, donc ils se choisissent dans une liste plutot que se tapent.
+
+    L'unite doit rester **facultative** : sans elle, le tirage balaye toute
+    l'echelle, et c'est ce balayage qui met a l'epreuve les notations du jeu.
+    """
+    bot = await _bot()
+    parametre = next(
+        p for p in _commande(bot, "filiales test").parameters if p.name == "unite"
+    )
+
+    valeurs = [choix.value for choix in parametre.choices]
+    assert valeurs == ["Ø", *[symbole for _, symbole in reversed(ECHELLE)]]
+    assert not parametre.required, "l'unite doit rester facultative"
+
+
+async def test_test_dit_dans_quelle_unite_il_a_tire():
+    """Un tableau entierement en `PØ` se lit comme un vrai jour : sans le rappel,
+    on ne saurait plus si l'unite demandee a bien ete prise en compte."""
+    bot = await _bot()
+    await bot.store.enregistrer_filiale("A", Decimal(1000), "2026-08-11")
+    interaction = InteractionFactice()
+
+    await _commande(bot, "filiales test").callback(
+        interaction, confirmer=True, unite="P"
+    )
+
+    assert "PØ" in _texte(interaction)
 
 
 async def test_test_reste_prive():

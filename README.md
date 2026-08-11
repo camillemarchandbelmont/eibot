@@ -186,6 +186,14 @@ trois à vingt-un chiffres, et une sur cinq en perte, sans quoi ni le tri ni les
 notations d'échelle du jeu ne seraient éprouvés. Les noms et leur ordre sont
 gardés : inventer des filiales obligerait à les retirer une à une ensuite.
 
+Son paramètre `unite` fixe le palier des montants tirés (`P`, `D`, …, ou `Ø` pour
+l'unité) : le tableau se lit alors comme un vrai jour, où toutes les filiales
+jouent dans la même échelle. Les montants montent jusqu'à 999 fois ce palier et
+pas au-delà — `format_money` arrondit la mantisse **avant** de choisir le
+symbole, si bien qu'à 999,996 PØ elle afficherait `1.00 EØ`, soit un autre palier
+que celui demandé. Sans `unite`, le balayage des trois à vingt-un chiffres reste
+le défaut : c'est lui qui met les notations à l'épreuve.
+
 Les trois se confirment par une case obligatoire, et **il n'y a pas de base
 d'essai** : l'écriture va dans la base courante, production comprise. Des
 chiffres au hasard oubliés en base seraient publiés le soir comme s'ils étaient
@@ -236,7 +244,7 @@ local, mais elle repart des valeurs de `.env` à chaque redémarrage.
 | `/filiales retirer filiale` | Oublie une filiale |
 | `/filiales retirer-plusieurs filiales confirmer` | Oublie un lot de filiales (noms séparés par des virgules, ou `tout`) |
 | `/filiales remise-a-zero confirmer` | Remet tous les bénéfices à 0 Ø en gardant les noms — nouveau cycle |
-| `/filiales test confirmer` | Remplit les filiales de chiffres au hasard, pour voir le tableau à l'essai |
+| `/filiales test confirmer [unite]` | Remplit les filiales de chiffres au hasard, pour voir le tableau à l'essai ; `unite` borne le tirage à un palier |
 | `/filiales heure heure` | Heure du tableau des frais (`HH:MM`), distincte de celle des promotions |
 | `/filiales salon ajouter salon` | Publie le tableau des frais dans ce salon |
 | `/filiales salon retirer salon` | Cesse de l'y publier |

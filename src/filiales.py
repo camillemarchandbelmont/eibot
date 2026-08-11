@@ -178,31 +178,50 @@ CHIFFRES_ESSAI = (3, 21)
 PART_EN_PERTE = 0.2
 
 
-def benefices_aleatoires(alea: Random) -> Decimal:
+def benefices_aleatoires(alea: Random, exposant: int | None = None) -> Decimal:
     """Un montant de bénéfices tiré au hasard, pour voir le tableau à l'essai.
 
     Le générateur est **passé** et non pris au module : sans lui, un test ne
     pourrait pas rejouer un tirage, donc ne pourrait rien affirmer dessus.
 
-    Le tirage porte d'abord sur le **nombre de chiffres**, puis sur la valeur :
-    tirer directement entre 1 et 10²¹ ne donnerait pratiquement que des montants
-    de vingt-et-un chiffres, et toutes les lignes s'afficheraient dans la même
-    échelle.
+    Sans `exposant`, le tirage porte d'abord sur le **nombre de chiffres**, puis
+    sur la valeur : tirer directement entre 1 et 10²¹ ne donnerait pratiquement
+    que des montants de vingt-et-un chiffres, et toutes les lignes
+    s'afficheraient dans la même échelle.
+
+    Avec un `exposant`, le montant tombe entre 1 et 999 fois ce palier — les
+    bornes de `format_money`, qui rebascule sur le symbole du dessus à 1000. On
+    voit alors le tableau dans l'unité choisie plutôt qu'à travers toute
+    l'échelle.
 
     `Decimal` et jamais `float` : un flottant perdrait les derniers chiffres d'un
     montant de vingt-un chiffres, et l'essai afficherait un nombre que le jeu ne
     connaît pas.
     """
-    bas, haut = CHIFFRES_ESSAI
-    chiffres = alea.randint(bas, haut)
-    montant = Decimal(alea.randrange(10 ** (chiffres - 1), 10**chiffres))
+    if exposant is None:
+        bas, haut = CHIFFRES_ESSAI
+        chiffres = alea.randint(bas, haut)
+        montant = Decimal(alea.randrange(10 ** (chiffres - 1), 10**chiffres))
+    else:
+        palier = 10**exposant
+        # `format_money` arrondit la mantisse à deux décimales **avant** de
+        # choisir le symbole : au-delà de 999,995 fois le palier elle atteint
+        # 1000,00 et rebascule sur le palier du dessus, si bien qu'un tirage
+        # « en PØ » s'afficherait parfois en EØ. Le plafond s'arrête donc juste
+        # sous cette bascule (le retrait est nul à l'unité, où le jeu n'affiche
+        # pas de décimales).
+        haut = 1000 * palier - palier // 200
+        # Depuis 1 fois le palier, pour que le symbole choisi soit bien celui
+        # qui s'affiche ; sous cette borne, `format_money` prendrait celui du
+        # dessous. À l'unité, où il n'y a rien en dessous, on part de 1 Ø.
+        montant = Decimal(alea.randrange(palier, haut))
     if alea.random() < PART_EN_PERTE:
         return -montant
     return montant
 
 
 def valeurs_aleatoires(
-    filiales: list[Filiale], date: str, alea: Random
+    filiales: list[Filiale], date: str, alea: Random, exposant: int | None = None
 ) -> list[Filiale]:
     """Mêmes filiales, montants tirés au hasard : le tableau à l'essai.
 
@@ -211,12 +230,15 @@ def valeurs_aleatoires(
     montants changent, et les frais sont recalculés par `calculer` : affichés
     sans rapport avec les bénéfices d'à côté, ils ne prouveraient rien.
 
+    `exposant` borne le tirage à un palier du jeu ; sans lui, il couvre toute
+    l'échelle.
+
     La date est celle de l'essai : datées de la veille, toutes les lignes
     s'afficheraient comme périmées et le tableau ne serait pas vu tel qu'il sort
     d'ordinaire.
     """
     return [
-        calculer(filiale.nom, benefices_aleatoires(alea), date)
+        calculer(filiale.nom, benefices_aleatoires(alea, exposant), date)
         for filiale in filiales
     ]
 

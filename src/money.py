@@ -133,6 +133,27 @@ def frais_de_gestion(montant: Decimal, taux: Decimal = TAUX_GESTION) -> Decimal:
     )
 
 
+def exposant_du_symbole(symbole: str) -> int:
+    """Puissance de dix d'un palier du jeu : 'P' -> 15, 'Ø' -> 0.
+
+    Extraite de `convertir` parce que le tirage d'essai en a besoin aussi : la
+    recopier ferait divergier les deux le jour où la table du jeu changerait.
+
+    `Ø` — et les `O`/`0` mal tapés, `Ø` n'étant pas sur un clavier français —
+    désigne l'unité, un palier que le jeu affiche en dur et qui n'est pas dans la
+    table.
+    """
+    cible = str(symbole or "").strip().upper()
+    if cible in ("Ø", "O", "0", ""):
+        return 0
+    if cible in _MULTIPLICATEURS:
+        return _MULTIPLICATEURS[cible].adjusted()
+    raise MoneyError(
+        f"Symbole monétaire inconnu : « {symbole} ». "
+        f"Symboles valides : {_symboles_valides()}."
+    )
+
+
 def convertir(montant: Decimal, symbole: str) -> str:
     """Exprime un montant dans le palier demandé : (1e15, 'T') -> '1 000.00 TØ'.
 
@@ -143,18 +164,9 @@ def convertir(montant: Decimal, symbole: str) -> str:
     La mantisse peut donc dépasser 1000 ou tomber sous 1 — c'est le but, et on
     ne rebascule pas sur un autre symbole comme le fait `format_money`.
     """
+    exposant = exposant_du_symbole(symbole)
     cible = str(symbole or "").strip().upper()
-    # `Ø` (ou `O`/`0` mal tapés) désigne l'unité, un palier que le jeu affiche
-    # en dur et qui n'est pas dans la table.
-    if cible in ("Ø", "O", "0", ""):
-        exposant, affiche = 0, ""
-    elif cible in _MULTIPLICATEURS:
-        exposant, affiche = _MULTIPLICATEURS[cible].adjusted(), cible
-    else:
-        raise MoneyError(
-            f"Symbole monétaire inconnu : « {symbole} ». "
-            f"Symboles valides : {_symboles_valides()}."
-        )
+    affiche = "" if cible in ("Ø", "O", "0", "") else cible
 
     valeur = Decimal(montant)
     signe = "-" if valeur < 0 else ""

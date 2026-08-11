@@ -727,12 +727,17 @@ class Store:
         await self.set("filiales", vers_json(remettre_a_zero(filiales, date)))
         return len(filiales)
 
-    async def valeurs_aleatoires_filiales(self, date: str, alea: Random) -> int:
+    async def valeurs_aleatoires_filiales(
+        self, date: str, alea: Random, exposant: int | None = None
+    ) -> int:
         """Remplace les montants par des chiffres au hasard. Renvoie combien.
 
         Le tirage porte sur les filiales **déjà enregistrées** : il sert à voir
         le tableau avec des montants d'ordres de grandeur variés, pas à inventer
         des filiales qu'il faudrait ensuite retirer une à une.
+
+        `exposant` borne le tirage à un palier du jeu, pour voir le tableau dans
+        une unité donnée ; sans lui, il couvre toute l'échelle.
 
         Le générateur est passé par l'appelant, pour qu'un test puisse rejouer
         un tirage.
@@ -740,7 +745,9 @@ class Store:
         filiales = await self.filiales()
         if not filiales:
             return 0
-        await self.set("filiales", vers_json(valeurs_aleatoires(filiales, date, alea)))
+        await self.set(
+            "filiales", vers_json(valeurs_aleatoires(filiales, date, alea, exposant))
+        )
         return len(filiales)
 
     async def heure_filiales(self) -> str:

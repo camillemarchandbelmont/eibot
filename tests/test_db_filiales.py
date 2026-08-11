@@ -292,3 +292,15 @@ async def test_les_valeurs_d_essai_sans_filiale_ne_comptent_rien(store):
     """Le tirage porte sur les filiales déjà enregistrées : sans aucune, il n'y
     a rien à tirer, et la commande doit le dire."""
     assert await store.valeurs_aleatoires_filiales("2026-08-12", Random(7)) == 0
+
+
+async def test_les_valeurs_d_essai_respectent_le_palier_demande(store):
+    """L'unité choisie dans la commande doit descendre jusqu'à la base, sinon
+    elle serait ignorée en silence."""
+    await store.enregistrer_filiale("A", Decimal(1000), "2026-08-11")
+
+    await store.valeurs_aleatoires_filiales("2026-08-12", Random(1234), exposant=15)
+
+    palier = Decimal(10) ** 15
+    montant = abs((await store.filiales())[0].benefices)
+    assert palier <= montant < 1000 * palier
