@@ -77,6 +77,9 @@ CSV_URL = os.getenv("CSV_URL", "")
 PRIX_MIN_DEFAUT = Decimal(os.getenv("PRIX_MIN", "1e14"))
 PRIX_MAX_DEFAUT = Decimal(os.getenv("PRIX_MAX", "6e15"))
 HEURE_DEFAUT = os.getenv("HEURE", "09:00")
+#: Heure du tableau des frais par filiale. Distincte de `HEURE` : le tableau se
+#: relit le soir, les promotions le matin.
+HEURE_FILIALES_DEFAUT = os.getenv("HEURE_FILIALES", "09:00")
 FUSEAU_DEFAUT = os.getenv("FUSEAU", "Europe/Paris")
 SALON_DEFAUT = os.getenv("SALON_ID", "")
 ROLE_DEFAUT = os.getenv("ROLE_ID", "")

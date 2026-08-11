@@ -18,6 +18,14 @@ from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from src import settings
+from src.filiales import (
+    Filiale,
+    calculer,
+    depuis_json,
+    enregistrer,
+    retirer,
+    vers_json,
+)
 
 log = logging.getLogger(__name__)
 
@@ -649,6 +657,92 @@ class Store:
 
     async def set_template(self, modele: dict) -> None:
         await self.set("template", modele)
+
+    # --- Filiales : relevés des frais et réglages de leur tableau -----------
+    #
+    # Les relevés vivent sous leur **propre clé** et non dans `config` : celle-ci
+    # porte encore les champs plats dont la présence déclenche la migration des
+    # fourchettes (voir `fourchettes`), et y greffer une liste sans rapport
+    # rendrait cette signature plus difficile à lire.
+    #
+    # L'heure et les salons du tableau, eux, sont des réglages comme les autres
+    # et restent dans `config`, préfixés `filiales_` pour ne pas se confondre
+    # avec ceux des promotions — deux posts, deux destinations, deux horaires.
+
+    async def filiales(self) -> list[Filiale]:
+        """Relevés enregistrés, dans l'ordre de première saisie."""
+        return depuis_json(await self.get("filiales", []))
+
+    async def enregistrer_filiale(
+        self, nom: str, benefices: Decimal, date: str
+    ) -> Filiale:
+        """Calcule les frais et enregistre le relevé, en remplaçant le précédent.
+
+        Renvoie le relevé calculé : la commande affiche ce qu'elle vient
+        d'enregistrer, et le relire serait un aller-retour pour la même valeur.
+        """
+        filiale = calculer(nom, benefices, date)
+        await self.set("filiales", vers_json(enregistrer(await self.filiales(), filiale)))
+        return filiale
+
+    async def retirer_filiale(self, nom: str) -> bool:
+        """Retire un relevé. Renvoie False s'il n'existait pas."""
+        avant = await self.filiales()
+        apres = retirer(avant, nom)
+        if len(apres) == len(avant):
+            return False
+        await self.set("filiales", vers_json(apres))
+        return True
+
+    async def heure_filiales(self) -> str:
+        """Heure du tableau des frais, distincte de celle des promotions."""
+        return str(
+            (await self.config()).get("filiales_heure")
+            or settings.HEURE_FILIALES_DEFAUT
+        )
+
+    async def salons_filiales(self) -> list[str]:
+        """Salons où publier le tableau des frais."""
+        config = await self.config()
+        return [str(salon) for salon in config.get("filiales_salons") or [] if salon]
+
+    async def _ecrire_salons_filiales(self, liste: list[str]) -> None:
+        """Écrit directement plutôt que par `maj_config`, qui ignore les valeurs
+        vides : une liste vidée ne serait jamais enregistrée et le salon
+        reviendrait au redémarrage."""
+        config = await self._enregistree()
+        config["filiales_salons"] = liste
+        await self.set("config", config)
+
+    async def ajouter_salon_filiales(self, salon_id: str) -> bool:
+        """Ajoute un salon. Renvoie False s'il y était déjà."""
+        liste = await self.salons_filiales()
+        if str(salon_id) in liste:
+            return False
+        await self._ecrire_salons_filiales([*liste, str(salon_id)])
+        return True
+
+    async def retirer_salon_filiales(self, salon_id: str) -> bool:
+        """Retire un salon. Renvoie False s'il n'y était pas."""
+        liste = await self.salons_filiales()
+        if str(salon_id) not in liste:
+            return False
+        await self._ecrire_salons_filiales([s for s in liste if s != str(salon_id)])
+        return True
+
+    async def derniere_publication_filiales(self) -> str | None:
+        """Marque du jour propre au tableau.
+
+        Distincte de celle des promotions : partagée, le premier post consommerait
+        le quota du second et l'un des deux ne sortirait jamais.
+        """
+        return await self.get("derniere_publication_filiales", None)
+
+    async def marquer_publie_filiales(self, date: str) -> None:
+        await self.set("derniere_publication_filiales", date)
+
+    async def oublier_publication_filiales(self) -> None:
+        await self.set("derniere_publication_filiales", None)
 
     async def derniere_publication(self) -> str | None:
         return await self.get("derniere_publication", None)
