@@ -546,28 +546,33 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
         "    signe = \"\"\n    mantisse",
         "un montant négatif serait rendu positif",
     ),
+    # Les deux suivantes portent sur `exposant_du_symbole`, extraite de
+    # `convertir` : la table des paliers du jeu y est lue une seule fois, pour
+    # `/convertir` comme pour le tirage d'essai. Une mutation y casse donc les
+    # deux — c'est le but de l'extraction.
     (
-        "money-convertir-unite-refusee",
+        "money-exposant-unite-refusee",
         "src/money.py",
-        "    if cible in (\"Ø\", \"O\", \"0\", \"\"):",
-        "    if False:",
+        "    if cible in (\"Ø\", \"O\", \"0\", \"\"):\n        return 0",
+        "    if False:\n        return 0",
         "demander l'unité lèverait « symbole inconnu » alors que le jeu l'affiche",
     ),
     (
-        "money-convertir-symbole-inconnu-accepte",
+        "money-exposant-symbole-inconnu-accepte",
         "src/money.py",
-        "    else:\n"
-        "        raise MoneyError(\n"
-        "            f\"Symbole monétaire inconnu : « {symbole} ». \"\n"
-        "            f\"Symboles valides : {_symboles_valides()}.\"\n"
-        "        )\n"
-        "\n"
-        "    valeur = Decimal(montant)",
-        "    else:\n"
-        "        exposant, affiche = 0, cible\n"
-        "\n"
-        "    valeur = Decimal(montant)",
+        "    raise MoneyError(\n"
+        "        f\"Symbole monétaire inconnu : « {symbole} ». \"\n"
+        "        f\"Symboles valides : {_symboles_valides()}.\"\n"
+        "    )",
+        "    return 0",
         "« B » serait converti en silence au lieu de lister les symboles valides",
+    ),
+    (
+        "money-exposant-lu-a-cote-du-palier",
+        "src/money.py",
+        "        return _MULTIPLICATEURS[cible].adjusted()",
+        "        return _MULTIPLICATEURS[cible].adjusted() + 1",
+        "un montant serait converti dans le palier voisin de celui demandé",
     ),
     (
         "money-frais-tronque",
@@ -818,16 +823,96 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
     (
         "essai-montants-identiques",
         "src/filiales.py",
-        "        calculer(filiale.nom, benefices_aleatoires(alea), date)\n        for filiale in filiales",
+        "        calculer(filiale.nom, benefices_aleatoires(alea, exposant), date)\n        for filiale in filiales",
         "        calculer(filiale.nom, filiale.benefices, date)\n        for filiale in filiales",
         "l'essai laisserait les vrais relevés et n'éprouverait rien",
     ),
     (
         "essai-noms-perdus",
         "src/filiales.py",
-        "        calculer(filiale.nom, benefices_aleatoires(alea), date)\n        for filiale in filiales",
-        "        calculer(f\"TEST {rang}\", benefices_aleatoires(alea), date)\n        for rang, filiale in enumerate(filiales)",
+        "        calculer(filiale.nom, benefices_aleatoires(alea, exposant), date)\n        for filiale in filiales",
+        "        calculer(f\"TEST {rang}\", benefices_aleatoires(alea, exposant), date)\n        for rang, filiale in enumerate(filiales)",
         "il faudrait retaper tous les noms après un essai",
+    ),
+    (
+        "essai-palier-ignore",
+        "src/filiales.py",
+        "    if exposant is None:",
+        "    if True:",
+        "l'unité demandée serait ignorée et le tableau resterait sur toute l'échelle",
+    ),
+    (
+        "essai-palier-deborde-en-haut",
+        "src/filiales.py",
+        "        haut = 1000 * palier - palier // 200",
+        "        haut = 1000 * palier",
+        "999,996 PØ s'afficherait « 1.00 EØ » : un autre palier que le demandé",
+    ),
+    (
+        "essai-palier-deborde-en-bas",
+        "src/filiales.py",
+        "        montant = Decimal(alea.randrange(palier, haut))",
+        "        montant = Decimal(alea.randrange(1, haut))",
+        "un tirage sous le palier s'afficherait avec le symbole du dessous",
+    ),
+    (
+        "essai-palier-sans-variete",
+        "src/filiales.py",
+        "        montant = Decimal(alea.randrange(palier, haut))",
+        "        montant = Decimal(palier)",
+        "toutes les lignes porteraient le même montant, sans éprouver le tri",
+    ),
+    (
+        "essai-palier-en-float",
+        "src/filiales.py",
+        "        montant = Decimal(alea.randrange(palier, haut))",
+        "        montant = Decimal(float(alea.randrange(palier, haut)))",
+        "au septilliard, quarante-six chiffres, un flottant perdrait la queue",
+    ),
+    (
+        "essai-palier-sans-perte",
+        "src/filiales.py",
+        "        montant = Decimal(alea.randrange(palier, haut))\n"
+        "    if alea.random() < PART_EN_PERTE:",
+        "        montant = Decimal(alea.randrange(palier, haut))\n"
+        "    if False:",
+        "les filiales en perte resteraient invisibles dès qu'une unité est demandée",
+    ),
+    (
+        "essai-palier-non-transmis",
+        "src/filiales.py",
+        "        calculer(filiale.nom, benefices_aleatoires(alea, exposant), date)",
+        "        calculer(filiale.nom, benefices_aleatoires(alea), date)",
+        "l'unité serait acceptée par la commande puis perdue avant le tirage",
+    ),
+    (
+        "db-essai-palier-non-transmis",
+        "src/db.py",
+        "            \"filiales\", vers_json(valeurs_aleatoires(filiales, date, alea, exposant))",
+        "            \"filiales\", vers_json(valeurs_aleatoires(filiales, date, alea))",
+        "l'unité serait perdue entre la commande et le tirage",
+    ),
+    (
+        "bot-essai-palier-non-transmis",
+        "src/bot.py",
+        "        exposant = exposant_du_symbole(unite) if unite else None",
+        "        exposant = None",
+        "l'unité choisie au menu n'aurait aucun effet sur les montants",
+    ),
+    (
+        "bot-essai-palier-force-sans-choix",
+        "src/bot.py",
+        "        exposant = exposant_du_symbole(unite) if unite else None",
+        "        exposant = exposant_du_symbole(unite) if unite else 0",
+        "sans unité, tout tomberait sous le millier et les échelles du jeu "
+        "ne seraient jamais éprouvées",
+    ),
+    (
+        "bot-essai-unite-tue",
+        "src/bot.py",
+        "        echelle = f\"en {unite}{DEVISE}\" if unite else \"sur toute l'échelle\"",
+        "        echelle = \"\"",
+        "rien ne dirait dans quelle unité l'essai a été tiré",
     ),
     (
         "db-zero-non-enregistree",
@@ -853,7 +938,9 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
     (
         "db-essai-non-enregistre",
         "src/db.py",
-        '        await self.set("filiales", vers_json(valeurs_aleatoires(filiales, date, alea)))',
+        "        await self.set(\n"
+        "            \"filiales\", vers_json(valeurs_aleatoires(filiales, date, alea, exposant))\n"
+        "        )",
         "        pass",
         "l'essai serait annoncé sans que le tableau change",
     ),

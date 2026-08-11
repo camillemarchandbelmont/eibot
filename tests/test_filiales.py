@@ -604,6 +604,36 @@ class _AleaAuPlafond:
         return 1.0  # jamais de perte : c'est le signe qu'on veut lire
 
 
+class _AleaAuPlancher:
+    """Generateur truque qui rend toujours la plus petite valeur possible.
+
+    Symetrique de `_AleaAuPlafond`, et pour la meme raison : un plancher tombe
+    trop bas ne se verrait qu'une fois sur mille avec une vraie graine, donc pas
+    de facon fiable.
+    """
+
+    def randrange(self, bas, haut):
+        return bas
+
+    def randint(self, bas, haut):
+        return bas
+
+    def random(self):
+        return 1.0  # jamais de perte : c'est le signe qu'on veut lire
+
+
+def test_le_bas_d_un_palier_s_affiche_encore_dans_ce_palier():
+    """Au plancher du palier, le montant doit deja porter le symbole demande.
+
+    `format_money` prend le plus grand palier qui tient : un tirage sous 10^15
+    s'afficherait en TØ, GØ ou meme sans symbole, alors qu'on a demande a voir le
+    tableau en PØ.
+    """
+    montant = benefices_aleatoires(_AleaAuPlancher(), exposant=15)
+
+    assert format_money(montant).endswith("PØ"), format_money(montant)
+
+
 def test_le_haut_d_un_palier_s_affiche_encore_dans_ce_palier():
     """Au plafond du palier, le montant doit garder le symbole demande.
 

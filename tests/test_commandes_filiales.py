@@ -771,7 +771,12 @@ async def test_test_propose_les_paliers_du_jeu_en_menu():
 
 async def test_test_dit_dans_quelle_unite_il_a_tire():
     """Un tableau entierement en `PØ` se lit comme un vrai jour : sans le rappel,
-    on ne saurait plus si l'unite demandee a bien ete prise en compte."""
+    on ne saurait plus si l'unite demandee a bien ete prise en compte.
+
+    L'assertion porte sur le **texte de la reponse** et non sur `_texte`, qui
+    ratisse aussi le tableau : les montants y sont deja rendus en `PØ`, si bien
+    qu'un message muet sur l'unite passerait quand meme.
+    """
     bot = await _bot()
     await bot.store.enregistrer_filiale("A", Decimal(1000), "2026-08-11")
     interaction = InteractionFactice()
@@ -780,7 +785,21 @@ async def test_test_dit_dans_quelle_unite_il_a_tire():
         interaction, confirmer=True, unite="P"
     )
 
-    assert "PØ" in _texte(interaction)
+    annonce = " ".join(interaction.textes).replace("\xa0", " ")
+    assert "PØ" in annonce, annonce
+
+
+async def test_test_sans_unite_dit_qu_il_a_pris_toute_l_echelle():
+    """Le defaut se dit aussi : « rempli de chiffres au hasard » tout court
+    laisserait croire que l'unite demandee a ete perdue en route."""
+    bot = await _bot()
+    await bot.store.enregistrer_filiale("A", Decimal(1000), "2026-08-11")
+    interaction = InteractionFactice()
+
+    await _commande(bot, "filiales test").callback(interaction, confirmer=True)
+
+    annonce = " ".join(interaction.textes).lower()
+    assert "échelle" in annonce, annonce
 
 
 async def test_test_reste_prive():
