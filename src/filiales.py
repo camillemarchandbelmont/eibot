@@ -25,7 +25,7 @@ from decimal import Decimal, InvalidOperation
 from random import Random
 from typing import Any
 
-from src.money import frais_de_gestion
+from src.money import format_money_brut, frais_de_gestion
 
 
 class FilialeError(ValueError):
@@ -241,6 +241,72 @@ def valeurs_aleatoires(
         calculer(filiale.nom, benefices_aleatoires(alea, exposant), date)
         for filiale in filiales
     ]
+
+
+#: Séparateur de colonnes du format d'import du jeu.
+#:
+#: Une tabulation, et une seule par ligne : le jeu refuse la ligne au-delà. Elle
+#: ne se tape pas dans Discord — la touche y sert à l'autocomplétion et n'insère
+#: rien — d'où la sortie en pièce jointe, seul véhicule dont Discord ne retouche
+#: pas les octets.
+SEPARATEUR_IMPORT = "\t"
+
+#: Fin de ligne du format d'import : CRLF, séparateur officiel du jeu.
+#:
+#: Le contenu d'un message Discord ne peut pas la porter — les fins de ligne y
+#: sont normalisées — ce qui exclut le bloc de code et impose le fichier.
+FIN_DE_LIGNE_IMPORT = "\r\n"
+
+
+def nom_pour_import(nom: str) -> str:
+    """Nom utilisable dans une ligne tab-séparée.
+
+    Les espaces **internes** restent, doubles compris : c'est la clé d'import du
+    jeu, et les normaliser ferait échouer la correspondance de son côté.
+
+    Seuls tabulations et retours à la ligne partent, remplacés par un espace.
+    Ils ne se tapent pas dans Discord mais s'y **collent** — `calculer` ne retire
+    que les bordures — et un nom qui en porterait ouvrirait une deuxième colonne
+    ou couperait la ligne, si bien que le jeu refuserait la ligne entière.
+
+    Exposée plutôt que cachée dans `vers_import` : la commande s'en sert pour
+    dire quels noms elle a dû modifier, et recopier la règle là-bas ferait
+    divergier ce qui est annoncé de ce qui est écrit.
+    """
+    propre = str(nom)
+    for casseur in (SEPARATEUR_IMPORT, "\r\n", "\r", "\n"):
+        propre = propre.replace(casseur, " ")
+    return propre
+
+
+def vers_import(filiales: list[Filiale]) -> str:
+    """Le tableau au format d'import du jeu : nom, tabulation, frais, CRLF.
+
+    Les frais et non les bénéfices : le format réclame ce qu'on doit. Les
+    confondre ferait payer quatorze fois trop sans que le fichier ait l'air faux.
+
+    Les filiales en perte y sont, à zéro — une ligne par filiale, et zéro est le
+    montant exact puisqu'il n'y a rien à prélever sur une perte. Omises, le
+    fichier passerait pour un export incomplet.
+
+    Les montants passent par `format_money_brut` et non `format_money` : un
+    arrondi à deux décimales ferait importer `9,67 EØ` au lieu du montant au
+    chiffre près.
+
+    L'ordre enregistré est gardé plutôt qu'un tri : le fichier est une entrée
+    machine, pas un classement, et trié, deux exports des mêmes filiales
+    différeraient dès qu'un montant bouge.
+
+    Sans filiale, la chaîne est vide et non un CRLF solitaire, que le jeu lirait
+    comme une ligne sans nom.
+    """
+    return "".join(
+        f"{nom_pour_import(filiale.nom)}"
+        f"{SEPARATEUR_IMPORT}"
+        f"{format_money_brut(filiale.frais)}"
+        f"{FIN_DE_LIGNE_IMPORT}"
+        for filiale in filiales
+    )
 
 
 def total_frais(filiales: list[Filiale]) -> Decimal:

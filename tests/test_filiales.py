@@ -16,6 +16,8 @@ import pytest
 
 from src.money import format_money
 from src.filiales import (
+    FIN_DE_LIGNE_IMPORT,
+    SEPARATEUR_IMPORT,
     Filiale,
     FilialeError,
     benefices_aleatoires,
@@ -23,11 +25,13 @@ from src.filiales import (
     depuis_json,
     enregistrer,
     index_de,
+    nom_pour_import,
     noms_separes,
     remettre_a_zero,
     retirer_plusieurs,
     total_frais,
     valeurs_aleatoires,
+    vers_import,
     vers_json,
 )
 
@@ -703,6 +707,134 @@ def test_les_valeurs_aleatoires_transmettent_le_palier():
 
     palier = Decimal(10) ** 15
     assert all(palier <= abs(f.benefices) < 1000 * palier for f in essai)
+
+
+# --- vers_import : le format d'import du jeu --------------------------------
+
+
+def test_une_ligne_par_filiale_avec_un_seul_tab():
+    """Le jeu refuse une ligne qui porte plus d'une tabulation.
+
+    L'assertion porte sur **chaque** ligne : compter les tabulations du texte
+    entier laisserait passer une ligne à deux tabs compensée par une ligne à
+    zéro.
+    """
+    texte = vers_import([_f("MEGAPOLE", "2710572934559948"), _f("MARINE", "175000000")])
+
+    lignes = [ligne for ligne in texte.split(FIN_DE_LIGNE_IMPORT) if ligne]
+    assert len(lignes) == 2, lignes
+    assert all(ligne.count(SEPARATEUR_IMPORT) == 1 for ligne in lignes), lignes
+
+
+def test_les_lignes_sont_separees_par_des_crlf():
+    """CRLF est le séparateur officiel du jeu, y compris pour la dernière ligne.
+
+    Terminée elle aussi : un lecteur qui découpe sur le séparateur perdrait
+    sinon la dernière filiale, celle qu'on verrait le moins manquer.
+    """
+    texte = vers_import([_f("MEGAPOLE", "2710572934559948"), _f("MARINE", "175000000")])
+
+    assert texte.endswith("\r\n"), repr(texte[-4:])
+    assert texte.count("\r\n") == 2, repr(texte)
+
+
+def test_aucun_saut_de_ligne_seul():
+    """Un `\\n` sans son `\\r` serait un CRLF à moitié écrit.
+
+    Sans ce cas, un texte assemblé en LF puis simplement terminé par un CRLF
+    passerait le test précédent.
+    """
+    texte = vers_import([_f("A", "1000"), _f("B", "2000"), _f("C", "3000")])
+
+    assert texte.replace("\r\n", "").count("\n") == 0, repr(texte)
+    assert texte.replace("\r\n", "").count("\r") == 0, repr(texte)
+
+
+def test_les_montants_sont_des_chiffres_seuls():
+    """Le jeu lit des chiffres, pas la notation d'échelle qu'il affiche.
+
+    Vingt-un chiffres de bénéfices, parce que c'est là qu'un arrondi se voit :
+    `format_money` rendrait `9,67 EØ` et le jeu recevrait un montant que
+    personne ne doit.
+    """
+    texte = vers_import([_f("MEGAPOLE", "138131471904669765329")])
+
+    assert "MEGAPOLE\t9669203033326883573\r\n" == texte, repr(texte)
+
+
+def test_ce_sont_les_frais_et_non_les_benefices():
+    """Le format demande les frais de gestion : ce qu'on doit, pas ce qu'on gagne.
+
+    Confondre les deux ferait payer quatorze fois trop, sans que le fichier ait
+    l'air faux.
+    """
+    texte = vers_import([_f("MARINE", "1000")])
+
+    assert texte == "MARINE\t70\r\n", repr(texte)
+
+
+def test_une_filiale_en_perte_sort_a_zero():
+    """Une ligne par filiale : le fichier doit refléter le tableau entier.
+
+    Zéro est le montant exact — il n'y a rien à prélever sur une perte — et
+    omettre la ligne laisserait croire à un export incomplet.
+    """
+    texte = vers_import([_f("A", "1000"), _f("EN PERTE", "-5000"), _f("B", "2000")])
+
+    assert "EN PERTE\t0\r\n" in texte, repr(texte)
+    assert len([ligne for ligne in texte.split("\r\n") if ligne]) == 3, repr(texte)
+
+
+def test_les_doubles_espaces_du_nom_sont_conserves():
+    """Le nom est la clé d'import du jeu : normalisé, il ne correspondrait plus."""
+    texte = vers_import([_f("ARMEE  DE TERRE", "1000")])
+
+    assert texte.startswith("ARMEE  DE TERRE\t"), repr(texte)
+
+
+def test_un_tab_colle_dans_un_nom_est_neutralise():
+    """Un nom peut porter un tab **collé** : `calculer` ne retire que les bords.
+
+    Laissé tel quel, il ouvrirait une deuxième colonne et le jeu refuserait la
+    ligne entière.
+    """
+    texte = vers_import([_f("ARMEE\tDE TERRE", "1000")])
+
+    assert texte.count(SEPARATEUR_IMPORT) == 1, repr(texte)
+    assert texte == "ARMEE DE TERRE\t70\r\n", repr(texte)
+
+
+def test_un_retour_a_la_ligne_colle_dans_un_nom_est_neutralise():
+    """Même raison : il couperait la ligne en deux, dont une sans montant."""
+    texte = vers_import([_f("ARMEE\r\nDE TERRE", "1000")])
+
+    assert texte == "ARMEE DE TERRE\t70\r\n", repr(texte)
+
+
+def test_sans_filiale_le_texte_est_vide():
+    """Vide, et non un CRLF solitaire : le jeu lirait une ligne sans nom."""
+    assert vers_import([]) == ""
+
+
+def test_l_ordre_enregistre_est_conserve():
+    """Le fichier est une entrée machine, pas un classement.
+
+    Trié par montant, deux exports des mêmes filiales différeraient dès qu'un
+    montant bouge, et l'on ne saurait plus lequel est à jour.
+    """
+    texte = vers_import([_f("PETITE", "1000"), _f("GROSSE", "2710572934559948")])
+
+    assert texte.index("PETITE") < texte.index("GROSSE"), repr(texte)
+
+
+def test_nom_pour_import_garde_les_espaces_internes():
+    """La règle est isolée pour que la commande puisse dire ce qu'elle a modifié.
+
+    Sans elle exposée, la commande recopierait la neutralisation et les deux
+    finiraient par divergier.
+    """
+    assert nom_pour_import("ARMEE  DE TERRE") == "ARMEE  DE TERRE"
+    assert nom_pour_import("ARMEE\tDE TERRE") == "ARMEE DE TERRE"
 
 
 def _f(nom: str, benefices: str, date: str = "2026-08-11") -> Filiale:

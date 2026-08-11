@@ -6,6 +6,7 @@ import asyncio
 # Les paramètres des commandes s'appellent `min` et `max` (ce que Discord
 # affiche) : les fonctions natives ne sont donc joignables que par `builtins`.
 import builtins
+import io
 import json
 import logging
 from decimal import Decimal
@@ -17,7 +18,14 @@ from discord import app_commands
 from src import settings
 from src.acces import acces_autorise, gere_la_liste
 from src.db import Store, bornes_tolerees
-from src.filiales import FilialeError, index_de, noms_separes, total_frais
+from src.filiales import (
+    FilialeError,
+    index_de,
+    nom_pour_import,
+    noms_separes,
+    total_frais,
+    vers_import,
+)
 from src.journal import Journal
 from src.money import (
     DEVISE,
@@ -1208,6 +1216,62 @@ def enregistrer_commandes(bot: EmpireBot) -> None:
             embed=embed_filiales(filiales, aujourdhui), ephemeral=True
         )
 
+    @filiales_groupe.command(
+        name="export", description="Le tableau au format d'import du jeu (.txt)"
+    )
+    async def filiales_export(interaction: discord.Interaction):
+        """Le fichier à donner au champ d'import du jeu.
+
+        En pièce jointe et non dans un bloc de code : la tabulation ne se saisit
+        pas dans Discord — la touche y sert à l'autocomplétion — et Discord
+        normalise les fins de ligne du contenu d'un message, si bien qu'un bloc
+        ne pourrait pas porter le CRLF que le jeu attend. Une pièce jointe n'est
+        pas rendue : les octets arrivent tels qu'ils ont été écrits.
+        """
+        filiales = await bot.store.filiales()
+        if not filiales:
+            # Pas de fichier vide : un `.txt` de zéro octet se lirait comme une
+            # panne du bot plutôt que comme un tableau vide.
+            await interaction.response.send_message(
+                "ℹ️ Aucune filiale enregistrée : rien à exporter.\n"
+                "-# `/frais montant:… filiale:…` pour remplir le tableau.",
+                ephemeral=True,
+            )
+            return
+
+        contenu = vers_import(filiales)
+        aujourdhui = maintenant_local((await bot.store.config())["fuseau"]).strftime(
+            "%Y-%m-%d"
+        )
+        # Daté : deux exports d'affilée porteraient sinon le même nom dans le fil,
+        # et on ne saurait plus lequel est à jour.
+        fichier = discord.File(
+            fp=io.BytesIO(contenu.encode("utf-8")),
+            filename=f"frais-{aujourdhui}.txt",
+        )
+
+        # Un nom peut porter une tabulation ou un retour à la ligne **collés** :
+        # neutralisés, ils ne casseront pas le format, mais le nom ne sera plus
+        # celui du jeu. Le dire, sans quoi rien n'expliquerait le refus à l'import.
+        deformes = [
+            nom_pour_import(f.nom) for f in filiales if nom_pour_import(f.nom) != f.nom
+        ]
+        avertissement = (
+            "\n-# ⚠️ Nom(s) réécrit(s) faute de tenir sur une ligne : "
+            + ", ".join(f"`{nom}`" for nom in deformes)
+            if deformes
+            else ""
+        )
+
+        await interaction.response.send_message(
+            f"📄 {len(filiales)} ligne(s) au format d'import du jeu.\n"
+            f"-# Une tabulation et un CRLF par ligne : à téléverser ou à copier tel "
+            f"quel — le format ne survivrait pas à un message Discord."
+            f"{avertissement}",
+            file=fichier,
+            ephemeral=True,
+        )
+
     @filiales_groupe.command(name="retirer", description="Oublie une filiale")
     @app_commands.describe(filiale="Nom de la filiale à retirer du tableau")
     @app_commands.autocomplete(filiale=_completer_filiale)
@@ -1851,7 +1915,7 @@ def enregistrer_commandes(bot: EmpireBot) -> None:
         modele = await bot.store.template()
         contenu = json.dumps(modele, indent=2, ensure_ascii=False)
         fichier = discord.File(
-            fp=__import__("io").BytesIO(contenu.encode("utf-8")),
+            fp=io.BytesIO(contenu.encode("utf-8")),
             filename="template.json",
         )
         await interaction.response.send_message(file=fichier, ephemeral=True)

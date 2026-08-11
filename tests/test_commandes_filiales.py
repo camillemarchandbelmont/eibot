@@ -14,7 +14,9 @@ from decimal import Decimal
 
 import pytest
 
+from src.filiales import vers_import
 from src.money import ECHELLE, format_money
+from src.schedule import maintenant_local
 
 from tests.test_commandes_fourchettes import (
     InteractionFactice,
@@ -807,5 +809,136 @@ async def test_test_reste_prive():
     interaction = InteractionFactice()
 
     await _commande(bot, "filiales test").callback(interaction, confirmer=True)
+
+    assert all(m.get("ephemeral") for m in interaction.response.messages)
+
+
+# --- /filiales export -------------------------------------------------------
+
+
+def _fichiers(interaction: InteractionFactice) -> list:
+    """Les pieces jointes envoyees, quelle que soit la voie.
+
+    `Reponse.send_message` range tous ses `**options` dans le message : le
+    `file=` y est donc tel quel, sans avoir a etendre le faux.
+    """
+    return [
+        message["file"]
+        for message in [*interaction.response.messages, *interaction.followup.messages]
+        if message.get("file")
+    ]
+
+
+def _octets(fichier) -> bytes:
+    """Le contenu exact de la piece jointe.
+
+    Les octets et non le texte : c'est le seul niveau ou le CRLF se voit, et le
+    format du jeu se joue precisement la.
+    """
+    fichier.fp.seek(0)
+    return fichier.fp.read()
+
+
+async def test_export_joint_un_fichier():
+    """Une piece jointe et non un bloc de code.
+
+    Discord normalise les fins de ligne du contenu d'un message : un bloc ne
+    pourrait pas porter le CRLF que le jeu attend, et la tabulation ne s'y
+    saisit meme pas.
+    """
+    bot = await _bot()
+    await bot.store.enregistrer_filiale("MEGAPOLE", Decimal(1000), "2026-08-11")
+    interaction = InteractionFactice()
+
+    await _commande(bot, "filiales export").callback(interaction)
+
+    assert len(_fichiers(interaction)) == 1, interaction.response.messages
+
+
+async def test_export_rend_exactement_le_format_d_import():
+    """L'egalite et non un `in` : c'est le format entier qui est en jeu.
+
+    Un `in` laisserait passer un en-tete, une ligne de total, ou n'importe quoi
+    ajoute autour — autant de choses que le jeu refuserait.
+    """
+    bot = await _bot()
+    await bot.store.enregistrer_filiale("MEGAPOLE", Decimal(1000), "2026-08-11")
+    await bot.store.enregistrer_filiale("EN PERTE", Decimal(-500), "2026-08-11")
+    interaction = InteractionFactice()
+
+    await _commande(bot, "filiales export").callback(interaction)
+
+    attendu = vers_import(await bot.store.filiales())
+    assert _octets(_fichiers(interaction)[0]) == attendu.encode("utf-8")
+    assert b"MEGAPOLE\t70\r\nEN PERTE\t0\r\n" == _octets(_fichiers(interaction)[0])
+
+
+async def test_export_n_ecrit_pas_de_bom():
+    """Un BOM se collerait au premier nom de filiale et casserait la cle d'import.
+
+    Invisible dans un editeur, il ne se verrait que par le refus du jeu.
+    """
+    bot = await _bot()
+    await bot.store.enregistrer_filiale("MEGAPOLE", Decimal(1000), "2026-08-11")
+    interaction = InteractionFactice()
+
+    await _commande(bot, "filiales export").callback(interaction)
+
+    assert not _octets(_fichiers(interaction)[0]).startswith(b"\xef\xbb\xbf")
+
+
+async def test_export_nomme_le_fichier_avec_la_date():
+    """Deux exports se confondraient dans le fil sous un nom fixe."""
+    bot = await _bot()
+    await bot.store.enregistrer_filiale("MEGAPOLE", Decimal(1000), "2026-08-11")
+    interaction = InteractionFactice()
+
+    await _commande(bot, "filiales export").callback(interaction)
+
+    aujourdhui = maintenant_local(
+        (await bot.store.config())["fuseau"]
+    ).strftime("%Y-%m-%d")
+    assert _fichiers(interaction)[0].filename == f"frais-{aujourdhui}.txt"
+
+
+async def test_export_sans_filiale_ne_joint_rien():
+    """Un `.txt` vide se lirait comme une panne du bot.
+
+    Le message dit qu'il n'y a rien et rappelle par ou on remplit le tableau,
+    sans quoi il faudrait deviner que `/frais` est la commande.
+    """
+    bot = await _bot()
+    interaction = InteractionFactice()
+
+    await _commande(bot, "filiales export").callback(interaction)
+
+    assert _fichiers(interaction) == []
+    annonce = " ".join(interaction.textes)
+    assert "aucune" in annonce.lower(), annonce
+    assert "/frais" in annonce, annonce
+
+
+async def test_export_dit_les_noms_qu_il_a_du_modifier():
+    """Une tabulation collee dans un nom est neutralisee — mais pas en silence.
+
+    Sans le dire, le fichier partirait avec un nom que le jeu ne reconnaitrait
+    pas, et rien n'indiquerait pourquoi l'import echoue.
+    """
+    bot = await _bot()
+    await bot.store.enregistrer_filiale("ARMEE\tDE TERRE", Decimal(1000), "2026-08-11")
+    interaction = InteractionFactice()
+
+    await _commande(bot, "filiales export").callback(interaction)
+
+    annonce = " ".join(interaction.textes)
+    assert "ARMEE DE TERRE" in annonce, annonce
+
+
+async def test_export_reste_prive():
+    bot = await _bot()
+    await bot.store.enregistrer_filiale("MEGAPOLE", Decimal(1000), "2026-08-11")
+    interaction = InteractionFactice()
+
+    await _commande(bot, "filiales export").callback(interaction)
 
     assert all(m.get("ephemeral") for m in interaction.response.messages)

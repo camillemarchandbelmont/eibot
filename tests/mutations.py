@@ -1254,6 +1254,108 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
         "            resultat = await bot.publier_si_lheure(forcer=forcer)",
         "sur Render, où le service dort, le tableau ne sortirait jamais",
     ),
+    # --- L'export au format d'import du jeu --------------------------------
+    #
+    # Le format est strict et le jeu est le seul juge : une ligne mal formée n'a
+    # pas l'air fausse, elle est refusée à l'import sans dire pourquoi. Chaque
+    # mutation ci-dessous produirait un fichier d'apparence normale.
+    (
+        "export-sans-tab",
+        "src/filiales.py",
+        'SEPARATEUR_IMPORT = "\\t"',
+        'SEPARATEUR_IMPORT = " "',
+        "le jeu ne verrait qu'une colonne, donc aucun montant",
+    ),
+    (
+        "export-en-lf",
+        "src/filiales.py",
+        'FIN_DE_LIGNE_IMPORT = "\\r\\n"',
+        'FIN_DE_LIGNE_IMPORT = "\\n"',
+        "le séparateur de lignes officiel du jeu ne serait pas respecté",
+    ),
+    (
+        "export-sans-fin-de-ligne-finale",
+        "src/filiales.py",
+        "        for filiale in filiales\n    )\n\n\ndef total_frais",
+        "        for filiale in filiales\n    ).removesuffix(FIN_DE_LIGNE_IMPORT)"
+        "\n\n\ndef total_frais",
+        "la dernière filiale serait perdue par un lecteur qui découpe sur le séparateur",
+    ),
+    # Le mutant passe par `__import__` parce que `src/filiales.py` **n'importe
+    # pas** `format_money` — et c'est justement la garde qu'on éprouve : le cœur
+    # pur ne connaît que la forme brute, celle que le jeu lit. Ce qui compte ici
+    # est le comportement obtenu, un montant arrondi pour l'œil humain, pas la
+    # façon contorsionnée de l'obtenir.
+    (
+        "export-montant-arrondi",
+        "src/filiales.py",
+        '        f"{format_money_brut(filiale.frais)}"',
+        '        f"{__import__(\'src.money\', fromlist=[\'x\']).format_money(filiale.frais)}"',
+        "on importerait « 189,74 TØ » au lieu du montant au chiffre près",
+    ),
+    (
+        "export-benefices-au-lieu-des-frais",
+        "src/filiales.py",
+        "        f\"{format_money_brut(filiale.frais)}\"",
+        "        f\"{format_money_brut(filiale.benefices)}\"",
+        "on importerait ce qu'on gagne au lieu de ce qu'on doit, soit quatorze fois trop",
+    ),
+    (
+        "export-perte-omise",
+        "src/filiales.py",
+        "        for filiale in filiales\n    )\n\n\ndef total_frais",
+        "        for filiale in filiales\n        if not filiale.en_perte\n    )\n\n\ndef total_frais",
+        "le tableau importé serait incomplet sans qu'on voie ce qui manque",
+    ),
+    (
+        "export-nom-normalise",
+        "src/filiales.py",
+        '        f"{nom_pour_import(filiale.nom)}"',
+        '        f\'{" ".join(nom_pour_import(filiale.nom).split())}\'',
+        "les doubles espaces partiraient et la clé d'import du jeu ne correspondrait plus",
+    ),
+    (
+        "export-nom-tab-non-neutralise",
+        "src/filiales.py",
+        '    propre = str(nom)\n    for casseur in',
+        '    return str(nom)\n    propre = str(nom)\n    for casseur in',
+        "un tab collé dans un nom mettrait deux tabs sur la ligne, refusée par le jeu",
+    ),
+    (
+        "export-ordre-trie",
+        "src/filiales.py",
+        "        for filiale in filiales\n    )\n\n\ndef total_frais",
+        "        for filiale in sorted(filiales, key=lambda f: -f.frais)\n    )\n\n\ndef total_frais",
+        "deux exports des mêmes données différeraient dès qu'un montant bouge",
+    ),
+    (
+        "bot-export-fichier-non-joint",
+        "src/bot.py",
+        "            file=fichier,\n            ephemeral=True,\n        )\n\n    @filiales_groupe.command(name=\"retirer\"",
+        "            ephemeral=True,\n        )\n\n    @filiales_groupe.command(name=\"retirer\"",
+        "la commande annoncerait un export sans rien rendre",
+    ),
+    (
+        "bot-export-vide-annonce-un-fichier",
+        "src/bot.py",
+        "        filiales = await bot.store.filiales()\n        if not filiales:",
+        "        filiales = await bot.store.filiales()\n        if False:",
+        "un fichier de zéro octet se lirait comme une panne du bot",
+    ),
+    (
+        "bot-export-nom-de-fichier-sans-date",
+        "src/bot.py",
+        'filename=f"frais-{aujourdhui}.txt",',
+        'filename="frais.txt",',
+        "deux exports d'affilée se confondraient dans le fil",
+    ),
+    (
+        "bot-export-nom-deforme-en-silence",
+        "src/bot.py",
+        "        deformes = [\n            nom_pour_import(f.nom) for f in filiales if nom_pour_import(f.nom) != f.nom\n        ]",
+        "        deformes = []",
+        "un nom réécrit partirait sans un mot, et rien n'expliquerait le refus du jeu",
+    ),
 ]
 
 
