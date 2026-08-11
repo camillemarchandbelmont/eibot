@@ -47,11 +47,34 @@ def test_les_filiales_sont_classees_par_frais_decroissants():
 
 
 def test_une_filiale_en_perte_est_signalee():
-    """À 0 Ø sans marque, on croirait à une saisie oubliée."""
-    lignes = lignes_tableau([_filiale("EN PERTE", "-500")])
+    """À 0 Ø sans marque, on croirait à une saisie oubliée.
 
-    assert "EN PERTE" in lignes[0]
+    La filiale ne s'appelle **pas** « EN PERTE » : le mot viendrait alors du nom
+    et le test passerait même sans aucun marquage.
+    """
+    lignes = lignes_tableau([_filiale("ARMEE", "-500")])
+
+    assert "ARMEE" in lignes[0]
     assert "perte" in lignes[0].lower()
+
+
+def test_une_filiale_en_perte_n_affiche_pas_de_montant_a_payer():
+    """« 0 Ø » à côté d'un nom se lit comme une somme due de zéro, ce qui est
+    vrai, mais laisse croire à une saisie ratée plutôt qu'à une perte."""
+    lignes = lignes_tableau([_filiale("ARMEE", "-500")])
+
+    assert "0 Ø" not in lignes[0].replace(" ", " ")
+
+
+def test_chaque_ligne_donne_les_frais_en_entier_pour_les_recopier():
+    """La notation courte ne suffit pas pour payer : « 189.74 TØ » n'est pas un
+    montant qu'on saisit dans le jeu. Le total seul ne suffirait pas — on paie
+    filiale par filiale."""
+    lignes = lignes_tableau([_filiale("ARMEE", "2710572934559948")])
+
+    ligne = lignes[0].replace(" ", " ")
+    assert "189.74 TØ" in ligne
+    assert "189 740 105 419 196" in ligne
 
 
 def test_une_filiale_dont_la_saisie_date_d_un_autre_jour_est_datee():

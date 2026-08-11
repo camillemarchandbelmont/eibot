@@ -178,10 +178,15 @@ def test_le_total_d_une_liste_vide_vaut_zero():
 
 
 def test_le_total_ne_perd_pas_de_precision():
-    """Dix-sept chiffres : un `float` en aurait mangé les derniers."""
-    liste = [calculer("A", Decimal("2710572934559948"), "2026-08-11")] * 3
+    """Vingt-un chiffres : les bénéfices du Mégapôle, où un `float` casse.
 
-    assert total_frais(liste) == Decimal("569220316257588")
+    Dix-sept chiffres ne suffisaient pas à ce test : ils tiennent encore dans la
+    mantisse d'un `float64`, donc une somme en flottants y donnait le bon
+    résultat et le test passait quand même.
+    """
+    liste = [calculer("A", Decimal("173019538387120000000"), "2026-08-11")] * 3
+
+    assert total_frais(liste) == Decimal("36334103061295200000")
 
 
 # --- JSON -------------------------------------------------------------------

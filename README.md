@@ -119,6 +119,35 @@ façon de vérifier que `50 6P` a bien été lu comme 506 PØ), donnent le résu
 notation courte **et** en chiffres complets (on ne paie pas « 189.70 TØ »), et
 répondent en privé.
 
+## Les frais par filiale
+
+`/frais montant filiale:ARMEE DE TERRE` comprend le montant comme les
+**bénéfices** de cette filiale : il calcule les 7 %, enregistre le relevé et
+annonce le total de toutes les filiales. Le même `/frais montant` sans nom de
+filiale reste la calculatrice sans état, qui n'écrit rien — une seule commande,
+parce que c'est le même calcul.
+
+Le nom est celui du jeu, conservé caractère pour caractère (doubles espaces
+compris) : c'est la clé d'import. Il se complète tout seul dès la deuxième
+saisie ; retapé de mémoire, une faute de frappe créerait une **seconde** filiale
+au lieu de mettre à jour la première. Ressaisir une filiale remplace son relevé
+et le dit.
+
+Une filiale qui ne gagne rien ne paie rien : le jeu ne rembourse pas, donc des
+bénéfices nuls ou négatifs donnent 0 Ø, et la ligne est marquée « en perte » —
+un 0 Ø muet se lirait comme une saisie oubliée.
+
+Chaque jour à l'heure réglée par `/filiales heure`, le bot publie un tableau dans
+les salons de `/filiales salon ajouter` : une ligne par filiale des frais les plus
+lourds aux plus légers, chaque montant en notation courte **et** en chiffres
+complets, puis le total. Les relevés qui ne datent pas du jour portent leur date,
+pour repérer ceux qu'on a oublié de mettre à jour.
+
+Ce tableau est une publication **indépendante** de celle des promotions : sa
+propre heure, ses propres salons, sa propre marque du jour. Les deux ne peuvent
+donc pas se voler leur quota quotidien, et la panne de l'export du jeu — dont le
+tableau ne dépend pas, ses données étant saisies à la main — ne le fait pas taire.
+
 ## Installation
 
 ```bash
@@ -154,7 +183,13 @@ local, mais elle repart des valeurs de `.env` à chaque redémarrage.
 | Commande | Effet |
 |---|---|
 | `/convertir montant vers` | Exprime un montant dans un autre palier (`2.71P` → `2 710.57 TØ`) |
-| `/frais montant` | Frais de gestion sur un montant (7 %, sans décimales) |
+| `/frais montant [filiale]` | Frais de gestion (7 %, sans décimales). Avec un nom de filiale, enregistre le relevé pour le tableau quotidien |
+| `/filiales liste` | Les filiales enregistrées, leurs frais et le total |
+| `/filiales retirer filiale` | Oublie une filiale |
+| `/filiales heure heure` | Heure du tableau des frais (`HH:MM`), distincte de celle des promotions |
+| `/filiales salon ajouter salon` | Publie le tableau des frais dans ce salon |
+| `/filiales salon retirer salon` | Cesse de l'y publier |
+| `/filiales apercu` | Prévisualise le tableau sans publier ni consommer le post du jour |
 | `/promos [min] [max]` | Promotions à la demande ; sans argument, l'**union** des fourchettes |
 | `/fourchette ajouter nom min max` | Crée une fourchette (ex : `nom:grosses min:100T max:6P`) |
 | `/fourchette prix nom min max` | Modifie ses bornes, en gardant ses salons |
@@ -607,6 +642,8 @@ src/promos.py    parsing CSV, calcul des remises, filtre et tri
 src/source.py    provenance des données (API du jeu ou fichier local)
 src/template.py  substitution des {placeholders} Discohook
 src/publish.py   assemblage des embeds et limites Discord
+src/filiales.py  relevés de frais par filiale (cœur pur, sans Discord ni base)
+src/publish_filiales.py  le tableau des frais en un embed
 src/bot.py       client Discord et commandes slash
 src/journal.py   compte rendu dans le salon de logs
 src/schedule.py  « est-ce l'heure de publier ? »
