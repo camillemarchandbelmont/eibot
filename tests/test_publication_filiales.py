@@ -185,12 +185,17 @@ def test_l_embed_tient_aussi_avec_des_noms_longs_et_des_releves_perimes():
 
 
 def test_la_description_est_mesuree_en_unites_utf16_comme_chez_discord():
-    """Discord compte en UTF-16 : un emoji hors du BMP y pèse deux unités, là où
-    `len()` de Python n'en voit qu'une. Mesurer comme Python laisserait passer
-    un embed que l'API refuse."""
+    """Discord compte en UTF-16, où un emoji hors du BMP pèse deux unités.
+
+    Le nom d'une filiale est libre, donc il peut en contenir : trente par nom
+    creusent l'écart à sept cents unités, et une description mesurée comme
+    Python atteint alors 4876 unités côté Discord — refusée, alors qu'elle
+    paraissait tenir. Des noms sans emoji ne prouveraient rien, l'écart y étant
+    d'une seule unité pour la médaille de tête.
+    """
+    nom = "USINE " + "🏭" * 30
     filiales = [
-        _filiale(f"FILIALE {i:03d} AUX CHANTIERS NAVALS REUNIS", "173019538387120000000")
-        for i in range(200)
+        _filiale(f"{nom}{i:03d}", "173019538387120000000") for i in range(200)
     ]
 
     description = embed_filiales(filiales, "2026-08-11").description
@@ -249,16 +254,24 @@ def test_une_date_illisible_est_rendue_telle_quelle():
 def test_une_filiale_en_perte_et_une_filiale_payante_ne_portent_pas_le_meme_emoji():
     """L'emoji doit dire l'état, sinon il ne fait que décorer.
 
-    On compare les deux lignes plutôt que de chercher un emoji précis : le test
-    resterait vrai si l'on changeait de pictogramme, et faux dès qu'ils
-    cessent de se distinguer.
+    Les trois filiales sont dans **une seule** liste, et la comparaison porte
+    sur les deux dernières : listées séparément, la payante serait chaque fois
+    tête de liste et porterait donc sa marque de tête — les lignes se
+    distingueraient sans que la perte soit marquée pour autant.
+
+    On compare les lignes entre elles plutôt que de chercher un emoji précis :
+    le test survit à un changement de pictogramme, et tombe dès qu'ils cessent
+    de se distinguer.
     """
-    perte = lignes_tableau([_filiale("A", "-500")])[0]
-    payante = lignes_tableau([_filiale("A", "1000")])[0]
+    tete, payante, perte = lignes_tableau(
+        [_filiale("TETE", "9000"), _filiale("PAYANTE", "1000"), _filiale("PERTE", "-500")]
+    )
 
     assert _emojis(perte), "la ligne en perte ne porte aucun emoji"
     assert _emojis(payante), "la ligne payante ne porte aucun emoji"
     assert _emojis(perte) != _emojis(payante)
+    # Et la tête de liste ne doit pas être confondue avec la perte non plus.
+    assert _emojis(tete) != _emojis(perte)
 
 
 def test_la_filiale_la_plus_lourde_se_distingue_des_suivantes():
@@ -307,10 +320,16 @@ def test_le_montant_a_recopier_est_en_code_pour_etre_copie_d_un_geste():
 
 
 def test_le_total_a_recopier_est_aussi_en_code():
-    embed = embed_filiales([_filiale("A", "2710572934559948")], "2026-08-11")
+    """Deux filiales, pour que le total diffère de chaque ligne : avec une
+    seule, l'assertion serait satisfaite par la ligne et ne dirait rien du
+    champ Total."""
+    embed = embed_filiales(
+        [_filiale("A", "2710572934559948"), _filiale("B", "1000")], "2026-08-11"
+    )
 
-    texte = _tout_le_texte(embed).replace(" ", " ")
-    assert "`189 740 105 419 196 Ø`" in texte
+    total = [c for c in embed.fields if "total" in (c.name or "").lower()]
+    assert total, "aucun champ de total"
+    assert "`189 740 105 419 266 Ø`" in total[0].value.replace(" ", " ")
 
 
 def test_l_embed_porte_la_date_en_francais():

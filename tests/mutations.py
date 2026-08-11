@@ -766,13 +766,10 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
         "    return len(texte)",
         "un emoji pèse deux unités chez Discord : l'embed passerait ici et pas là-bas",
     ),
-    (
-        "tableau-budget-sans-le-saut-de-ligne",
-        "src/publish_filiales.py",
-        "        cout = _longueur(ligne) + 1  # +1 : le saut de ligne qui la précède",
-        "        cout = _longueur(ligne)",
-        "quarante sauts de ligne non comptés feraient dépasser la limite",
-    ),
+    # Pas de mutation sur le « +1 » du saut de ligne : avec un budget de 3900 et
+    # quarante lignes au plus, l'oublier coûte 40 unités — 3940, encore sous les
+    # 4096 de Discord. C'est de la rigueur comptable, pas un garde-fou, et un
+    # test qui prétendrait le contraire serait faux.
     (
         "tableau-total-sur-les-seules-lignes-affichees",
         "src/publish_filiales.py",

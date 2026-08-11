@@ -143,6 +143,28 @@ lourds aux plus légers, chaque montant en notation courte **et** en chiffres
 complets, puis le total. Les relevés qui ne datent pas du jour portent leur date,
 pour repérer ceux qu'on a oublié de mettre à jour.
 
+```
+🏢 Frais de gestion des filiales
+🥇 ARMEE  DE TERRE — `189 740 105 419 196 Ø` · 189.74 TØ
+▫️ MARINE NATIONALE — `8 712 753 443 Ø` · 8.71 GØ
+⏳ LOGISTIQUE — `68 600 Ø` · 68.60 KØ · relevé du 9 août
+🔻 CHANTIERS — en perte, rien à payer
+🧾 Total · 4 filiales
+`189 748 818 241 239 Ø` · 189.75 TØ
+mardi 11 août 2026
+```
+
+Les emojis y disent un **état** et rien d'autre : le poste le plus lourd (🥇),
+une filiale en perte (🔻), un relevé qui n'a pas été remis à jour (⏳). Dans une
+liste de vingt lignes, un pictogramme identique partout ne servirait à rien.
+
+Le montant à payer est en `code` parce qu'un appui long le copie alors seul dans
+Discord ; sinon il faudrait sélectionner vingt-un chiffres à la main. Le nombre
+de lignes est plafonné à 40, mais c'est un **budget de caractères** qui tranche
+en dernier ressort : une description d'embed plafonne à 4096, comptés en UTF-16
+où un emoji pèse deux, et un dépassement ferait refuser le tableau en entier.
+Les filiales non affichées sont comptées sous la liste, et le total les inclut.
+
 Ce tableau est une publication **indépendante** de celle des promotions : sa
 propre heure, ses propres salons, sa propre marque du jour. Les deux ne peuvent
 donc pas se voler leur quota quotidien, et la panne de l'export du jeu — dont le
