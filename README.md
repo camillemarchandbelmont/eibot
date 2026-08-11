@@ -199,6 +199,34 @@ d'essai** : l'écriture va dans la base courante, production comprise. Des
 chiffres au hasard oubliés en base seraient publiés le soir comme s'ils étaient
 vrais, d'où le rappel de `/filiales remise-a-zero` dans la réponse de `test`.
 
+### Renvoyer les frais dans le jeu
+
+`/filiales export` rend un `.txt` au format d'import du jeu, une filiale par
+ligne :
+
+```
+MEGAPOLE→189740105419196␍␊
+ARMEE  DE TERRE→0␍␊
+```
+
+**Pourquoi une pièce jointe et non un bloc de code**, alors qu'on pourrait le
+copier depuis le message : parce que le format ne survivrait pas au message. La
+tabulation ne se saisit pas dans Discord — la touche sert à l'autocomplétion et
+n'insère rien — et Discord normalise les fins de ligne du contenu d'un message,
+donc aucun bloc ne peut porter le CRLF que le jeu attend. Les octets d'une pièce
+jointe, eux, arrivent tels qu'ils ont été écrits.
+
+Les montants sont les **frais**, en chiffres seuls : le format réclame ce qu'on
+doit, et `format_money` arrondirait à `189,74 TØ`, soit un montant que personne
+ne paie. Les filiales en perte y sont, à `0` — une ligne par filiale, et zéro est
+exact. L'ordre est celui de l'enregistrement, pas un tri : le fichier est une
+entrée machine, et trié, deux exports des mêmes filiales différeraient dès qu'un
+montant bouge. Les noms sortent caractère pour caractère, doubles espaces
+compris, parce que c'est la clé d'import du jeu ; une tabulation ou un retour à la
+ligne **collés** dans un nom sont remplacés par un espace, sans quoi la ligne
+porterait deux colonnes et le jeu la refuserait — et la réponse dit lesquels, car
+rien d'autre n'expliquerait ensuite l'échec de l'import.
+
 Ce tableau est une publication **indépendante** de celle des promotions : sa
 propre heure, ses propres salons, sa propre marque du jour. Les deux ne peuvent
 donc pas se voler leur quota quotidien, et la panne de l'export du jeu — dont le
@@ -241,6 +269,7 @@ local, mais elle repart des valeurs de `.env` à chaque redémarrage.
 | `/convertir montant vers` | Exprime un montant dans un autre palier (`2.71P` → `2 710.57 TØ`) |
 | `/frais montant [filiale]` | Frais de gestion (7 %, sans décimales). Avec un nom de filiale, enregistre le relevé pour le tableau quotidien |
 | `/filiales liste` | Les filiales enregistrées, leurs frais et le total |
+| `/filiales export` | Le tableau en `.txt` au format d'import du jeu (`nom`+tab+`frais`, CRLF) |
 | `/filiales retirer filiale` | Oublie une filiale |
 | `/filiales retirer-plusieurs filiales confirmer` | Oublie un lot de filiales (noms séparés par des virgules, ou `tout`) |
 | `/filiales remise-a-zero confirmer` | Remet tous les bénéfices à 0 Ø en gardant les noms — nouveau cycle |
