@@ -725,17 +725,17 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
         "un 0 Ø sans marque se lirait comme une saisie oubliée",
     ),
     (
-        "tableau-sans-montant-recopiable",
+        "tableau-sans-notation-courte",
         "src/publish_filiales.py",
-        '                f"({format_money_long(filiale.frais)})"',
-        '                f""',
-        "« 189.74 TØ » n'est pas un montant qu'on saisit dans le jeu",
+        'f" · {format_money(filiale.frais)}"',
+        'f""',
+        "21 chiffres bruts ne se comparent pas d'un coup d'œil entre filiales",
     ),
     (
         "tableau-releves-perimes-non-dates",
         "src/publish_filiales.py",
-        "        if aujourdhui and filiale.date != aujourdhui:",
-        "        if False:",
+        "        perime = bool(aujourdhui) and filiale.date != aujourdhui",
+        "        perime = False",
         "un relevé d'avant-hier se lirait comme celui du jour",
     ),
     (
@@ -748,9 +748,30 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
     (
         "tableau-sans-limite-de-lignes",
         "src/publish_filiales.py",
-        "    affichees = lignes[:LIMITE_LIGNES]",
-        "    affichees = lignes",
-        "au-delà de 4096 caractères Discord refuserait le post entier",
+        "    for ligne in lignes[:LIMITE_LIGNES]:",
+        "    for ligne in lignes:",
+        "un mur de texte au lieu d'un tableau qu'on lit d'un coup d'œil",
+    ),
+    (
+        "tableau-sans-budget-de-caracteres",
+        "src/publish_filiales.py",
+        "        if cout > place:\n            break",
+        "        if False:\n            break",
+        "quarante lignes longues dépassent 4096 : Discord refuse le post entier",
+    ),
+    (
+        "tableau-longueur-comptee-comme-python",
+        "src/publish_filiales.py",
+        '    return len(texte.encode("utf-16-le")) // 2',
+        "    return len(texte)",
+        "un emoji pèse deux unités chez Discord : l'embed passerait ici et pas là-bas",
+    ),
+    (
+        "tableau-budget-sans-le-saut-de-ligne",
+        "src/publish_filiales.py",
+        "        cout = _longueur(ligne) + 1  # +1 : le saut de ligne qui la précède",
+        "        cout = _longueur(ligne)",
+        "quarante sauts de ligne non comptés feraient dépasser la limite",
     ),
     (
         "tableau-total-sur-les-seules-lignes-affichees",
@@ -762,9 +783,64 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
     (
         "tableau-vide-muet",
         "src/publish_filiales.py",
-        '            "*Aucune filiale enregistrée.*\\n"',
+        '            f"{EMOJI_VIDE} *Aucune filiale enregistrée.*\\n"',
         '            ""',
         "un embed vide se lirait comme une panne du bot",
+    ),
+    (
+        "tableau-tete-comme-les-autres",
+        "src/publish_filiales.py",
+        "            marque = EMOJI_TETE if rang == 0 else EMOJI_PAYANTE",
+        "            marque = EMOJI_PAYANTE",
+        "le poste principal ne se verrait qu'en comparant les montants soi-même",
+    ),
+    (
+        "tableau-perte-marquee-comme-payante",
+        "src/publish_filiales.py",
+        "            marque = EMOJI_PERTE\n"
+        '            details = "*en perte, rien à payer*"',
+        "            marque = EMOJI_PAYANTE\n"
+        '            details = "*en perte, rien à payer*"',
+        "une filiale en perte se lirait comme une filiale qui paie",
+    ),
+    (
+        "tableau-releve-perime-non-marque",
+        "src/publish_filiales.py",
+        "        if perime:\n"
+        "            # L'emoji plutôt que la date seule : en bout d'une liste de vingt\n"
+        "            # lignes, « 9 août » se remarque mal.\n"
+        "            marque = EMOJI_PERIME",
+        "        if False:\n"
+        "            marque = EMOJI_PERIME",
+        "un relevé oublié se noierait dans une liste de vingt lignes",
+    ),
+    (
+        "tableau-montant-non-copiable",
+        "src/publish_filiales.py",
+        'f"`{format_money_long(filiale.frais)}`"',
+        'f"{format_money_long(filiale.frais)}"',
+        "il faudrait sélectionner 21 chiffres à la main pour payer",
+    ),
+    (
+        "tableau-total-non-copiable",
+        "src/publish_filiales.py",
+        'value=f"`{format_money_long(total)}` · **{format_money(total)}**",',
+        'value=f"{format_money_long(total)} · **{format_money(total)}**",',
+        "le total à payer ne se copierait plus d'un appui long",
+    ),
+    (
+        "tableau-date-en-anglais",
+        "src/publish_filiales.py",
+        "    return f\"{JOURS[jour.weekday()]} {jour.day} {MOIS[jour.month - 1]} {jour.year}\"",
+        '    return jour.strftime("%A %d %B %Y")',
+        "la locale de Render déciderait de la langue du post",
+    ),
+    (
+        "tableau-date-illisible-fait-echouer-le-post",
+        "src/publish_filiales.py",
+        "    try:\n        return Date.fromisoformat(iso)\n    except ValueError:\n        return None",
+        "    return Date.fromisoformat(iso)",
+        "un relevé d'une version antérieure empêcherait tout le tableau de sortir",
     ),
     # --- src/bot.py : la saisie et la publication du tableau ---------------
     (

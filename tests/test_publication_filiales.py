@@ -13,6 +13,8 @@ from decimal import Decimal
 from src.filiales import calculer
 from src.publish_filiales import (
     LIMITE_LIGNES,
+    date_courte,
+    date_longue,
     embed_filiales,
     lignes_tableau,
 )
@@ -83,7 +85,7 @@ def test_une_filiale_dont_la_saisie_date_d_un_autre_jour_est_datee():
         [_filiale("VIEILLE", "1000", date="2026-08-09")], aujourdhui="2026-08-11"
     )
 
-    assert "2026-08-09" in lignes[0]
+    assert "9 août" in lignes[0]
 
 
 def test_une_filiale_saisie_aujourd_hui_n_est_pas_datee():
@@ -93,7 +95,7 @@ def test_une_filiale_saisie_aujourd_hui_n_est_pas_datee():
         [_filiale("FRAICHE", "1000", date="2026-08-11")], aujourdhui="2026-08-11"
     )
 
-    assert "2026-08-11" not in lignes[0]
+    assert "11 août" not in lignes[0]
 
 
 def test_le_nom_garde_ses_doubles_espaces():
@@ -134,9 +136,10 @@ def test_l_embed_compte_les_filiales():
 
 
 def test_l_embed_porte_la_date_du_jour():
+    """En français : le post est lu par un humain, pas relu par une machine."""
     embed = embed_filiales([_filiale("A", "1000")], "2026-08-11")
 
-    assert "2026-08-11" in _tout_le_texte(embed)
+    assert "11 août 2026" in _tout_le_texte(embed)
 
 
 def test_l_embed_sans_filiale_le_dit_au_lieu_d_etre_vide():
@@ -159,6 +162,42 @@ def test_l_embed_reste_sous_la_limite_de_discord():
     assert len(_tout_le_texte(embed)) <= 4096
 
 
+def test_l_embed_tient_aussi_avec_des_noms_longs_et_des_releves_perimes():
+    """Le pire cas réel, et celui qu'un simple plafond de lignes laisse passer.
+
+    Un nom de filiale est libre, un montant monte à 21 chiffres et un relevé
+    oublié ajoute sa date : quarante lignes de ce gabarit dépassent les 4096
+    caractères, et Discord refuse alors le tableau **en entier** — on ne perdrait
+    pas quelques lignes, on perdrait le post.
+    """
+    filiales = [
+        _filiale(
+            f"CONSORTIUM INTERNATIONAL DES CHANTIERS NAVALS {i:03d}",
+            "173019538387120000000",
+            date="2026-08-09",
+        )
+        for i in range(200)
+    ]
+
+    embed = embed_filiales(filiales, "2026-08-11")
+
+    assert len(embed.description) <= 4096
+
+
+def test_la_description_est_mesuree_en_unites_utf16_comme_chez_discord():
+    """Discord compte en UTF-16 : un emoji hors du BMP y pèse deux unités, là où
+    `len()` de Python n'en voit qu'une. Mesurer comme Python laisserait passer
+    un embed que l'API refuse."""
+    filiales = [
+        _filiale(f"FILIALE {i:03d} AUX CHANTIERS NAVALS REUNIS", "173019538387120000000")
+        for i in range(200)
+    ]
+
+    description = embed_filiales(filiales, "2026-08-11").description
+
+    assert len(description.encode("utf-16-le")) // 2 <= 4096
+
+
 def test_les_filiales_en_trop_sont_comptees_et_non_tues():
     """Tronquer en silence ferait croire que le total ne porte que sur ce qui
     est affiché."""
@@ -175,6 +214,126 @@ def test_le_total_inclut_les_filiales_non_affichees():
     texte = _tout_le_texte(embed_filiales(filiales, "2026-08-11")).replace(" ", " ")
     attendu = 70 * (LIMITE_LIGNES + 5)
     assert f"{attendu}" in texte.replace(" ", "")
+
+
+# --- les dates en français --------------------------------------------------
+
+
+def test_la_date_longue_est_en_francais():
+    """`strftime('%A')` rendrait « Tuesday » : la locale du serveur Render n'est
+    pas la nôtre et ne doit pas décider de la langue du post."""
+    assert date_longue("2026-08-11") == "mardi 11 août 2026"
+
+
+def test_la_date_longue_ne_met_pas_de_zero_devant_le_jour():
+    """« 09 août » se lit comme une référence, pas comme une date."""
+    assert date_longue("2026-08-09") == "dimanche 9 août 2026"
+
+
+def test_la_date_courte_omet_l_annee_et_le_jour_de_la_semaine():
+    """Elle sert à dater un relevé oublié, en bout de ligne : le jour de la
+    semaine et l'année y seraient du bruit."""
+    assert date_courte("2026-08-09") == "9 août"
+
+
+def test_une_date_illisible_est_rendue_telle_quelle():
+    """Un relevé d'une version antérieure ne doit pas faire échouer le post
+    entier : mieux vaut une date brute qu'aucun tableau."""
+    assert date_longue("n'importe quoi") == "n'importe quoi"
+    assert date_courte("") == ""
+
+
+# --- les emojis portent un état --------------------------------------------
+
+
+def test_une_filiale_en_perte_et_une_filiale_payante_ne_portent_pas_le_meme_emoji():
+    """L'emoji doit dire l'état, sinon il ne fait que décorer.
+
+    On compare les deux lignes plutôt que de chercher un emoji précis : le test
+    resterait vrai si l'on changeait de pictogramme, et faux dès qu'ils
+    cessent de se distinguer.
+    """
+    perte = lignes_tableau([_filiale("A", "-500")])[0]
+    payante = lignes_tableau([_filiale("A", "1000")])[0]
+
+    assert _emojis(perte), "la ligne en perte ne porte aucun emoji"
+    assert _emojis(payante), "la ligne payante ne porte aucun emoji"
+    assert _emojis(perte) != _emojis(payante)
+
+
+def test_la_filiale_la_plus_lourde_se_distingue_des_suivantes():
+    """Le poste principal est celui qu'on regarde ; il doit sauter aux yeux
+    sans avoir à comparer les montants soi-même."""
+    lignes = lignes_tableau(
+        [_filiale("GROSSE", "1000000"), _filiale("MOYENNE", "1000")]
+    )
+
+    assert _emojis(lignes[0]) != _emojis(lignes[1])
+
+
+def test_une_filiale_datee_d_un_autre_jour_porte_un_emoji_d_alerte():
+    """La date seule en bout de ligne se remarque mal dans une liste de vingt."""
+    vieille = lignes_tableau([_filiale("A", "1000", date="2026-08-09")], aujourdhui="2026-08-11")[0]
+    fraiche = lignes_tableau([_filiale("A", "1000", date="2026-08-11")], aujourdhui="2026-08-11")[0]
+
+    assert _emojis(vieille) != _emojis(fraiche)
+
+
+def test_le_total_de_l_embed_porte_un_emoji():
+    embed = embed_filiales([_filiale("A", "1000")], "2026-08-11")
+
+    total = [c for c in embed.fields if "total" in (c.name or "").lower()]
+    assert total, "aucun champ de total"
+    assert _emojis(total[0].name)
+
+
+def test_l_embed_vide_ne_se_deguise_pas_en_tableau_rempli():
+    """Son emoji doit dire « rien à afficher », pas « voici tes frais »."""
+    vide = embed_filiales([], "2026-08-11")
+    rempli = embed_filiales([_filiale("A", "1000")], "2026-08-11")
+
+    assert _emojis(vide.description) != _emojis(rempli.description or "")
+
+
+# --- le montant recopiable --------------------------------------------------
+
+
+def test_le_montant_a_recopier_est_en_code_pour_etre_copie_d_un_geste():
+    """Dans Discord, un appui long sur du `code inline` le copie seul ; noyé
+    dans une phrase, il faudrait sélectionner à la main 21 chiffres."""
+    ligne = lignes_tableau([_filiale("A", "2710572934559948")])[0]
+
+    assert "`189 740 105 419 196 Ø`" in ligne.replace(" ", " ")
+
+
+def test_le_total_a_recopier_est_aussi_en_code():
+    embed = embed_filiales([_filiale("A", "2710572934559948")], "2026-08-11")
+
+    texte = _tout_le_texte(embed).replace(" ", " ")
+    assert "`189 740 105 419 196 Ø`" in texte
+
+
+def test_l_embed_porte_la_date_en_francais():
+    """C'est ce qu'on lit dans le post ; « 2026-08-11 » est une clé, pas une
+    date pour un humain."""
+    texte = _tout_le_texte(embed_filiales([_filiale("A", "1000")], "2026-08-11"))
+
+    assert "mardi 11 août 2026" in texte
+
+
+def _emojis(texte: str) -> str:
+    """Les pictogrammes d'une ligne, à l'exclusion de la ponctuation typographique.
+
+    Les traits de séparation (`━`, `─`) sont écartés : ils vivent au-dessus de
+    0x2000 comme les emojis, et sans ce filtre deux lignes se distingueraient
+    par un décor commun plutôt que par un pictogramme d'état.
+    """
+    decor = "━─–—…‰·"
+    return "".join(
+        c
+        for c in texte
+        if ord(c) > 0x2000 and c not in decor and not c.isspace()
+    )
 
 
 def _tout_le_texte(embed) -> str:

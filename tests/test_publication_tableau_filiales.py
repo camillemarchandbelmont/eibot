@@ -111,6 +111,16 @@ async def _bot(salons: dict[int, SalonFactice], source=None) -> EmpireBot:
 # --- Le tableau part dans ses salons ----------------------------------------
 
 
+def _un_tableau(salon: SalonFactice) -> bool:
+    """Un tableau des frais est-il arrivé dans ce salon ?
+
+    Sur le titre, sans le comparer mot pour mot : sa mise en forme (emoji,
+    libellé) appartient à `test_publication_filiales.py`, et un test d'envoi
+    n'a pas à casser quand elle change.
+    """
+    return any("frais" in (titre or "").lower() for titre in salon.titres)
+
+
 async def test_le_tableau_est_publie_dans_les_salons_des_filiales():
     salons = {1: SalonFactice(1), 2: SalonFactice(2)}
     bot = await _bot(salons)
@@ -120,8 +130,8 @@ async def test_le_tableau_est_publie_dans_les_salons_des_filiales():
 
     await bot.publier_filiales_si_lheure(forcer=True)
 
-    assert "Frais de gestion des filiales" in salons[1].titres
-    assert "Frais de gestion des filiales" in salons[2].titres
+    assert _un_tableau(salons[1])
+    assert _un_tableau(salons[2])
 
 
 async def test_le_tableau_porte_les_frais_et_le_total():
@@ -309,7 +319,7 @@ async def test_une_panne_des_promotions_laisse_sortir_le_tableau():
 
     resultat = await bot.publier_tout()
 
-    assert "Frais de gestion des filiales" in salons[1].titres
+    assert _un_tableau(salons[1])
     # La panne reste visible : avalée en silence, on croirait tout normal.
     assert "injoignable" in resultat or "SourceError" in resultat
 
