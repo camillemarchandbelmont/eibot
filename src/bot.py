@@ -130,7 +130,7 @@ class EmpireBot(discord.Client):
         """
         if self._planning is None or self._planning.done():
             self._planning = self.loop.create_task(
-                boucle_planning(self.publier_si_lheure, self.is_closed)
+                boucle_planning(self.publier_tout, self.is_closed)
             )
             log.info("Planification interne active (vérification chaque minute).")
         log.info("Connecté en tant que %s.", self.user)
@@ -359,6 +359,86 @@ class EmpireBot(discord.Client):
             f"publié ({len(reussis)}/{total} envois, "
             f"{len(servies)} fourchette{'s' if len(servies) > 1 else ''})"
         )
+
+    async def publier_filiales_si_lheure(self, forcer: bool = False) -> str:
+        """Le tableau des frais, une fois par jour, à son heure et dans ses salons.
+
+        Ne touche **pas** à l'export du jeu : les relevés sont saisis à la main,
+        et une API en panne ne doit pas empêcher le tableau de sortir. C'est
+        toute la raison d'en faire une publication séparée plutôt qu'un embed de
+        plus dans celle des promotions.
+
+        Renvoie un compte rendu pour la réponse HTTP.
+        """
+        config = await self.store.config()
+        maintenant = maintenant_local(config["fuseau"])
+
+        if not forcer:
+            derniere = await self.store.derniere_publication_filiales()
+            if not doit_publier(maintenant, await self.store.heure_filiales(), derniere):
+                return "rien à faire"
+
+        salons = await self.store.salons_filiales()
+        if not salons:
+            return "aucun salon pour le tableau des frais (/filiales salon ajouter)"
+
+        aujourdhui = maintenant.strftime("%Y-%m-%d")
+        # Publié même vide : l'absence de post ne se distinguerait pas d'une
+        # panne du bot, et l'embed vide dit comment le remplir.
+        filiales = await self.store.filiales()
+        embed = embed_filiales(filiales, aujourdhui)
+
+        reussis: list[str] = []
+        echecs: dict[str, str] = {}
+
+        for salon_id in salons:
+            try:
+                salon = await self.resoudre_salon(salon_id)
+                await salon.send(embed=embed)
+            except Exception as erreur:
+                # Un salon cassé ne prive pas les autres, comme pour les promos.
+                log.warning("Tableau des frais impossible dans %s : %s", salon_id, erreur)
+                echecs[f"<#{salon_id}> (filiales)"] = f"{type(erreur).__name__}: {erreur}"
+            else:
+                reussis.append(f"<#{salon_id}> (filiales)")
+
+        await self._journaliser_publication(len(filiales), reussis, echecs)
+
+        if not reussis:
+            log.error("Tableau des frais échoué dans les %d envois.", len(echecs))
+            return f"tableau des frais : échec dans les {len(echecs)} envoi(s)"
+
+        # Marqué dès qu'un salon a reçu le tableau : sinon le passage suivant
+        # reposterait là où ça avait marché.
+        await self.store.marquer_publie_filiales(aujourdhui)
+        log.info(
+            "Tableau des frais publié (%d/%d envois, %d filiales).",
+            len(reussis), len(salons), len(filiales),
+        )
+        return (
+            f"tableau des frais publié ({len(reussis)}/{len(salons)} envois, "
+            f"{len(filiales)} filiale{'s' if len(filiales) > 1 else ''})"
+        )
+
+    async def publier_tout(self, forcer: bool = False) -> str:
+        """Le tour complet appelé par `/tick` et la boucle interne.
+
+        Les deux publications sont **isolées** : la panne de l'export du jeu ne
+        doit pas faire taire un tableau dont les données sont saisies à la main,
+        et réciproquement. Chaque panne reste dans le compte rendu — avalée en
+        silence, on croirait que tout est normal.
+        """
+        comptes = []
+        for publier, quoi in (
+            (self.publier_si_lheure, "promotions"),
+            (self.publier_filiales_si_lheure, "filiales"),
+        ):
+            try:
+                comptes.append(await publier(forcer=forcer))
+            except Exception as erreur:
+                log.warning("Publication des %s impossible : %s", quoi, erreur)
+                comptes.append(f"{quoi} : {type(erreur).__name__} : {erreur}")
+        return " · ".join(comptes)
 
     # --- Journal : un observateur ne doit jamais bloquer l'essentiel --------
 

@@ -20,7 +20,12 @@ class BotFactice:
     def is_ready(self) -> bool:
         return self.pret
 
-    async def publier_si_lheure(self, forcer: bool = False) -> str:
+    async def publier_tout(self, forcer: bool = False) -> str:
+        """Le tour complet : promotions **et** tableau des frais.
+
+        C'est ce que `/tick` appelle depuis que deux posts cohabitent ; ne
+        déclencher que les promotions laisserait le tableau muet sur Render.
+        """
         if self.erreur:
             raise self.erreur
         self.appels.append(forcer)

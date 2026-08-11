@@ -61,7 +61,10 @@ def creer_app(bot) -> web.Application:
 
         forcer = requete.query.get("forcer") == "1"
         try:
-            resultat = await bot.publier_si_lheure(forcer=forcer)
+            # Le tour complet : les promotions **et** le tableau des frais. Ne
+            # déclencher que les promotions laisserait le tableau muet sur
+            # Render, où le service dort entre deux appels du cron.
+            resultat = await bot.publier_tout(forcer=forcer)
         except Exception as erreur:  # on répond 500 mais on garde le service vivant
             log.exception("Échec de la publication")
             return web.Response(status=500, text=f"erreur : {erreur}")
