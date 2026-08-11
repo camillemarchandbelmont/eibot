@@ -165,6 +165,32 @@ en dernier ressort : une description d'embed plafonne à 4096, comptés en UTF-1
 où un emoji pèse deux, et un dépassement ferait refuser le tableau en entier.
 Les filiales non affichées sont comptées sous la liste, et le total les inclut.
 
+### Recommencer un cycle, vider le tableau, l'essayer
+
+`/filiales remise-a-zero` remet tous les bénéfices à 0 Ø **en gardant les noms**.
+Ils sont la clé d'import du jeu et l'assise de l'autocomplétion : les garder fait
+qu'un nouveau cycle ne demande que de ressaisir les montants, un `/frais` à la
+fois. Les filiales restent donc listées, marquées « en perte » — ce qui est
+exact, il n'y a rien à prélever sur zéro.
+
+`/filiales retirer-plusieurs` retire un lot en une commande. Discord n'offre pas
+de champ répétable, donc les noms arrivent dans une chaîne, séparés par des
+virgules ou collés d'une liste, un par ligne ; `tout` vide le tableau. Les
+espaces **internes** des noms survivent au découpage, doubles compris, et les
+noms introuvables sont dits plutôt que fatals : sinon on croirait une filiale
+supprimée alors qu'elle reviendrait dans le tableau du soir.
+
+`/filiales test` remplace les montants des filiales **déjà enregistrées** par des
+chiffres au hasard, pour voir le tableau avec des ordres de grandeur variés — de
+trois à vingt-un chiffres, et une sur cinq en perte, sans quoi ni le tri ni les
+notations d'échelle du jeu ne seraient éprouvés. Les noms et leur ordre sont
+gardés : inventer des filiales obligerait à les retirer une à une ensuite.
+
+Les trois se confirment par une case obligatoire, et **il n'y a pas de base
+d'essai** : l'écriture va dans la base courante, production comprise. Des
+chiffres au hasard oubliés en base seraient publiés le soir comme s'ils étaient
+vrais, d'où le rappel de `/filiales remise-a-zero` dans la réponse de `test`.
+
 Ce tableau est une publication **indépendante** de celle des promotions : sa
 propre heure, ses propres salons, sa propre marque du jour. Les deux ne peuvent
 donc pas se voler leur quota quotidien, et la panne de l'export du jeu — dont le
@@ -208,6 +234,9 @@ local, mais elle repart des valeurs de `.env` à chaque redémarrage.
 | `/frais montant [filiale]` | Frais de gestion (7 %, sans décimales). Avec un nom de filiale, enregistre le relevé pour le tableau quotidien |
 | `/filiales liste` | Les filiales enregistrées, leurs frais et le total |
 | `/filiales retirer filiale` | Oublie une filiale |
+| `/filiales retirer-plusieurs filiales confirmer` | Oublie un lot de filiales (noms séparés par des virgules, ou `tout`) |
+| `/filiales remise-a-zero confirmer` | Remet tous les bénéfices à 0 Ø en gardant les noms — nouveau cycle |
+| `/filiales test confirmer` | Remplit les filiales de chiffres au hasard, pour voir le tableau à l'essai |
 | `/filiales heure heure` | Heure du tableau des frais (`HH:MM`), distincte de celle des promotions |
 | `/filiales salon ajouter salon` | Publie le tableau des frais dans ce salon |
 | `/filiales salon retirer salon` | Cesse de l'y publier |

@@ -567,7 +567,14 @@ async def test_retirer_plusieurs_accepte_le_tout():
 
 async def test_retirer_plusieurs_sans_nom_ne_vide_pas_le_tableau():
     """Une saisie vide est un accident : l'interpréter comme « tout » serait la
-    pire lecture possible."""
+    pire lecture possible.
+
+    Le message est éprouvé autant que l'absence de retrait : sans nom saisi,
+    aucun nom ne serait retiré de toute façon, et un test qui s'arrêterait là
+    passerait aussi bien sans la garde. Ce qu'elle apporte, c'est de dire ce qui
+    manque — faute de quoi la commande annonce « aucune filiale enregistrée »
+    alors qu'il y en a une.
+    """
     bot = await _bot()
     await bot.store.enregistrer_filiale("A", Decimal(1000), "2026-08-11")
     interaction = InteractionFactice()
@@ -577,7 +584,28 @@ async def test_retirer_plusieurs_sans_nom_ne_vide_pas_le_tableau():
     )
 
     assert len(await bot.store.filiales()) == 1
-    assert "❌" in _texte(interaction)
+    texte = _texte(interaction)
+    assert "❌" in texte
+    assert "aucune filiale enregistrée" not in texte.lower(), (
+        "le message ment : une filiale est enregistrée"
+    )
+    # Dit comment saisir un lot, sinon le refus est un cul-de-sac.
+    assert "virgule" in texte.lower()
+
+
+async def test_retirer_plusieurs_reconnait_tout_quelle_que_soit_la_casse():
+    """`TOUT` tapé en majuscules serait sinon pris pour un nom de filiale, et la
+    commande répondrait qu'elle ne le connaît pas — en laissant le tableau
+    intact alors qu'on demandait de le vider."""
+    bot = await _bot()
+    await bot.store.enregistrer_filiale("A", Decimal(1000), "2026-08-11")
+    interaction = InteractionFactice()
+
+    await _commande(bot, "filiales retirer-plusieurs").callback(
+        interaction, filiales="TOUT", confirmer=True
+    )
+
+    assert await bot.store.filiales() == []
 
 
 async def test_retirer_plusieurs_garde_les_doubles_espaces_du_nom():

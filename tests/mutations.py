@@ -878,12 +878,16 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
         "        if False:\n            await interaction.response.send_message(\n                f\"❌ Rien tiré : coche `confirmer` pour aller au bout.\\n\"",
         "les vrais relevés de production seraient écrasés par des chiffres faux",
     ),
+    # Pas de mutation faisant valoir « tout » à une saisie vide : `saisie` est
+    # déjà dépouillée et la garde du dessus a rendu la main, si bien que la
+    # branche serait inatteignable — un test qui prétendrait la réfuter serait
+    # faux. C'est la garde elle-même qui est mutée.
     (
-        "bot-masse-saisie-vide-vaut-tout",
+        "bot-masse-saisie-vide-mal-annoncee",
         "src/bot.py",
-        '        tout = saisie.casefold() == "tout"',
-        '        tout = saisie.casefold() in ("tout", "")',
-        "une saisie ratée viderait le tableau entier",
+        "        if not saisie:\n            await interaction.response.send_message(\n                \"❌ Aucun nom saisi.",
+        "        if False:\n            await interaction.response.send_message(\n                \"❌ Aucun nom saisi.",
+        "un refus annoncerait « aucune filiale enregistrée » alors qu'il y en a",
     ),
     (
         "bot-masse-tout-non-reconnu",

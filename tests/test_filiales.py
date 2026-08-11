@@ -432,13 +432,45 @@ def test_les_tirages_comportent_des_pertes_et_des_gains():
     assert any(t > 0 for t in tirages), "aucun gain tiré"
 
 
-def test_un_tirage_est_un_montant_entier_et_jamais_un_float():
-    """Un `float` perdrait les derniers chiffres d'un montant à vingt-un
-    chiffres, et l'essai afficherait un nombre que le jeu ne connaît pas."""
+def test_un_tirage_est_un_montant_entier():
+    """Le jeu ne connaît pas de fraction d'Ø de bénéfices."""
     tirage = benefices_aleatoires(Random(7))
 
     assert isinstance(tirage, Decimal)
     assert tirage == tirage.to_integral_value()
+
+
+def test_un_gros_tirage_garde_ses_derniers_chiffres():
+    """Passé par un `float`, un montant à vingt-un chiffres perdrait sa queue.
+
+    `isinstance(..., Decimal)` ne suffit pas à le voir : `Decimal(float(x))`
+    reste un `Decimal` entier, seulement arrondi. Ce qui trahit le passage par un
+    flottant, c'est le nombre de **bits significatifs** : la mantisse d'un
+    `float64` en tient cinquante-trois, donc au-delà les bits de poids faible
+    sont forcément à zéro.
+
+    Un seuil de divisibilité ne suffisait pas : près de 10¹⁸ un `float64`
+    représente encore les multiples de 128, si bien qu'un test cherchant des
+    multiples de 1024 passait aussi sur les valeurs arrondies.
+    """
+    alea = Random(1234)
+    tirages = [int(abs(benefices_aleatoires(alea))) for _ in range(300)]
+    gros = [t for t in tirages if t.bit_length() > 53]
+
+    assert gros, "aucun tirage au-delà de la mantisse : le test ne prouverait rien"
+    assert any(_bits_significatifs(t) > 53 for t in gros), (
+        "aucun tirage ne porte plus de 53 bits significatifs : "
+        "ils sont tous passés par un flottant"
+    )
+
+
+def _bits_significatifs(entier: int) -> int:
+    """Bits porteurs d'information dans un entier, zéros de queue exclus.
+
+    C'est la mesure que la mantisse d'un `float64` plafonne à cinquante-trois.
+    """
+    zeros_de_queue = (entier & -entier).bit_length() - 1
+    return entier.bit_length() - zeros_de_queue
 
 
 def test_les_valeurs_aleatoires_gardent_les_noms_et_l_ordre():
