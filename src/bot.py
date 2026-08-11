@@ -16,6 +16,7 @@ from discord import app_commands
 from src import settings
 from src.acces import acces_autorise, gere_la_liste
 from src.db import Store, bornes_tolerees
+from src.filiales import FilialeError, index_de, total_frais
 from src.journal import Journal
 from src.money import (
     ECHELLE,
@@ -30,6 +31,7 @@ from src.money import (
 )
 from src.promos import Building, Meta, find_promos, parse_csv
 from src.publish import construire_embeds, envoyer, message_aucune_promo
+from src.publish_filiales import embed_filiales
 from src.schedule import (
     FENETRE_RATTRAPAGE,
     boucle_planning,
@@ -493,6 +495,21 @@ async def _bornes_demandees(
     return tuple(sorted((plancher, plafond)))  # type: ignore[return-value]
 
 
+def _heure_valide(heure: str) -> str | None:
+    """Normalise `HH:MM` en `%02d:%02d`, ou None si la saisie est inutilisable.
+
+    La forme normalisée compte : `doit_publier` compare des chaînes, et « 9:00 »
+    se rangerait après « 20:30 ».
+    """
+    try:
+        heures, minutes = (int(part) for part in heure.split(":", 1))
+    except ValueError:
+        return None
+    if not (0 <= heures <= 23 and 0 <= minutes <= 59):
+        return None
+    return f"{heures:02d}:{minutes:02d}"
+
+
 def _aide_montants() -> str:
     return (
         "Formats acceptés : `840`, `12,25M`, `100T`, `6P`, `50 6P`, `2,71 PØ`.\n"
@@ -554,17 +571,54 @@ def enregistrer_commandes(bot: EmpireBot) -> None:
             ephemeral=True,
         )
 
+    async def _completer_filiale(
+        interaction: discord.Interaction, saisie: str
+    ) -> list[app_commands.Choice[str]]:
+        """Propose les filiales déjà saisies.
+
+        Le nom est la clé du jeu : retapé de mémoire, une faute de frappe
+        créerait une **seconde** filiale au lieu de mettre la première à jour, et
+        le tableau compterait deux fois la même.
+        """
+        debut = saisie.strip().casefold()
+        return [
+            app_commands.Choice(name=f.nom, value=f.nom)
+            for f in await bot.store.filiales()
+            if debut in f.nom.casefold()
+        ][:25]  # limite Discord
+
     @tree.command(
         name="frais", description="Frais de gestion sur un montant (7 %, sans décimales)"
     )
-    @app_commands.describe(montant="Montant sur lequel calculer (ex: 2,71P, 100T)")
-    async def frais_commande(interaction: discord.Interaction, montant: str):
+    @app_commands.describe(
+        montant="Montant sur lequel calculer (ex: 2,71P, 100T)",
+        filiale="Nom de la filiale : enregistre le relevé pour le tableau du jour",
+    )
+    @app_commands.autocomplete(filiale=_completer_filiale)
+    async def frais_commande(
+        interaction: discord.Interaction, montant: str, filiale: str | None = None
+    ):
+        """Une commande, deux usages.
+
+        Sans `filiale`, c'est la calculatrice : elle n'écrit rien. Avec, le
+        montant est compris comme les **bénéfices** de cette filiale, et le
+        relevé rejoint le tableau quotidien.
+
+        Une seule commande plutôt qu'un groupe : c'est le même calcul, et
+        `/filiales frais` obligerait à réapprendre où taper 7 %.
+        """
         try:
             valeur = parse_money(montant)
         except MoneyError as erreur:
+            # Avant tout enregistrement : une filiale retenue à un montant faux
+            # figurerait dans le tableau et fausserait le total.
             await interaction.response.send_message(
                 f"❌ {erreur}\n{_aide_montants()}", ephemeral=True
             )
+            return
+
+        if filiale is not None:
+            await _enregistrer_frais(interaction, valeur, filiale)
             return
 
         frais = frais_de_gestion(valeur)
@@ -577,6 +631,60 @@ def enregistrer_commandes(bot: EmpireBot) -> None:
             f"-# {format_money_long(frais)}",
             ephemeral=True,
         )
+
+    async def _enregistrer_frais(
+        interaction: discord.Interaction, benefices: Decimal, nom: str
+    ) -> None:
+        """Calcule, enregistre et rend compte — éphémère comme la calculatrice.
+
+        Les résultats de l'entreprise n'ont pas à s'afficher dans le salon :
+        seul le tableau du jour est public.
+        """
+        existait = index_de(await bot.store.filiales(), nom) >= 0
+        aujourdhui = maintenant_local((await bot.store.config())["fuseau"]).strftime(
+            "%Y-%m-%d"
+        )
+
+        try:
+            releve = await bot.store.enregistrer_filiale(nom, benefices, aujourdhui)
+        except FilialeError as erreur:
+            # Discord accepte une chaîne d'espaces : la ligne serait anonyme.
+            await interaction.response.send_message(f"❌ {erreur}", ephemeral=True)
+            return
+
+        filiales = await bot.store.filiales()
+        verbe = "mise à jour" if existait else "enregistrée"
+
+        if releve.en_perte:
+            # Le jeu ne rembourse pas : dit explicitement, sinon un 0 Ø se
+            # lirait comme une saisie ratée.
+            corps = (
+                f"**{releve.nom}** {verbe} : "
+                f"**{format_money(releve.benefices)}** de bénéfices, "
+                f"donc **rien à payer** (en perte)."
+            )
+        else:
+            corps = (
+                f"**{releve.nom}** {verbe} : "
+                f"{format_money(releve.benefices)} de bénéfices "
+                f"→ **{format_money(releve.frais)}** de frais "
+                f"({TAUX_GESTION.normalize():f} %).\n"
+                f"-# {format_money_long(releve.frais)}"
+            )
+
+        total = total_frais(filiales)
+        corps += (
+            f"\nTotal des {len(filiales)} filiale{'s' if len(filiales) > 1 else ''} : "
+            f"**{format_money(total)}**\n"
+            f"-# {format_money_long(total)}"
+        )
+
+        if not await bot.store.salons_filiales():
+            # Une saisie qui n'ira nulle part doit se voir maintenant, pas au
+            # moment où l'on s'étonne de ne rien recevoir.
+            corps += "\n⚠️ Aucun salon pour le tableau : `/filiales salon ajouter`."
+
+        await interaction.response.send_message(corps, ephemeral=True)
 
     # --- /promos ----------------------------------------------------------
 
@@ -675,11 +783,8 @@ def enregistrer_commandes(bot: EmpireBot) -> None:
     async def config_heure(
         interaction: discord.Interaction, heure: str, fuseau: str | None = None
     ):
-        try:
-            heures, minutes = (int(p) for p in heure.split(":", 1))
-            if not (0 <= heures <= 23 and 0 <= minutes <= 59):
-                raise ValueError
-        except ValueError:
+        heure_propre = _heure_valide(heure)
+        if heure_propre is None:
             await interaction.response.send_message(
                 "❌ Heure invalide. Format attendu : `HH:MM` (ex: `09:00`).", ephemeral=True
             )
@@ -695,7 +800,7 @@ def enregistrer_commandes(bot: EmpireBot) -> None:
                 )
                 return
 
-        config = await bot.store.maj_config(heure=f"{heures:02d}:{minutes:02d}", fuseau=fuseau)
+        config = await bot.store.maj_config(heure=heure_propre, fuseau=fuseau)
 
         # Changer l'heure exprime l'intention de publier à la nouvelle heure :
         # on oublie la marque du jour, sinon un post déjà sorti (ou rattrapé à
@@ -999,6 +1104,163 @@ def enregistrer_commandes(bot: EmpireBot) -> None:
         )
 
     tree.add_command(fourchette_groupe)
+
+    # --- /filiales --------------------------------------------------------
+    #
+    # Les réglages du tableau et son entretien — jamais l'ajout, qui appartient à
+    # `/frais` : le calcul et l'enregistrement sont le même geste, et les séparer
+    # obligerait à taper deux commandes pour une filiale.
+
+    filiales_groupe = app_commands.Group(
+        name="filiales", description="Tableau des frais de gestion par filiale"
+    )
+
+    @filiales_groupe.command(name="liste", description="Filiales enregistrées et total")
+    async def filiales_liste(interaction: discord.Interaction):
+        filiales = await bot.store.filiales()
+        aujourdhui = maintenant_local((await bot.store.config())["fuseau"]).strftime(
+            "%Y-%m-%d"
+        )
+        await interaction.response.send_message(
+            embed=embed_filiales(filiales, aujourdhui), ephemeral=True
+        )
+
+    @filiales_groupe.command(name="retirer", description="Oublie une filiale")
+    @app_commands.describe(filiale="Nom de la filiale à retirer du tableau")
+    @app_commands.autocomplete(filiale=_completer_filiale)
+    async def filiales_retirer(interaction: discord.Interaction, filiale: str):
+        if not await bot.store.retirer_filiale(filiale):
+            # Listées : sinon on ne sait pas si c'est une faute de frappe ou une
+            # filiale jamais saisie.
+            noms = [f.nom for f in await bot.store.filiales()]
+            connues = ", ".join(f"`{n}`" for n in noms) if noms else "*aucune*"
+            await interaction.response.send_message(
+                f"❌ Aucune filiale nommée « {filiale.strip()} ». Filiales : {connues}.",
+                ephemeral=True,
+            )
+            return
+
+        restantes = await bot.store.filiales()
+        await interaction.response.send_message(
+            f"✅ **{filiale.strip()}** retirée du tableau.\n"
+            f"-# Reste {len(restantes)} filiale(s), "
+            f"{format_money(total_frais(restantes))} de frais.",
+            ephemeral=True,
+        )
+
+    @filiales_groupe.command(name="heure", description="Heure du tableau des frais")
+    @app_commands.describe(heure="Format HH:MM")
+    async def filiales_heure(interaction: discord.Interaction, heure: str):
+        heure_propre = _heure_valide(heure)
+        if heure_propre is None:
+            await interaction.response.send_message(
+                "❌ Heure invalide. Format attendu : `HH:MM` (ex: `20:30`).",
+                ephemeral=True,
+            )
+            return
+
+        # `filiales_heure` et non `heure` : deux posts, deux horaires. Régler
+        # l'un en déplaçant l'autre serait une surprise découverte le lendemain.
+        config = await bot.store.maj_config(filiales_heure=heure_propre)
+
+        # Comme pour `/config heure` : régler l'heure exprime l'intention de
+        # publier à la nouvelle heure, et un post déjà sorti la bloquerait
+        # jusqu'à demain.
+        await bot.store.oublier_publication_filiales()
+
+        maintenant = maintenant_local(config["fuseau"])
+        message = (
+            f"✅ Tableau des frais publié à **{heure_propre}** ({config['fuseau']}).\n"
+            f"-# Il est {maintenant.strftime('%H:%M')}."
+        )
+        if not doit_publier(maintenant, heure_propre, None):
+            attendu = (
+                "aujourd'hui" if maintenant.strftime("%H:%M") < heure_propre else "demain"
+            )
+            message += f" Prochain tableau {attendu}."
+        else:
+            message += " Publication imminente (dans la minute)."
+
+        await interaction.response.send_message(message, ephemeral=True)
+
+    filiales_salon_groupe = app_commands.Group(
+        name="salon",
+        description="Salons où publier le tableau des frais",
+        parent=filiales_groupe,
+    )
+
+    @filiales_salon_groupe.command(
+        name="ajouter", description="Publie le tableau des frais dans un salon"
+    )
+    async def filiales_salon_ajouter(
+        interaction: discord.Interaction, salon: discord.TextChannel
+    ):
+        # Vérifié au réglage : une permission manquante découverte à l'heure du
+        # post est un tableau perdu.
+        manquantes = _permissions_manquantes(interaction, salon)
+        if manquantes:
+            await interaction.response.send_message(
+                f"❌ Je n'ai pas la permission {manquantes} dans {salon.mention}.\n"
+                f"-# Ajoute-la puis relance la commande.",
+                ephemeral=True,
+            )
+            return
+
+        if not await bot.store.ajouter_salon_filiales(str(salon.id)):
+            await interaction.response.send_message(
+                f"ℹ️ {salon.mention} reçoit déjà le tableau des frais.", ephemeral=True
+            )
+            return
+
+        # Mémorisé pour le site, qui n'a pas accès à Discord et ne pourrait
+        # afficher qu'un id nu.
+        await bot.store.memoriser_salon(
+            str(salon.id), salon.name, str(interaction.guild.id), interaction.guild.name
+        )
+
+        await interaction.response.send_message(
+            f"✅ Le tableau des frais sera publié dans {salon.mention} à "
+            f"**{await bot.store.heure_filiales()}**.",
+            ephemeral=True,
+        )
+
+    @filiales_salon_groupe.command(
+        name="retirer", description="Ne plus publier le tableau dans un salon"
+    )
+    async def filiales_salon_retirer(
+        interaction: discord.Interaction, salon: discord.TextChannel
+    ):
+        if not await bot.store.retirer_salon_filiales(str(salon.id)):
+            await interaction.response.send_message(
+                f"❌ Le tableau des frais n'était pas publié dans {salon.mention}.",
+                ephemeral=True,
+            )
+            return
+
+        await bot.store.oublier_salons_orphelins()
+
+        await interaction.response.send_message(
+            f"✅ Le tableau des frais ne sera plus publié dans {salon.mention}.",
+            ephemeral=True,
+        )
+
+    @filiales_groupe.command(
+        name="apercu", description="Prévisualise le tableau des frais sans publier"
+    )
+    async def filiales_apercu(interaction: discord.Interaction):
+        """Le tableau tel qu'il sortira, sans consommer le post du jour."""
+        filiales = await bot.store.filiales()
+        aujourdhui = maintenant_local((await bot.store.config())["fuseau"]).strftime(
+            "%Y-%m-%d"
+        )
+        entete = f"Tableau prévu à **{await bot.store.heure_filiales()}**"
+        if not await bot.store.salons_filiales():
+            entete += " ⚠️ aucun salon : ne sera pas publié"
+        await interaction.response.send_message(
+            entete, embed=embed_filiales(filiales, aujourdhui), ephemeral=True
+        )
+
+    tree.add_command(filiales_groupe)
 
     # --- /config (suite) --------------------------------------------------
 
