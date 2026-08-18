@@ -455,10 +455,11 @@ Un placeholder mal orthographié est laissé tel quel et signalé au chargement.
 
 ## Déploiement sur Render
 
-Le dépôt contient `render.yaml` : **New → Blueprint** crée le web service et
-la base Postgres d'un coup.
+Le processus tourne chez Render, la base chez **Supabase** (voir plus bas).
+Le dépôt contient `render.yaml` : **New → Blueprint** crée le web service.
 
-1. Renseigne `DISCORD_TOKEN`, `GUILD_IDS` et `EMPIRE_API_KEY` dans le dashboard.
+1. Renseigne `DISCORD_TOKEN`, `GUILD_IDS`, `EMPIRE_API_KEY` et `DATABASE_URL`
+   dans le dashboard.
 2. Récupère les valeurs générées de `TICK_TOKEN` et `API_SECRET`. La seconde se
    recopie dans le projet Vercel du site.
 3. Sur [cron-job.org](https://cron-job.org), crée un job **toutes les
@@ -473,12 +474,72 @@ double dans le sélecteur de Discord. Ce n'est pas une erreur — simplement que
 chose à remarquer après le déploiement. Les commandes globales se propagent
 lentement et finissent par disparaître.
 
+### La base : Supabase, pas Render
+
+La base gratuite de Render expire au bout de **trente jours**. L'état du bot vit
+donc chez Supabase depuis le 18 août 2026, le processus restant chez Render.
+
+Dans Supabase : **New project**, région **Frankfurt (eu-central-1)** pour être à
+côté du service Render, puis **Connect → onglet « Session pooler »**.
+
+**Prendre cette chaîne-là et pas « Direct connection ».** Depuis que l'IPv4 est
+une option payante chez Supabase, la connexion directe (`db.<ref>.supabase.co`)
+ne résout qu'en IPv6, et rien ne garantit que Render sorte en IPv6 : le bot
+démarrerait sans base, en gardant sa config en mémoire — donc sans erreur
+visible, jusqu'au premier redémarrage.
+
+La chaîne du pooler en mode transaction (port 6543) marcherait aussi : le cache
+de prepared statements d'asyncpg est désactivé côté code (`TAILLE_CACHE_STATEMENTS`
+dans `src/db.py`), précisément parce qu'une connexion reprise d'un client à
+l'autre ne connaît pas les statements préparés par le précédent. Le mode session
+donne une connexion propre à chaque client et n'a rien à y gagner.
+
+La table est créée avec **RLS activée et aucune politique**. Supabase publie
+chaque table de `public` en HTTPS avec la clé anonyme du projet, qui est publique
+par conception : sans RLS, les salons, les membres autorisés et le template
+seraient lisibles par quiconque a l'URL. Le propriétaire de la table échappe à
+RLS, donc le bot continue de lire et d'écrire sans politique à écrire.
+
+Le blueprint ne déclare **aucune base** : en laisser une ferait recréer une base
+Render vide à la prochaine application, dont le `fromDatabase` écraserait
+`DATABASE_URL` et ferait repartir le bot d'une config d'usine, sans erreur.
+
+Un projet Supabase gratuit se met en pause après ~7 jours sans activité. Le cron
+de 5 minutes qui empêche Render de s'endormir l'empêche aussi de s'endormir.
+
+#### Déménager l'état d'une base à l'autre
+
+```bash
+python -m src.migration          # ajouter --forcer pour écraser une cible non vide
+```
+
+Les deux chaînes de connexion sont demandées à l'écran, **masquées à la saisie** :
+mises dans `.env` ou passées en argument, elles resteraient dans le fichier ou
+dans l'historique du shell. Rien n'est enregistré, et aucun message n'affiche de
+mot de passe.
+
+La commande **recopie**, elle ne déplace pas : la base de départ reste intacte,
+seul recours si celle d'arrivée se révèle inutilisable. Elle lit **toutes** les
+clés trouvées plutôt qu'une liste écrite en dur — une clé ajoutée depuis serait
+sinon laissée derrière, et le manque ne se verrait qu'une fois l'ancienne base
+éteinte. Puis elle **relit** la cible et nomme les clés qui n'y sont pas
+arrivées : une base peut accepter une écriture et n'en rien garder, et le bot
+redémarrerait alors sur une config d'usine.
+
+Deux saisies sont refusées avant toute écriture, parce que toutes deux
+rendraient un rapport de réussite : la **même chaîne deux fois** (la base
+copiée sur elle-même, puis éteinte avec les données dedans) et une **chaîne
+vide** (`Store` retombe en mémoire sans lever, et tout disparaît à la fin du
+processus).
+
+Une fois le bot redéployé et vérifié sur la nouvelle base, la base Render peut
+être supprimée.
+
 ### Une seconde instance de test
 
-Le blueprint est fait pour la prod : il crée **aussi une base Postgres**, ce
-qu'une instance de test n'a pas besoin d'avoir. Créer le service de test avec
-**New → Web Service** (et non Blueprint) évite cette base, et évite surtout
-qu'un `render.yaml` partagé fasse un jour converger les deux déploiements.
+Créer le service de test avec **New → Web Service** (et non Blueprint) : le
+blueprint est fait pour la prod, et un `render.yaml` partagé finirait par faire
+converger les deux déploiements.
 
 | Réglage | Test |
 |---|---|
@@ -735,7 +796,8 @@ src/publish_filiales.py  le tableau des frais en un embed
 src/bot.py       client Discord et commandes slash
 src/journal.py   compte rendu dans le salon de logs
 src/schedule.py  « est-ce l'heure de publier ? »
-src/db.py        configuration persistante (Postgres)
+src/db.py        configuration persistante (Postgres, chez Supabase)
+src/migration.py déménagement de l'état d'une base Postgres à une autre
 src/acces.py     qui a le droit d'utiliser les commandes
 src/web.py       /health et /tick
 src/api.py       routes /api/* consommées par le site web

@@ -26,10 +26,17 @@ services:
       # la clé ici ne coupe donc pas un déploiement existant.
       - key: GUILD_IDS
         sync: false
+      # Base Supabase, à saisir dans le dashboard Render. Prendre la chaîne de
+      # l'onglet « Session pooler » (port 5432, hôte `…pooler.supabase.com`) et
+      # non celle de « Direct connection » : depuis que l'IPv4 y est une option
+      # payante, la connexion directe ne résout qu'en IPv6, et rien ne garantit
+      # que Render sorte en IPv6 — le bot démarrerait sans base, en silence.
+      #
+      # Le pooler en mode transaction (port 6543) marcherait aussi, le cache de
+      # prepared statements étant désactivé côté code, mais le mode session donne
+      # une connexion propre à chaque client et n'a rien à y gagner.
       - key: DATABASE_URL
-        fromDatabase:
-          name: empire-immo-db
-          property: connectionString
+        sync: false
       # Clé de l'API Empire Immo. Renseignée -> le bot lit l'export en ligne ;
       # laissée vide -> il retombe sur le CSV versionné dans le dépôt.
       - key: EMPIRE_API_KEY
@@ -51,7 +58,8 @@ services:
       # persistés en base. Un ID codé dans le blueprint serait doublonné avec
       # la config Discord et prêterait à confusion.
 
-databases:
-  - name: empire-immo-db
-    plan: free
-    region: frankfurt
+# Aucun bloc `databases:` ici : la base vit chez Supabase depuis le 18 août 2026,
+# la base gratuite de Render expirant au bout de trente jours. En laisser un
+# ferait recréer une base Render vide à la prochaine application du blueprint, et
+# le `fromDatabase` qui allait avec écraserait `DATABASE_URL` — le bot repartirait
+# d'une config d'usine, sans la moindre erreur.
