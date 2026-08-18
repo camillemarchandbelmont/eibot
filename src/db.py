@@ -1,7 +1,14 @@
-"""Persistance de la configuration (Postgres free de Render).
+"""Persistance de la configuration (Postgres, chez Supabase).
 
 Le disque de Render est éphémère : la fourchette, l'heure et le template
 réglés par commande doivent survivre aux redéploiements, d'où Postgres.
+
+Le processus tourne chez Render, la base chez Supabase — celle de Render était
+gratuite trente jours seulement. La chaîne de connexion est celle du **session
+pooler** (port 5432) : la connexion directe de Supabase ne résout qu'en IPv6
+depuis que l'IPv4 y est une option payante, et rien ne garantit que Render sorte
+en IPv6. Le déménagement de l'état d'une base à l'autre est dans
+`src/migration.py`.
 
 Aucun bâtiment n'est stocké : le CSV reste la source de vérité, relu à
 chaque exécution.
@@ -40,7 +47,22 @@ CREATE TABLE IF NOT EXISTS bot_state (
     valeur JSONB NOT NULL,
     maj_le TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+ALTER TABLE bot_state ENABLE ROW LEVEL SECURITY;
 """
+
+#: Cache de prepared statements d'asyncpg : désactivé.
+#:
+#: Supabase donne trois façons de se connecter, et deux d'entre elles reprennent
+#: une connexion Postgres d'un client à l'autre (pooler en mode transaction,
+#: port 6543). asyncpg prépare un statement par requête paramétrée et le
+#: réutilise : sur une connexion reprise, le serveur ne le connaît plus et la
+#: requête échoue — pas au démarrage, mais à la première lecture de config, donc
+#: seulement en production.
+#:
+#: Zéro coûte une préparation par requête, soit quelques-unes par ping de cron :
+#: rien de mesurable, contre une panne entière si la chaîne pointe le mauvais
+#: port.
+TAILLE_CACHE_STATEMENTS = 0
 
 #: Nom donné à la fourchette issue d'une config plate (voir `Store.fourchettes`).
 FOURCHETTE_MIGREE = "principale"
@@ -150,7 +172,12 @@ class Store:
 
         # Render fournit parfois 'postgres://' ; asyncpg accepte les deux, mais
         # exige SSL sur les bases managées.
-        self._pool = await asyncpg.create_pool(self.dsn, min_size=1, max_size=3)
+        self._pool = await asyncpg.create_pool(
+            self.dsn,
+            min_size=1,
+            max_size=3,
+            statement_cache_size=TAILLE_CACHE_STATEMENTS,
+        )
         async with self._pool.acquire() as connexion:
             await connexion.execute(SCHEMA)
         log.info("Base connectée.")
@@ -186,6 +213,23 @@ class Store:
                 cle,
                 json.dumps(valeur),
             )
+
+    async def tout(self) -> dict[str, Any]:
+        """Tout ce qui est enregistré, clé par clé.
+
+        Sert au déménagement d'une base à l'autre : lire une liste de clés écrite
+        en dur oublierait en silence celle ajoutée après, et le manque ne se
+        verrait qu'une fois l'ancienne base éteinte.
+
+        Ce qui est **enregistré**, sans les défauts d'usine : recopiés dans la
+        base d'arrivée, ils lui inventeraient une config plate — que `Store` prend
+        justement pour la signature d'un bot à migrer.
+        """
+        if self._pool is None:
+            return dict(self._memoire)
+        async with self._pool.acquire() as connexion:
+            lignes = await connexion.fetch("SELECT cle, valeur FROM bot_state")
+        return {ligne["cle"]: json.loads(ligne["valeur"]) for ligne in lignes}
 
     # --- Accès métier ------------------------------------------------------
 

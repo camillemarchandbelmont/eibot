@@ -1,5 +1,6 @@
 """Tests du Store en mode mémoire (sans Postgres)."""
 
+import sys
 from decimal import Decimal
 
 import pytest
@@ -208,3 +209,147 @@ async def test_ids_normalises_en_texte(store):
     avec `str(interaction.user.id)` échouerait silencieusement."""
     await store.autoriser(111)
     assert await store.autorises() == ["111"]
+
+
+# --- tout() : l'état entier, pour le copier d'une base à l'autre ------------
+
+
+@pytest.mark.asyncio
+async def test_tout_rend_l_etat_entier(store):
+    """Un déménagement de base doit pouvoir lire ce qu'il y a, sans le savoir.
+
+    Clé par clé avec une liste écrite en dur, la clé ajoutée après serait
+    oubliée en silence — et ne manquerait qu'une fois l'ancienne base éteinte.
+    """
+    await store.set("config", {"heure": "09:00"})
+    await store.set("filiales", [{"nom": "A"}])
+
+    assert await store.tout() == {
+        "config": {"heure": "09:00"},
+        "filiales": [{"nom": "A"}],
+    }
+
+
+@pytest.mark.asyncio
+async def test_tout_sur_une_base_neuve_est_vide(store):
+    """Vide et non les défauts d'usine : `tout` dit ce qui est **enregistré**.
+
+    Les défauts recopiés dans la cible lui inventeraient une config plate, que
+    `Store` prend justement pour la signature d'un bot à migrer.
+    """
+    assert await store.tout() == {}
+
+
+# --- Connexion à une base managée -------------------------------------------
+
+
+class _ConnexionFactice:
+    def __init__(self):
+        self.executes: list[str] = []
+        #: Ce que la table est censée contenir, telle que Postgres la rendrait :
+        #: `valeur` en texte JSON, comme le fait la colonne JSONB via asyncpg.
+        self.lignes: list[dict] = []
+
+    async def execute(self, sql, *args):
+        self.executes.append(sql)
+
+    async def fetch(self, sql, *args):
+        return list(self.lignes)
+
+
+class _PoolFactice:
+    def __init__(self):
+        self.connexion = _ConnexionFactice()
+
+    def acquire(self):
+        return self
+
+    async def __aenter__(self):
+        return self.connexion
+
+    async def __aexit__(self, *_):
+        return False
+
+    async def close(self):
+        pass
+
+
+class _AsyncpgFactice:
+    """Le module `asyncpg` vu par `Store.connect`, pour lire ses arguments.
+
+    `connect` fait son `import asyncpg` dans le corps de la fonction : un faux
+    posé dans `sys.modules` est donc celui qu'elle trouvera.
+    """
+
+    def __init__(self):
+        self.kwargs: dict = {}
+        self.pool = _PoolFactice()
+
+    async def create_pool(self, dsn, **kwargs):
+        self.kwargs = {"dsn": dsn, **kwargs}
+        return self.pool
+
+
+@pytest.fixture
+def asyncpg_factice(monkeypatch):
+    faux = _AsyncpgFactice()
+    monkeypatch.setitem(sys.modules, "asyncpg", faux)
+    return faux
+
+
+@pytest.mark.asyncio
+async def test_connect_desactive_le_cache_de_prepared_statements(asyncpg_factice):
+    """Le pooler en mode transaction ne partage pas les prepared statements.
+
+    asyncpg en prépare un pour chaque requête paramétrée : contre un pooler en
+    mode transaction, la deuxième requête échoue sur un statement que la
+    connexion reprise ne connaît pas. Le défaut ne se verrait pas au démarrage
+    mais au premier `/config`, et seulement en production.
+
+    Zéro coûte une préparation par requête — quelques-unes par ping de cron,
+    donc rien de mesurable — contre une panne entière si la chaîne de connexion
+    pointe le port 6543.
+    """
+    store = Store(dsn="postgresql://qui:que@ou.example:6543/postgres")
+
+    await store.connect()
+
+    assert asyncpg_factice.kwargs["statement_cache_size"] == 0
+
+
+@pytest.mark.asyncio
+async def test_connect_ferme_la_table_a_la_cle_publique(asyncpg_factice):
+    """Supabase publie chaque table de `public` en HTTPS avec la clé anonyme.
+
+    Cette clé est publique par conception. Sans RLS, `bot_state` — salons,
+    membres autorisés, template — serait lisible par quiconque a l'URL du
+    projet. Le propriétaire de la table échappe à RLS, donc le bot continue de
+    lire et d'écrire ; seuls `anon` et `authenticated` sont fermés dehors.
+    """
+    store = Store(dsn="postgresql://qui:que@ou.example:5432/postgres")
+
+    await store.connect()
+
+    sql = " ".join(asyncpg_factice.pool.connexion.executes)
+    assert "ENABLE ROW LEVEL SECURITY" in sql, sql
+
+
+@pytest.mark.asyncio
+async def test_tout_rend_chaque_ligne_de_la_table(asyncpg_factice):
+    """Sur Postgres, `tout` est le chemin qui sert vraiment au déménagement.
+
+    Chaque ligne, et chaque valeur décodée : une seule ligne rendue perdrait
+    quatre clés sur cinq, et du JSON laissé en texte se recopierait en base comme
+    une chaîne — le bot relirait une config qu'il ne saurait pas lire.
+    """
+    store = Store(dsn="postgresql://qui:que@ou.example:5432/postgres")
+    await store.connect()
+    asyncpg_factice.pool.connexion.lignes = [
+        {"cle": "config", "valeur": '{"heure": "20:30"}'},
+        {"cle": "derniere_publication", "valeur": '"2026-08-17"'},
+    ]
+
+    assert await store.tout() == {
+        "config": {"heure": "20:30"},
+        "derniere_publication": "2026-08-17",
+    }
