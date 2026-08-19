@@ -112,7 +112,7 @@ sur un autre symbole comme il le fait ailleurs.
 
 `/frais montant` calcule les frais de gestion, **7 % sans décimales** — le jeu
 ne facture pas de fraction d'Ø. L'arrondi est au plus proche, comme partout dans
-le bot.
+le bot. Elle ne fait que calculer : c'est `/filiales releve` qui enregistre.
 
 Les deux rappellent le montant de départ tel qu'elles l'ont compris (la seule
 façon de vérifier que `50 6P` a bien été lu comme 506 PØ), donnent le résultat en
@@ -121,11 +121,15 @@ répondent en privé.
 
 ## Les frais par filiale
 
-`/frais montant filiale:ARMEE DE TERRE` comprend le montant comme les
-**bénéfices** de cette filiale : il calcule les 7 %, enregistre le relevé et
-annonce le total de toutes les filiales. Le même `/frais montant` sans nom de
-filiale reste la calculatrice sans état, qui n'écrit rien — une seule commande,
-parce que c'est le même calcul.
+`/filiales releve filiale:ARMEE DE TERRE montant:2,71P` comprend le montant
+comme les **bénéfices** de cette filiale : il calcule les 7 %, enregistre le
+relevé et annonce le total de toutes les filiales. Les deux cases sont
+obligatoires — un relevé sans montant, ou sans nom, n'est pas un relevé.
+
+C'était longtemps `/frais` avec une case `filiale` facultative : la même commande
+écrivait en base ou pas selon qu'on l'avait remplie, et rien dans son nom ne
+prévenait celui qui la tapait. Deux commandes, donc, dont une seule laisse
+quelque chose derrière elle.
 
 Le nom est celui du jeu, conservé caractère pour caractère (doubles espaces
 compris) : c'est la clé d'import. Il se complète tout seul dès la deuxième
@@ -165,39 +169,27 @@ en dernier ressort : une description d'embed plafonne à 4096, comptés en UTF-1
 où un emoji pèse deux, et un dépassement ferait refuser le tableau en entier.
 Les filiales non affichées sont comptées sous la liste, et le total les inclut.
 
-### Recommencer un cycle, vider le tableau, l'essayer
+### Recommencer un cycle, vider le tableau
 
-`/filiales remise-a-zero` remet tous les bénéfices à 0 Ø **en gardant les noms**.
-Ils sont la clé d'import du jeu et l'assise de l'autocomplétion : les garder fait
-qu'un nouveau cycle ne demande que de ressaisir les montants, un `/frais` à la
-fois. Les filiales restent donc listées, marquées « en perte » — ce qui est
-exact, il n'y a rien à prélever sur zéro.
+`/filiales vider` remet tous les bénéfices à 0 Ø **en gardant les noms**. Ils sont
+la clé d'import du jeu et l'assise de l'autocomplétion : les garder fait qu'un
+nouveau cycle ne demande que de ressaisir les montants, un `/filiales releve` à la
+fois. Les filiales restent donc listées, marquées « en perte » — ce qui est exact,
+il n'y a rien à prélever sur zéro. C'est bien les **montants** qu'elle vide, pas
+la liste ; pour perdre les noms aussi, c'est `/filiales retirer filiales:tout`.
 
-`/filiales retirer-plusieurs` retire un lot en une commande. Discord n'offre pas
-de champ répétable, donc les noms arrivent dans une chaîne, séparés par des
-virgules ou collés d'une liste, un par ligne ; `tout` vide le tableau. Les
-espaces **internes** des noms survivent au découpage, doubles compris, et les
-noms introuvables sont dits plutôt que fatals : sinon on croirait une filiale
-supprimée alors qu'elle reviendrait dans le tableau du soir.
+`/filiales retirer` accepte un nom, un lot, ou `tout`. Discord n'offre pas de
+champ répétable, donc les noms arrivent dans une chaîne, séparés par des virgules
+ou collés d'une liste, un par ligne. Les espaces **internes** des noms survivent
+au découpage, doubles compris, et les noms introuvables sont dits plutôt que
+fatals : sinon on croirait une filiale supprimée alors qu'elle reviendrait dans le
+tableau du soir.
 
-`/filiales test` remplace les montants des filiales **déjà enregistrées** par des
-chiffres au hasard, pour voir le tableau avec des ordres de grandeur variés — de
-trois à vingt-un chiffres, et une sur cinq en perte, sans quoi ni le tri ni les
-notations d'échelle du jeu ne seraient éprouvés. Les noms et leur ordre sont
-gardés : inventer des filiales obligerait à les retirer une à une ensuite.
-
-Son paramètre `unite` fixe le palier des montants tirés (`P`, `D`, …, ou `Ø` pour
-l'unité) : le tableau se lit alors comme un vrai jour, où toutes les filiales
-jouent dans la même échelle. Les montants montent jusqu'à 999 fois ce palier et
-pas au-delà — `format_money` arrondit la mantisse **avant** de choisir le
-symbole, si bien qu'à 999,996 PØ elle afficherait `1.00 EØ`, soit un autre palier
-que celui demandé. Sans `unite`, le balayage des trois à vingt-un chiffres reste
-le défaut : c'est lui qui met les notations à l'épreuve.
-
-Les trois se confirment par une case obligatoire, et **il n'y a pas de base
-d'essai** : l'écriture va dans la base courante, production comprise. Des
-chiffres au hasard oubliés en base seraient publiés le soir comme s'ils étaient
-vrais, d'où le rappel de `/filiales remise-a-zero` dans la réponse de `test`.
+La case `confirmer` n'est exigée que pour un lot ou pour `tout` — c'est là que le
+geste devient irrattrapable de mémoire, personne ne se souvenant des montants de
+cinq filiales. Sur un nom unique, une cérémonie apprendrait à cocher sans lire, et
+la case ne protégerait plus ce qu'elle est là pour protéger. Et **il n'y a pas de
+base d'essai** : l'écriture va dans la base courante, production comprise.
 
 ### Renvoyer les frais dans le jeu
 
@@ -267,17 +259,17 @@ local, mais elle repart des valeurs de `.env` à chaque redémarrage.
 | Commande | Effet |
 |---|---|
 | `/convertir montant vers` | Exprime un montant dans un autre palier (`2.71P` → `2 710.57 TØ`) |
-| `/frais montant [filiale]` | Frais de gestion (7 %, sans décimales). Avec un nom de filiale, enregistre le relevé pour le tableau quotidien |
+| `/frais montant` | Frais de gestion (7 %, sans décimales) — calcule seulement |
 | `/filiales liste` | Les filiales enregistrées, leurs frais et le total |
+| `/filiales releve filiale montant` | Enregistre les bénéfices d'une filiale pour le tableau du jour |
 | `/filiales export` | Le tableau en `.txt` au format d'import du jeu (`nom`+tab+`frais`, CRLF) |
-| `/filiales retirer filiale` | Oublie une filiale |
-| `/filiales retirer-plusieurs filiales confirmer` | Oublie un lot de filiales (noms séparés par des virgules, ou `tout`) |
-| `/filiales remise-a-zero confirmer` | Remet tous les bénéfices à 0 Ø en gardant les noms — nouveau cycle |
-| `/filiales test confirmer [unite]` | Remplit les filiales de chiffres au hasard, pour voir le tableau à l'essai ; `unite` borne le tirage à un palier |
-| `/filiales heure heure` | Heure du tableau des frais (`HH:MM`), distincte de celle des promotions |
+| `/filiales retirer filiales [confirmer]` | Oublie une filiale, un lot (noms séparés par des virgules), ou `tout` |
+| `/filiales vider confirmer` | Remet tous les bénéfices à 0 Ø en gardant les noms — nouveau cycle |
+| `/filiales heure [heure]` | Heure du tableau des frais (`HH:MM`), distincte de celle des promotions ; sans argument, l'affiche |
 | `/filiales salon ajouter salon` | Publie le tableau des frais dans ce salon |
 | `/filiales salon retirer salon` | Cesse de l'y publier |
 | `/filiales apercu` | Prévisualise le tableau sans publier ni consommer le post du jour |
+| `/filiales publier` | Publie le tableau maintenant, à la place de celui de l'heure prévue |
 | `/promos [min] [max]` | Promotions à la demande ; sans argument, l'**union** des fourchettes |
 | `/fourchette ajouter nom min max` | Crée une fourchette (ex : `nom:grosses min:100T max:6P`) |
 | `/fourchette prix nom min max` | Modifie ses bornes, en gardant ses salons |

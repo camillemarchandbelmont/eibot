@@ -149,7 +149,7 @@ def test_l_embed_sans_filiale_le_dit_au_lieu_d_etre_vide():
     texte = _tout_le_texte(embed).lower()
     assert "aucune" in texte
     # La commande qui y remédie, sinon le message est un cul-de-sac.
-    assert "/frais" in texte
+    assert "/filiales releve" in texte
 
 
 def test_l_embed_reste_sous_la_limite_de_discord():

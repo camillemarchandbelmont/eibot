@@ -168,7 +168,7 @@ def embed_filiales(filiales: list[Filiale], date: str):
         # commande qui y remédie.
         embed.description = (
             f"{EMOJI_VIDE} *Aucune filiale enregistrée.*\n"
-            "-# `/frais montant:… filiale:…` pour en ajouter une."
+            "-# `/filiales releve` pour en ajouter une."
         )
         embed.set_footer(text=jour)
         return embed

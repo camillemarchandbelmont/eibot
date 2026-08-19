@@ -384,7 +384,8 @@ def ajouter_les_commandes_de_publication(
 
         if not await ajouter_un_salon(publication, bot.store, str(salon.id)):
             await interaction.response.send_message(
-                f"ℹ️ {salon.mention} reçoit déjà {titre}.", ephemeral=True
+                f"ℹ️ {titre.capitalize()} : {salon.mention} est déjà servi.",
+                ephemeral=True,
             )
             return
 
@@ -395,7 +396,10 @@ def ajouter_les_commandes_de_publication(
         )
 
         await interaction.response.send_message(
-            f"✅ {titre.capitalize()} sera publié dans {salon.mention} à "
+            # Le titre puis deux-points, comme les autres messages de ce fichier :
+            # « Tableau des frais sera publié » manquerait de son article, et le
+            # lui donner obligerait chaque module à en choisir un dans son titre.
+            f"✅ {titre.capitalize()} : publication dans {salon.mention} à "
             f"**{await heure_de(publication, bot.store)}**.",
             ephemeral=True,
         )
@@ -408,7 +412,7 @@ def ajouter_les_commandes_de_publication(
     ) -> None:
         if not await retirer_un_salon(publication, bot.store, str(salon.id)):
             await interaction.response.send_message(
-                f"❌ {titre.capitalize()} n'était pas publié dans {salon.mention}.",
+                f"❌ {titre.capitalize()} : {salon.mention} n'est pas dans la liste.",
                 ephemeral=True,
             )
             return
@@ -419,6 +423,6 @@ def ajouter_les_commandes_de_publication(
         # cache de noms grossit donc un peu ; il est cosmétique, et l'étape du
         # cloisonnement par serveur le reprendra.
         await interaction.response.send_message(
-            f"✅ {titre.capitalize()} ne sera plus publié dans {salon.mention}.",
+            f"✅ {titre.capitalize()} : {salon.mention} retiré de la liste.",
             ephemeral=True,
         )
