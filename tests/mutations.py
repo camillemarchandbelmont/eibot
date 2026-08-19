@@ -10,6 +10,15 @@ Usage :
 
 Le fichier muté est restauré dans tous les cas, y compris si la suite plante ou
 si l'on interrompt le script (Ctrl-C).
+
+Le nom d'une mutation dit où elle mord, donc quel lot la rejoue : `tournee-` la
+mécanique d'envoi commune, `surface-` le vocabulaire des commandes, `bot-` les
+commandes elles-mêmes et leurs modules, le reste le fichier de calcul visé.
+
+Déplacer du code oblige à repointer les motifs qui le visaient. Un motif dont le
+fichier a changé n'échoue pas : le script l'annonce introuvable et le compte
+survivant, si bien qu'un lot peut sembler passer alors qu'il n'a plus rien
+éprouvé. Vérifier après tout déménagement que le total attendu est bien atteint.
 """
 
 from __future__ import annotations
@@ -305,54 +314,95 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
         '        if index < 0 or str(salon_id) in liste[index]["salons"]:',
         "le salon recevrait les promotions d'une autre fourchette",
     ),
-    # --- src/bot.py : la boucle de publication -----------------------------
+    # --- src/tournee.py : la mécanique d'envoi, une pour toutes -------------
+    #
+    # Elle était écrite deux fois dans bot.py, une par publication. Les motifs
+    # qui la visaient portent donc désormais sur un seul endroit : ce qui les
+    # tue vaut pour **toute** publication, présente ou à venir.
+    (
+        "tournee-diffuse-a-tous-les-salons",
+        "src/tournee.py",
+        "        for salon_id in envoi.salons:",
+        "        for salon_id in [s for e in tournee.envois for s in e.salons]:",
+        "un salon recevrait le contenu de tous les envois, pas seulement le sien",
+    ),
+    (
+        "tournee-publie-plusieurs-fois-par-jour",
+        "src/tournee.py",
+        '    await marquer_le_jour(publication, magasin, maintenant.strftime("%Y-%m-%d"))',
+        "    pass",
+        "le post repartirait à chaque passage du cron, toutes les cinq minutes",
+    ),
+    (
+        "tournee-marque-malgre-l-echec",
+        "src/tournee.py",
+        "    if not reussis:",
+        "    if False:",
+        "une journée entièrement échouée serait comptée comme publiée",
+    ),
+    (
+        "tournee-compte-rendu-dedouble-les-envois",
+        "src/tournee.py",
+        "    total = sum(len(envoi.salons) for envoi in tournee.envois)",
+        "    total = len({s for e in tournee.envois for s in e.salons})",
+        "le compte rendu annoncerait moins d'envois qu'il n'en est parti",
+    ),
+    # --- src/modules/promos.py : ce qui n'appartient qu'aux promotions ------
     (
         "bot-publie-une-seule-fourchette",
-        "src/bot.py",
-        "        for fourchette in servies:",
-        "        for fourchette in servies[:1]:",
+        "src/modules/promos.py",
+        "    for fourchette in servies:",
+        "    for fourchette in servies[:1]:",
         "seule la première fourchette serait publiée, sans erreur visible",
     ),
     (
         "bot-publie-partout-les-memes-promos",
-        "src/bot.py",
-        '                    Decimal(fourchette["prix_min"]),\n'
-        '                    Decimal(fourchette["prix_max"]),\n'
-        "                    donnees=donnees,",
-        '                    Decimal(servies[0]["prix_min"]),\n'
-        '                    Decimal(servies[0]["prix_max"]),\n'
-        "                    donnees=donnees,",
+        "src/modules/promos.py",
+        '                Decimal(fourchette["prix_min"]),\n'
+        '                Decimal(fourchette["prix_max"]),\n'
+        "                donnees=donnees,",
+        '                Decimal(servies[0]["prix_min"]),\n'
+        '                Decimal(servies[0]["prix_max"]),\n'
+        "                donnees=donnees,",
         "chaque salon recevrait les promotions de la première fourchette",
     ),
     (
-        "bot-diffuse-a-tous-les-salons",
-        "src/bot.py",
-        '            for salon_id in fourchette["salons"]:',
-        '            for salon_id in [s for f in servies for s in f["salons"]]:',
-        "un salon recevrait les promotions de toutes les fourchettes",
-    ),
-    (
         "bot-fourchette-sans-salon-publiee",
-        "src/bot.py",
-        '        servies = [f for f in fourchettes if f["salons"]]',
-        "        servies = list(fourchettes)",
+        "src/modules/promos.py",
+        '    servies = [f for f in fourchettes if f["salons"]]',
+        "    servies = list(fourchettes)",
         "une fourchette sans salon ferait échouer un envoi à chaque passage",
     ),
     (
         "bot-export-recharge-par-fourchette",
-        "src/bot.py",
-        "                    donnees=donnees,\n"
-        "                    tolere_min=tolere_min,\n"
-        "                    tolere_max=tolere_max,\n"
-        "                )\n"
-        "            except Exception as erreur:",
-        "                    donnees=await self.charger(),\n"
-        "                    tolere_min=tolere_min,\n"
-        "                    tolere_max=tolere_max,\n"
-        "                )\n"
-        "            except Exception as erreur:",
+        "src/modules/promos.py",
+        "                donnees=donnees,\n"
+        "                tolere_min=tolere_min,\n"
+        "                tolere_max=tolere_max,\n"
+        "            )\n"
+        "        except Exception as erreur:",
+        "                donnees=await bot.charger(),\n"
+        "                tolere_min=tolere_min,\n"
+        "                tolere_max=tolere_max,\n"
+        "            )\n"
+        "        except Exception as erreur:",
         "l'export serait téléchargé une fois par fourchette",
     ),
+    (
+        "bot-publication-ignore-la-tolerance",
+        "src/modules/promos.py",
+        "            tolere_min, tolere_max = bornes_tolerees(fourchette)",
+        "            tolere_min, tolere_max = None, None",
+        "la zone n'agirait que sur l'aperçu, pas sur le post quotidien",
+    ),
+    (
+        "bot-role-du-mauvais-serveur",
+        "src/modules/promos.py",
+        '            role_id = await magasin.role_du_serveur(getattr(serveur, "id", None))',
+        "            role_id = next(iter((await magasin.roles()).values()), None)",
+        "un salon mentionnerait le rôle d'un autre serveur (@deleted-role)",
+    ),
+    # --- src/bot.py : ce qui reste dans le noyau ---------------------------
     (
         "bot-apercu-une-seule-fourchette",
         "src/bot.py",
@@ -364,17 +414,10 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
     ),
     (
         "bot-promos-une-seule-fourchette",
-        "src/bot.py",
+        "src/commandes.py",
         'else builtins.max(Decimal(f["prix_max"]) for f in fourchettes)',
         'else Decimal(fourchettes[0]["prix_max"])',
         "`/promos` masquerait les promotions des autres fourchettes",
-    ),
-    (
-        "bot-compte-rendu-dedouble-les-envois",
-        "src/bot.py",
-        '        total = sum(len(f["salons"]) for f in servies)',
-        '        total = len({s for f in servies for s in f["salons"]})',
-        "le compte rendu annoncerait moins d'envois qu'il n'en est parti",
     ),
     (
         "journal-compte-des-salons",
@@ -389,17 +432,6 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
         "            for serveur_id in settings.GUILD_IDS:",
         "            for serveur_id in settings.GUILD_IDS[:1]:",
         "les commandes manqueraient sur le second serveur, sans erreur",
-    ),
-    (
-        "bot-role-du-mauvais-serveur",
-        "src/bot.py",
-        "                        role_id = await self.store.role_du_serveur(\n"
-        '                            getattr(serveur, "id", None)\n'
-        "                        )",
-        "                        role_id = next(\n"
-        "                            iter((await self.store.roles()).values()), None\n"
-        "                        )",
-        "un salon mentionnerait le rôle d'un autre serveur (@deleted-role)",
     ),
     (
         "db-role-id-plat-ecrase-les-roles",
@@ -501,13 +533,6 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
         "une faute de frappe dans la config couperait la publication du matin",
     ),
     (
-        "bot-publication-ignore-la-tolerance",
-        "src/bot.py",
-        "                tolere_min, tolere_max = bornes_tolerees(fourchette)",
-        "                tolere_min, tolere_max = None, None",
-        "la zone n'agirait que sur l'aperçu, pas sur le post quotidien",
-    ),
-    (
         "serial-tolerance-nulle-exposee",
         "src/serialisation.py",
         '        if str(fourchette.get(champ) or "").strip():',
@@ -603,35 +628,35 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
     ),
     (
         "bot-frais-taux-recopie-en-dur",
-        "src/bot.py",
+        "src/modules/conversion.py",
         "        frais = frais_de_gestion(valeur)",
-        "        frais = valeur * Decimal(10) / Decimal(100)",
+        "        frais = valeur * 10 / 100",
         "le message afficherait 7 % et le calcul en appliquerait un autre",
     ),
     (
         "bot-convertir-ignore-le-palier",
-        "src/bot.py",
+        "src/modules/conversion.py",
         "            rendu = convertir(valeur, vers)",
         "            rendu = format_money(valeur)",
         "/convertir rendrait le palier que le bot choisit, pas celui demandé",
     ),
     (
         "bot-convertir-ne-rappelle-pas-la-saisie",
-        "src/bot.py",
+        "src/modules/conversion.py",
         "            f\"**{format_money(valeur)}** = **{rendu}**\\n\"",
         "            f\"**{rendu}**\\n\"",
         "on ne pourrait plus vérifier que « 50 6P » a été lu comme 506 PØ",
     ),
     (
         "bot-frais-public",
-        "src/bot.py",
+        "src/modules/conversion.py",
         "            f\"-# {format_money_long(frais)}\",\n            ephemeral=True,",
         "            f\"-# {format_money_long(frais)}\",\n            ephemeral=False,",
         "un calcul personnel encombrerait le salon",
     ),
     (
         "bot-convertir-sans-l-unite",
-        "src/bot.py",
+        "src/commandes.py",
         "    return [app_commands.Choice(name=\"Ø — unité\", value=\"Ø\"), *choix]",
         "    return choix",
         "l'unité disparaîtrait du menu, sans autre moyen de la demander",
@@ -892,28 +917,11 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
         "            \"filiales\", vers_json(valeurs_aleatoires(filiales, date, alea))",
         "l'unité serait perdue entre la commande et le tirage",
     ),
-    (
-        "bot-essai-palier-non-transmis",
-        "src/bot.py",
-        "        exposant = exposant_du_symbole(unite) if unite else None",
-        "        exposant = None",
-        "l'unité choisie au menu n'aurait aucun effet sur les montants",
-    ),
-    (
-        "bot-essai-palier-force-sans-choix",
-        "src/bot.py",
-        "        exposant = exposant_du_symbole(unite) if unite else None",
-        "        exposant = exposant_du_symbole(unite) if unite else 0",
-        "sans unité, tout tomberait sous le millier et les échelles du jeu "
-        "ne seraient jamais éprouvées",
-    ),
-    (
-        "bot-essai-unite-tue",
-        "src/bot.py",
-        "        echelle = f\"en {unite}{DEVISE}\" if unite else \"sur toute l'échelle\"",
-        "        echelle = \"\"",
-        "rien ne dirait dans quelle unité l'essai a été tiré",
-    ),
+    # Plus de motif sur la commande `/filiales test` : elle a été retirée du menu
+    # — un doigt qui glissait écrasait les vrais relevés du jour. Le tirage
+    # lui-même reste en place et reste éprouvé, ci-dessus par `essai-*` du côté du
+    # calcul et par `db-essai-*` du côté de l'écriture ; ce qui a disparu est
+    # seulement le chemin qui y menait depuis Discord.
     (
         "db-zero-non-enregistree",
         "src/db.py",
@@ -945,57 +953,52 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
         "l'essai serait annoncé sans que le tableau change",
     ),
     (
-        "bot-zero-sans-confirmation",
-        "src/bot.py",
+        "bot-vider-sans-confirmation",
+        "src/modules/filiales.py",
         "        if not confirmer:\n            await interaction.response.send_message(\n                f\"❌ Rien effacé : coche `confirmer` pour aller au bout.\\n\"",
         "        if False:\n            await interaction.response.send_message(\n                f\"❌ Rien effacé : coche `confirmer` pour aller au bout.\\n\"",
         "un cycle entier de relevés partirait sur un clic de travers",
     ),
     (
-        "bot-masse-sans-confirmation",
-        "src/bot.py",
-        "        if not confirmer:\n            # Ce qui va partir, nommément",
-        "        if False:\n            # Ce qui va partir, nommément",
+        "bot-retirer-lot-sans-confirmation",
+        "src/modules/filiales.py",
+        "        if (tout or len(noms) > 1) and not confirmer:",
+        "        if False:",
         "un lot de filiales partirait sans qu'on ait vu lequel",
     ),
     (
-        "bot-essai-sans-confirmation",
-        "src/bot.py",
-        "        if not confirmer:\n            await interaction.response.send_message(\n                f\"❌ Rien tiré : coche `confirmer` pour aller au bout.\\n\"",
-        "        if False:\n            await interaction.response.send_message(\n                f\"❌ Rien tiré : coche `confirmer` pour aller au bout.\\n\"",
-        "les vrais relevés de production seraient écrasés par des chiffres faux",
+        "bot-retirer-tout-sans-confirmation",
+        "src/modules/filiales.py",
+        "        if (tout or len(noms) > 1) and not confirmer:",
+        "        if len(noms) > 1 and not confirmer:",
+        "`tout` sur une seule filiale l'emporterait sans cérémonie, alors que le "
+        "mot ne nomme pas ce qu'il vise",
+    ),
+    (
+        "bot-retirer-un-nom-demande-une-ceremonie",
+        "src/modules/filiales.py",
+        "        if (tout or len(noms) > 1) and not confirmer:",
+        "        if (tout or len(noms) >= 1) and not confirmer:",
+        "une case à cocher sur un geste d'un mot apprendrait à cocher sans lire, "
+        "et ne protégerait plus le lot",
     ),
     # Pas de mutation faisant valoir « tout » à une saisie vide : `saisie` est
     # déjà dépouillée et la garde du dessus a rendu la main, si bien que la
     # branche serait inatteignable — un test qui prétendrait la réfuter serait
     # faux. C'est la garde elle-même qui est mutée.
     (
-        "bot-masse-saisie-vide-mal-annoncee",
-        "src/bot.py",
+        "bot-retirer-saisie-vide-mal-annoncee",
+        "src/modules/filiales.py",
         "        if not saisie:\n            await interaction.response.send_message(\n                \"❌ Aucun nom saisi.",
         "        if False:\n            await interaction.response.send_message(\n                \"❌ Aucun nom saisi.",
         "un refus annoncerait « aucune filiale enregistrée » alors qu'il y en a",
     ),
     (
-        "bot-masse-tout-non-reconnu",
-        "src/bot.py",
+        "bot-retirer-tout-non-reconnu",
+        "src/modules/filiales.py",
         '        tout = saisie.casefold() == "tout"',
         '        tout = saisie == "tout"',
         "`TOUT` ne serait pas reconnu et passerait pour un nom de filiale",
-    ),
-    (
-        "bot-essai-sans-la-sortie",
-        "src/bot.py",
-        '            f"-# `/filiales remise-a-zero` pour repartir propre — sans quoi ces "',
-        '            f"-# "',
-        "des chiffres au hasard resteraient en base et seraient publiés le soir",
-    ),
-    (
-        "bot-essai-sans-le-tableau",
-        "src/bot.py",
-        "            embed=embed_filiales(await bot.store.filiales(), aujourdhui),",
-        "",
-        "il faudrait enchaîner sur /filiales liste pour voir l'essai demandé",
     ),
     # --- src/publish_filiales.py : le tableau lu dans Discord --------------
     (
@@ -1127,75 +1130,52 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
         "    return Date.fromisoformat(iso)",
         "un relevé d'une version antérieure empêcherait tout le tableau de sortir",
     ),
-    # --- src/bot.py : la saisie et la publication du tableau ---------------
+    # --- src/modules/filiales.py : la saisie du tableau --------------------
+    #
+    # Plus de motif sur la fourche `if filiale is not None` de `/frais` : la case
+    # facultative qui décidait d'écrire en base ou non a disparu, et avec elle les
+    # deux mutants qui l'éprouvaient. La saisie est `/filiales releve`, où les deux
+    # champs sont obligatoires — il n'y a plus de branche à couper.
     (
-        "bot-frais-filiale-non-enregistree",
-        "src/bot.py",
-        "        if filiale is not None:\n            await _enregistrer_frais(interaction, valeur, filiale)\n            return",
-        "        if False:\n            await _enregistrer_frais(interaction, valeur, filiale)\n            return",
-        "la filiale saisie n'apparaîtrait jamais dans le tableau",
-    ),
-    (
-        "bot-frais-calculette-enregistre",
-        "src/bot.py",
-        "        if filiale is not None:",
-        "        if True:",
-        "un simple calcul créerait une filiale nommée « None »",
-    ),
-    (
-        "bot-frais-montant-illisible-enregistre-quand-meme",
-        "src/bot.py",
-        "            await interaction.response.send_message(\n                f\"❌ {erreur}\\n{_aide_montants()}\", ephemeral=True\n            )\n            return\n\n        if filiale is not None:",
-        "            await interaction.response.send_message(\n                f\"❌ {erreur}\\n{_aide_montants()}\", ephemeral=True\n            )\n\n        if filiale is not None:",
+        "bot-releve-montant-illisible-enregistre-quand-meme",
+        "src/modules/filiales.py",
+        "            await interaction.response.send_message(\n                f\"❌ {erreur}\\n{aide_montants()}\", ephemeral=True\n            )\n            return\n\n        existait = index_de(await bot.store.filiales(), filiale) >= 0",
+        "            await interaction.response.send_message(\n                f\"❌ {erreur}\\n{aide_montants()}\", ephemeral=True\n            )\n\n        existait = index_de(await bot.store.filiales(), filiale) >= 0",
         "une filiale serait retenue à un montant faux et fausserait le total",
     ),
     (
-        "bot-frais-releve-public",
-        "src/bot.py",
+        "bot-releve-public",
+        "src/modules/filiales.py",
         "        await interaction.response.send_message(corps, ephemeral=True)",
         "        await interaction.response.send_message(corps, ephemeral=False)",
         "les résultats de l'entreprise s'afficheraient dans le salon",
     ),
     (
-        "bot-frais-ressaisie-annoncee-comme-un-ajout",
-        "src/bot.py",
+        "bot-releve-ressaisie-annoncee-comme-un-ajout",
+        "src/modules/filiales.py",
         '        verbe = "mise à jour" if existait else "enregistrée"',
         '        verbe = "enregistrée"',
         "on ne saurait pas qu'on vient d'écraser un relevé",
     ),
     (
-        "bot-frais-sans-alerte-de-salon-manquant",
-        "src/bot.py",
+        "bot-releve-sans-alerte-de-salon-manquant",
+        "src/modules/filiales.py",
         '        if not await bot.store.salons_filiales():\n            # Une saisie qui n\'ira nulle part doit se voir maintenant, pas au\n            # moment où l\'on s\'étonne de ne rien recevoir.\n            corps += "\\n⚠️ Aucun salon pour le tableau : `/filiales salon ajouter`."',
         "        pass",
         "on saisirait des relevés que personne ne recevrait",
     ),
     (
-        "bot-tableau-publie-plusieurs-fois-par-jour",
-        "src/bot.py",
-        "        await self.store.marquer_publie_filiales(aujourdhui)",
-        "        pass",
-        "le cron reposterait le tableau à chaque appel",
-    ),
-    (
-        "bot-tableau-marque-malgre-l-echec",
-        "src/bot.py",
-        "        if not reussis:\n            log.error(\"Tableau des frais échoué dans les %d envois.\", len(echecs))",
-        "        if False:\n            log.error(\"Tableau des frais échoué dans les %d envois.\", len(echecs))",
-        "une panne d'un instant annulerait le tableau de toute la journée",
-    ),
-    (
         "bot-tableau-a-l-heure-des-promotions",
-        "src/bot.py",
-        "            if not doit_publier(maintenant, await self.store.heure_filiales(), derniere):",
-        '            if not doit_publier(maintenant, config["heure"], derniere):',
+        "src/modules/filiales.py",
+        "    return await magasin.heure_filiales()",
+        '    return (await magasin.config())["heure"]',
         "régler l'heure des promotions déplacerait le tableau",
     ),
     (
         "bot-tableau-dans-les-salons-des-promotions",
-        "src/bot.py",
-        "        salons = await self.store.salons_filiales()",
-        "        salons = await self.store.salons()",
+        "src/modules/filiales.py",
+        "    salons = await magasin.salons_filiales()",
+        "    salons = await magasin.salons()",
         "les frais de l'entreprise partiraient dans le salon des promotions",
     ),
     (
@@ -1214,38 +1194,47 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
     ),
     (
         "bot-filiales-heure-ecrit-celle-des-promotions",
-        "src/bot.py",
-        "        config = await bot.store.maj_config(filiales_heure=heure_propre)",
-        "        config = await bot.store.maj_config(heure=heure_propre)",
+        "src/modules/filiales.py",
+        "    await magasin.maj_config(filiales_heure=heure)",
+        "    await magasin.maj_config(heure=heure)",
         "régler le tableau déplacerait le post des promotions",
     ),
+    # --- src/commandes.py : le vocabulaire commun des publications ---------
+    #
+    # `heure`, `apercu`, `publier` et `salon` sont écrits une seule fois pour
+    # toutes les publications : ces motifs ne visaient que celles du tableau, ils
+    # valent maintenant pour la troisième publication comme pour les deux
+    # premières.
     (
-        "bot-filiales-heure-garde-la-marque-du-jour",
-        "src/bot.py",
-        "        await bot.store.oublier_publication_filiales()",
+        "surface-heure-garde-la-marque-du-jour",
+        "src/commandes.py",
+        "        await marquer_le_jour(publication, bot.store, None)",
         "        pass",
         "le nouvel horaire serait bloqué jusqu'au lendemain",
     ),
     (
-        "bot-filiales-heure-invalide-acceptee",
-        "src/bot.py",
+        "surface-heure-invalide-acceptee",
+        "src/commandes.py",
         "    if not (0 <= heures <= 23 and 0 <= minutes <= 59):\n        return None",
         "    if False:\n        return None",
         "« 25:00 » serait enregistrée et le post ne sortirait plus jamais",
     ),
     (
-        "bot-filiales-salon-sans-permission",
-        "src/bot.py",
-        "        manquantes = _permissions_manquantes(interaction, salon)\n        if manquantes:\n            await interaction.response.send_message(\n                f\"❌ Je n'ai pas la permission {manquantes} dans {salon.mention}.\\n\"\n                f\"-# Ajoute-la puis relance la commande.\",\n                ephemeral=True,\n            )\n            return\n\n        if not await bot.store.ajouter_salon_filiales(str(salon.id)):",
-        "        if not await bot.store.ajouter_salon_filiales(str(salon.id)):",
+        "surface-salon-sans-permission",
+        "src/commandes.py",
+        "        manquantes = permissions_manquantes(interaction, salon)",
+        '        manquantes = ""',
         "la permission manquante ne serait découverte qu'à l'heure du post",
     ),
     (
-        "bot-apercu-filiales-consomme-le-post-du-jour",
-        "src/bot.py",
-        "        entete = f\"Tableau prévu à **{await bot.store.heure_filiales()}**\"",
-        "        await bot.store.marquer_publie_filiales(aujourdhui)\n        entete = f\"Tableau prévu à **{await bot.store.heure_filiales()}**\"",
-        "un aperçu empêcherait le tableau du jour de sortir",
+        "surface-apercu-consomme-le-post-du-jour",
+        "src/commandes.py",
+        '        maintenant = maintenant_local((await bot.store.config())["fuseau"])\n\n        try:',
+        '        maintenant = maintenant_local((await bot.store.config())["fuseau"])\n'
+        '        await marquer_le_jour(\n'
+        '            publication, bot.store, maintenant.strftime("%Y-%m-%d")\n'
+        "        )\n\n        try:",
+        "un aperçu empêcherait le post du jour de sortir",
     ),
     (
         "web-tick-sans-le-tableau",
@@ -1330,28 +1319,28 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
     ),
     (
         "bot-export-fichier-non-joint",
-        "src/bot.py",
-        "            file=fichier,\n            ephemeral=True,\n        )\n\n    @filiales_groupe.command(name=\"retirer\"",
-        "            ephemeral=True,\n        )\n\n    @filiales_groupe.command(name=\"retirer\"",
+        "src/modules/filiales.py",
+        "            file=fichier,\n            ephemeral=True,\n        )",
+        "            ephemeral=True,\n        )",
         "la commande annoncerait un export sans rien rendre",
     ),
     (
         "bot-export-vide-annonce-un-fichier",
-        "src/bot.py",
-        "        filiales = await bot.store.filiales()\n        if not filiales:",
-        "        filiales = await bot.store.filiales()\n        if False:",
+        "src/modules/filiales.py",
+        "        filiales = await bot.store.filiales()\n        if not filiales:\n            # Pas de fichier vide",
+        "        filiales = await bot.store.filiales()\n        if False:\n            # Pas de fichier vide",
         "un fichier de zéro octet se lirait comme une panne du bot",
     ),
     (
         "bot-export-nom-de-fichier-sans-date",
-        "src/bot.py",
-        'filename=f"frais-{aujourdhui}.txt",',
+        "src/modules/filiales.py",
+        'filename=f"frais-{await _aujourdhui(bot)}.txt",',
         'filename="frais.txt",',
         "deux exports d'affilée se confondraient dans le fil",
     ),
     (
         "bot-export-nom-deforme-en-silence",
-        "src/bot.py",
+        "src/modules/filiales.py",
         "        deformes = [\n            nom_pour_import(f.nom) for f in filiales if nom_pour_import(f.nom) != f.nom\n        ]",
         "        deformes = []",
         "un nom réécrit partirait sans un mot, et rien n'expliquerait le refus du jeu",
