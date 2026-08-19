@@ -16,7 +16,17 @@ import discord
 from discord import app_commands
 
 from src import settings
-from src.acces import acces_autorise, gere_la_liste
+from src.acces import acces_autorise
+from src.commandes import (
+    AucuneFourchette,
+    administrateur,
+    aide_montants,
+    bornes_demandees,
+    choix_symboles,
+    heure_valide,
+    lister_fourchettes,
+    permissions_manquantes,
+)
 from src.db import Store, bornes_tolerees
 from src.filiales import (
     FilialeError,
@@ -31,8 +41,6 @@ from src.modules import filiales as module_filiales
 from src.modules import promos as module_promos
 from src.money import (
     DEVISE,
-    ECHELLE,
-    NOMS,
     TAUX_GESTION,
     MoneyError,
     convertir,
@@ -331,160 +339,6 @@ class EmpireBot(discord.Client):
 
 # --- Commandes --------------------------------------------------------------
 
-def _administrateur(interaction: discord.Interaction) -> bool:
-    """Vrai si l'auteur est administrateur du serveur.
-
-    `ArbreProtege` laisse déjà passer les membres autorisés : ce contrôle
-    supplémentaire ne sert qu'à la gestion de la liste d'accès elle-même, pour
-    qu'un membre autorisé ne puisse ni s'ajouter des complices ni retirer celui
-    qui l'a nommé.
-    """
-    permissions = getattr(interaction.user, "guild_permissions", None)
-    return gere_la_liste(est_admin=bool(permissions and permissions.administrator))
-
-
-def _permissions_manquantes(
-    interaction: discord.Interaction, salon: discord.TextChannel
-) -> str:
-    """Nomme la permission qui empêcherait le bot de publier, ou "".
-
-    Vérifié à la configuration plutôt qu'à la publication : une permission
-    manquante découverte à 09:00 le lendemain est un post perdu.
-    """
-    moi = getattr(getattr(interaction, "guild", None), "me", None)
-    permissions = salon.permissions_for(moi)
-    if not permissions.send_messages:
-        return "**Envoyer des messages**"
-    if not permissions.embed_links:
-        return "**Intégrer des liens**"
-    return ""
-
-
-def _lister_salons(bot: EmpireBot, salons: list[str]) -> str:
-    """Liste à puces des salons, avec un ⚠️ sur ceux devenus inaccessibles."""
-    if not salons:
-        return "*Aucun salon configuré.* Le post quotidien ne sortira pas."
-
-    lignes = []
-    for salon_id in salons:
-        introuvable = bot.get_channel(int(salon_id)) is None
-        suffixe = " ⚠️ introuvable" if introuvable else ""
-        lignes.append(f"• <#{salon_id}>{suffixe}")
-    return "\n".join(lignes)
-
-
-def _lister_fourchettes(bot: EmpireBot, fourchettes: list[dict]) -> str:
-    """Fourchettes avec bornes et salons, ⚠️ sur celles qui ne publieront rien.
-
-    Une fourchette sans salon est silencieuse à la publication : ça doit se voir
-    dans la liste, sans avoir à le déduire de l'absence de salon.
-    """
-    if not fourchettes:
-        return (
-            "*Aucune fourchette configurée.* Le post quotidien ne sortira pas.\n"
-            "-# `/fourchette ajouter nom:… min:… max:…`"
-        )
-
-    lignes = []
-    for fourchette in fourchettes:
-        bornes = (
-            f"{format_money(Decimal(fourchette['prix_min']))} → "
-            f"{format_money(Decimal(fourchette['prix_max']))}"
-        )
-        lignes.append(f"**{fourchette['nom']}** — {bornes}")
-        # Seul endroit où relire la zone : les posts ne la mentionnent pas.
-        tolere_min, tolere_max = bornes_tolerees(fourchette)
-        if tolere_min is not None and tolere_max is not None:
-            lignes.append(
-                f"-# tolérance : {format_money(tolere_min)} → {format_money(tolere_max)}"
-            )
-        if not fourchette["salons"]:
-            lignes.append("⚠️ aucun salon : ne publiera rien")
-            continue
-        for salon_id in fourchette["salons"]:
-            introuvable = bot.get_channel(int(salon_id)) is None
-            suffixe = " ⚠️ introuvable" if introuvable else ""
-            lignes.append(f"• <#{salon_id}>{suffixe}")
-    return "\n".join(lignes)
-
-
-class _AucuneFourchette(Exception):
-    """Rien n'est configuré : le message porte la commande qui y remédie."""
-
-
-async def _bornes_demandees(
-    bot: EmpireBot, min: str | None, max: str | None
-) -> tuple[Decimal, Decimal]:
-    """Bornes d'une recherche `/promos`, remises dans l'ordre.
-
-    Sans argument, couvre **l'union** de toutes les fourchettes : la commande
-    sert à voir ce qui bouge dans tout ce qui est surveillé, pas à en interroger
-    une en particulier — sinon il faudrait la nommer.
-    """
-    if min and max:
-        plancher, plafond = parse_money(min), parse_money(max)
-    else:
-        fourchettes = await bot.store.fourchettes()
-        if not fourchettes:
-            raise _AucuneFourchette(
-                "❌ Aucune fourchette configurée : précise `min:` et `max:`, ou "
-                "crée-en une avec `/fourchette ajouter`."
-            )
-
-        # Une seule borne fournie : l'autre vient de l'union. Refuser une saisie
-        # dont l'intention est claire serait gratuit.
-        plancher = (
-            parse_money(min) if min
-            else builtins.min(Decimal(f["prix_min"]) for f in fourchettes)
-        )
-        plafond = (
-            parse_money(max) if max
-            else builtins.max(Decimal(f["prix_max"]) for f in fourchettes)
-        )
-
-    # `min`/`max` sont ici les paramètres de la commande, pas les fonctions : le
-    # tri passe donc par `sorted`.
-    return tuple(sorted((plancher, plafond)))  # type: ignore[return-value]
-
-
-def _heure_valide(heure: str) -> str | None:
-    """Normalise `HH:MM` en `%02d:%02d`, ou None si la saisie est inutilisable.
-
-    La forme normalisée compte : `doit_publier` compare des chaînes, et « 9:00 »
-    se rangerait après « 20:30 ».
-    """
-    try:
-        heures, minutes = (int(part) for part in heure.split(":", 1))
-    except ValueError:
-        return None
-    if not (0 <= heures <= 23 and 0 <= minutes <= 59):
-        return None
-    return f"{heures:02d}:{minutes:02d}"
-
-
-def _aide_montants() -> str:
-    return (
-        "Formats acceptés : `840`, `12,25M`, `100T`, `6P`, `50 6P`, `2,71 PØ`.\n"
-        "Symboles : K M G T P E Z Y R Q U S X N D."
-    )
-
-
-def _choix_symboles() -> list[app_commands.Choice]:
-    """Les 15 paliers du jeu, plus l'unité, en menu déroulant.
-
-    Une liste de choix plutôt qu'un champ libre : les symboles ne suivent pas
-    les préfixes SI (`G` est un milliard, `E` vaut 10^18), donc personne ne les
-    devine, et Discord plafonne à 25 choix — la table en compte 16.
-    """
-    choix = [
-        app_commands.Choice(name=f"{symbole}Ø — {NOMS[symbole]}", value=symbole)
-        for _, symbole in reversed(ECHELLE)
-    ]
-    # L'unité en tête : c'est le palier qu'on demande pour « voir tous les
-    # chiffres », et il n'est pas dans la table.
-    return [app_commands.Choice(name="Ø — unité", value="Ø"), *choix]
-
-
 def enregistrer_commandes(bot: EmpireBot) -> None:
     tree = bot.tree
 
@@ -497,7 +351,7 @@ def enregistrer_commandes(bot: EmpireBot) -> None:
         montant="Montant de départ (ex: 2,71P, 50 6P, 840)",
         vers="Palier d'arrivée",
     )
-    @app_commands.choices(vers=_choix_symboles())
+    @app_commands.choices(vers=choix_symboles())
     async def convertir_commande(
         interaction: discord.Interaction, montant: str, vers: str
     ):
@@ -505,7 +359,7 @@ def enregistrer_commandes(bot: EmpireBot) -> None:
             valeur = parse_money(montant)
         except MoneyError as erreur:
             await interaction.response.send_message(
-                f"❌ {erreur}\n{_aide_montants()}", ephemeral=True
+                f"❌ {erreur}\n{aide_montants()}", ephemeral=True
             )
             return
 
@@ -565,7 +419,7 @@ def enregistrer_commandes(bot: EmpireBot) -> None:
             # Avant tout enregistrement : une filiale retenue à un montant faux
             # figurerait dans le tableau et fausserait le total.
             await interaction.response.send_message(
-                f"❌ {erreur}\n{_aide_montants()}", ephemeral=True
+                f"❌ {erreur}\n{aide_montants()}", ephemeral=True
             )
             return
 
@@ -652,11 +506,11 @@ def enregistrer_commandes(bot: EmpireBot) -> None:
     ):
         await interaction.response.defer()
         try:
-            prix_min, prix_max = await _bornes_demandees(bot, min, max)
+            prix_min, prix_max = await bornes_demandees(bot, min, max)
         except MoneyError as erreur:
-            await interaction.followup.send(f"❌ {erreur}\n{_aide_montants()}", ephemeral=True)
+            await interaction.followup.send(f"❌ {erreur}\n{aide_montants()}", ephemeral=True)
             return
-        except _AucuneFourchette as erreur:
+        except AucuneFourchette as erreur:
             await interaction.followup.send(str(erreur), ephemeral=True)
             return
 
@@ -718,7 +572,7 @@ def enregistrer_commandes(bot: EmpireBot) -> None:
         # plus quel salon reçoit quelles promotions.
         embed.add_field(
             name=f"Fourchettes ({len(fourchettes)})",
-            value=_lister_fourchettes(bot, fourchettes),
+            value=lister_fourchettes(bot, fourchettes),
             inline=False,
         )
         embed.add_field(
@@ -735,7 +589,7 @@ def enregistrer_commandes(bot: EmpireBot) -> None:
     async def config_heure(
         interaction: discord.Interaction, heure: str, fuseau: str | None = None
     ):
-        heure_propre = _heure_valide(heure)
+        heure_propre = heure_valide(heure)
         if heure_propre is None:
             await interaction.response.send_message(
                 "❌ Heure invalide. Format attendu : `HH:MM` (ex: `09:00`).", ephemeral=True
@@ -824,7 +678,7 @@ def enregistrer_commandes(bot: EmpireBot) -> None:
             prix_min, prix_max = parse_money(min), parse_money(max)
         except MoneyError as erreur:
             await interaction.response.send_message(
-                f"❌ {erreur}\n{_aide_montants()}", ephemeral=True
+                f"❌ {erreur}\n{aide_montants()}", ephemeral=True
             )
             return
 
@@ -866,7 +720,7 @@ def enregistrer_commandes(bot: EmpireBot) -> None:
             prix_min, prix_max = parse_money(min), parse_money(max)
         except MoneyError as erreur:
             await interaction.response.send_message(
-                f"❌ {erreur}\n{_aide_montants()}", ephemeral=True
+                f"❌ {erreur}\n{aide_montants()}", ephemeral=True
             )
             return
 
@@ -951,7 +805,7 @@ def enregistrer_commandes(bot: EmpireBot) -> None:
             tolere_min, tolere_max = parse_money(min), parse_money(max)
         except MoneyError as erreur:
             await interaction.response.send_message(
-                f"❌ {erreur}\n{_aide_montants()}", ephemeral=True
+                f"❌ {erreur}\n{aide_montants()}", ephemeral=True
             )
             return
 
@@ -979,7 +833,7 @@ def enregistrer_commandes(bot: EmpireBot) -> None:
         fourchettes = await bot.store.fourchettes()
         embed = discord.Embed(
             title="Fourchettes de prix",
-            description=_lister_fourchettes(bot, fourchettes),
+            description=lister_fourchettes(bot, fourchettes),
             color=0x5865F2,
         )
         await interaction.response.send_message(embed=embed, ephemeral=True)
@@ -999,7 +853,7 @@ def enregistrer_commandes(bot: EmpireBot) -> None:
     ):
         # Vérifié tout de suite : sinon l'erreur n'apparaîtrait qu'à l'heure du
         # post, le lendemain.
-        manquantes = _permissions_manquantes(interaction, salon)
+        manquantes = permissions_manquantes(interaction, salon)
         if manquantes:
             await interaction.response.send_message(
                 f"❌ Je n'ai pas la permission {manquantes} dans {salon.mention}.\n"
@@ -1280,7 +1134,7 @@ def enregistrer_commandes(bot: EmpireBot) -> None:
         confirmer="À cocher : les vrais relevés sont écrasés",
         unite="Palier des montants tirés (défaut : toute l'échelle)",
     )
-    @app_commands.choices(unite=_choix_symboles())
+    @app_commands.choices(unite=choix_symboles())
     async def filiales_test(
         interaction: discord.Interaction, confirmer: bool, unite: str | None = None
     ):
@@ -1346,7 +1200,7 @@ def enregistrer_commandes(bot: EmpireBot) -> None:
     @filiales_groupe.command(name="heure", description="Heure du tableau des frais")
     @app_commands.describe(heure="Format HH:MM")
     async def filiales_heure(interaction: discord.Interaction, heure: str):
-        heure_propre = _heure_valide(heure)
+        heure_propre = heure_valide(heure)
         if heure_propre is None:
             await interaction.response.send_message(
                 "❌ Heure invalide. Format attendu : `HH:MM` (ex: `20:30`).",
@@ -1392,7 +1246,7 @@ def enregistrer_commandes(bot: EmpireBot) -> None:
     ):
         # Vérifié au réglage : une permission manquante découverte à l'heure du
         # post est un tableau perdu.
-        manquantes = _permissions_manquantes(interaction, salon)
+        manquantes = permissions_manquantes(interaction, salon)
         if manquantes:
             await interaction.response.send_message(
                 f"❌ Je n'ai pas la permission {manquantes} dans {salon.mention}.\n"
@@ -1474,7 +1328,7 @@ def enregistrer_commandes(bot: EmpireBot) -> None:
         name="ajouter", description="Autorise un membre à utiliser les commandes"
     )
     async def acces_ajouter(interaction: discord.Interaction, membre: discord.Member):
-        if not _administrateur(interaction):
+        if not administrateur(interaction):
             await interaction.response.send_message(REFUS_ADMIN, ephemeral=True)
             return
 
@@ -1514,7 +1368,7 @@ def enregistrer_commandes(bot: EmpireBot) -> None:
         name="retirer", description="Retire l'accès aux commandes à un membre"
     )
     async def acces_retirer(interaction: discord.Interaction, membre: discord.Member):
-        if not _administrateur(interaction):
+        if not administrateur(interaction):
             await interaction.response.send_message(REFUS_ADMIN, ephemeral=True)
             return
 
@@ -1601,7 +1455,7 @@ def enregistrer_commandes(bot: EmpireBot) -> None:
             )
             return
 
-        manquantes = _permissions_manquantes(interaction, salon)
+        manquantes = permissions_manquantes(interaction, salon)
         if manquantes:
             await interaction.response.send_message(
                 f"❌ Je n'ai pas la permission {manquantes} dans {salon.mention}.",
