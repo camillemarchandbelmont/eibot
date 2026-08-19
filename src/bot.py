@@ -349,7 +349,7 @@ class EmpireBot(discord.Client):
                 else:
                     reussis.append(f"<#{salon_id}> ({fourchette['nom']})")
 
-        await self._journaliser_publication(promos, reussis, echecs)
+        await self.journaliser_publication(promos, reussis, echecs)
 
         if not reussis:
             log.error("Publication échouée dans les %d envois.", len(echecs))
@@ -413,7 +413,7 @@ class EmpireBot(discord.Client):
             else:
                 reussis.append(f"<#{salon_id}> (filiales)")
 
-        await self._journaliser_publication(len(filiales), reussis, echecs)
+        await self.journaliser_publication(len(filiales), reussis, echecs)
 
         if not reussis:
             log.error("Tableau des frais échoué dans les %d envois.", len(echecs))
@@ -453,9 +453,15 @@ class EmpireBot(discord.Client):
 
     # --- Journal : un observateur ne doit jamais bloquer l'essentiel --------
 
-    async def _journaliser_publication(
+    async def journaliser_publication(
         self, promos: int, reussis: list[str], echecs: dict[str, str]
     ) -> None:
+        """Publique : c'est par là que le moteur de tournée rend ses comptes.
+
+        La panne est avalée ici, à l'unique endroit qui appelle le journal — un
+        observateur ne doit jamais bloquer ce qu'il observe, et dupliquer la garde
+        dans le moteur en ferait deux à maintenir.
+        """
         try:
             await self.journal.publication(promos=promos, reussis=reussis, echecs=echecs)
         except Exception:
