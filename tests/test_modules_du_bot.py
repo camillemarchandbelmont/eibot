@@ -17,10 +17,13 @@ from datetime import datetime
 from decimal import Decimal
 from zoneinfo import ZoneInfo
 
+from src.bot import EmpireBot
 from src.db import Store
 from src.modules import Module, decouvrir
 from src.modules import filiales as module_filiales
 from src.modules import promos as module_promos
+
+from tests.test_commandes_fourchettes import SourceFactice
 
 
 async def _magasin() -> Store:
@@ -57,6 +60,58 @@ def test_les_publications_du_bot_sont_declarees_par_des_modules():
         "promos",
         "filiales",
     ]
+
+
+def test_le_bot_balaie_le_dossier_a_son_demarrage():
+    """Le bot doit retenir ce qu'il a trouvé, et ce qu'il a refusé.
+
+    Retenu et non redécouvert à la demande : le balayage importe des fichiers,
+    donc exécute du code, et le refaire à chaque commande multiplierait les
+    occasions de tomber. La liste des refusés est gardée pour être dite dans le
+    salon de logs — un module absent du menu sans explication enverrait chercher
+    la panne du côté de Discord.
+    """
+    bot = EmpireBot(Store(dsn=""), SourceFactice())
+
+    assert {module.nom for module in bot.modules} >= {"promos", "filiales"}
+    assert bot.modules_refuses == {}
+
+
+class JournalFactice:
+    def __init__(self):
+        self.erreurs: list[str] = []
+
+    async def erreur(self, message: str) -> None:
+        self.erreurs.append(message)
+
+
+async def test_un_module_refuse_est_nomme_dans_le_salon_de_logs():
+    """Le fautif et sa raison, là où on les lit.
+
+    Un module écarté disparaît du menu sans bruit : sans ce signalement, on
+    chercherait la panne du côté de Discord ou de la synchronisation des
+    commandes, et non du fichier qu'on vient de pousser.
+    """
+    bot = EmpireBot(Store(dsn=""), SourceFactice())
+    bot.journal = JournalFactice()
+    bot.modules_refuses = {"bonjour": "ImportError : pas de module nommé pandas"}
+
+    await bot.signaler_les_modules_refuses()
+
+    assert len(bot.journal.erreurs) == 1
+    assert "bonjour" in bot.journal.erreurs[0]
+    assert "pandas" in bot.journal.erreurs[0]
+
+
+async def test_sans_module_refuse_le_salon_de_logs_reste_muet():
+    """Un « 0 module refusé » à chaque démarrage apprendrait à ne plus lire le
+    salon de logs, et le vrai signalement passerait avec le reste."""
+    bot = EmpireBot(Store(dsn=""), SourceFactice())
+    bot.journal = JournalFactice()
+
+    await bot.signaler_les_modules_refuses()
+
+    assert bot.journal.erreurs == []
 
 
 # --- Les promotions --------------------------------------------------------

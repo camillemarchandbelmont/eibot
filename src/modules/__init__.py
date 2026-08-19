@@ -20,10 +20,13 @@ L'activation par serveur, elle, ne demande aucun redémarrage.
 from __future__ import annotations
 
 import importlib
+import logging
 import pkgutil
 import re
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable
+
+log = logging.getLogger(__name__)
 
 #: Le paquet balayé au démarrage.
 PAQUET = "src.modules"
@@ -309,3 +312,32 @@ def charger(
 def decouvrir(paquet: str = PAQUET) -> tuple[list[Module], dict[str, str]]:
     """Ce que le bot appelle au démarrage : balayer le dossier, puis charger."""
     return charger(noms_de_modules(paquet), importlib.import_module, paquet)
+
+
+def greffer(bot: Any, modules: list[Module]) -> dict[str, str]:
+    """Ajoute les commandes de chaque module à l'arbre. Rend ceux qui ont échoué.
+
+    Même garde que `charger`, et pour la même raison : ce qui est exécuté ici est
+    du code de module, qui peut échouer tout autant — un nom de commande en
+    doublon, une description trop longue pour Discord. Un module fautif est écarté
+    et nommé, jamais fatal, sinon un fichier en cours d'écriture couperait les
+    publications de toutes les entreprises.
+
+    L'ordre est celui reçu, c'est à dire celui de `charger` : c'est lui qu'on
+    retrouve dans le menu Discord.
+    """
+    refuses: dict[str, str] = {}
+    for module in modules:
+        if module.enregistrer is None:
+            # Un module qui ne fait que publier est un cas ordinaire.
+            continue
+        try:
+            module.enregistrer(bot)
+        except Exception as erreur:
+            log.warning(
+                "Les commandes du module « %s » n'ont pas pu être greffées.",
+                module.nom,
+                exc_info=True,
+            )
+            refuses[module.nom] = f"{type(erreur).__name__} : {erreur}"
+    return refuses

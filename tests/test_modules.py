@@ -12,7 +12,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from src.modules import Module, Publication, charger, noms_de_modules
+from src.modules import Module, Publication, charger, greffer, noms_de_modules
 
 
 def _module(nom: str, **surcharges) -> Module:
@@ -292,6 +292,53 @@ def test_des_paires_completes_passent(paires):
     assert Publication(
         cle="bonjour", titre="le bonjour", preparer=None, **paires
     ).cle == "bonjour"
+
+
+# --- La greffe des commandes -----------------------------------------------
+
+
+def test_greffer_appelle_chaque_module_dans_l_ordre():
+    """L'ordre du menu Discord vient de là : il ne doit pas dépendre du hasard."""
+    appels: list[str] = []
+    modules = [
+        _module("conversion", enregistrer=lambda bot: appels.append("conversion")),
+        _module("promos", enregistrer=lambda bot: appels.append("promos")),
+    ]
+
+    assert greffer(object(), modules) == {}
+    assert appels == ["conversion", "promos"]
+
+
+def test_un_module_sans_commande_est_ignore_sans_bruit():
+    """Un module qui ne fait que publier est un cas ordinaire, pas une anomalie."""
+    assert greffer(object(), [_module("bonjour")]) == {}
+
+
+def test_une_greffe_qui_echoue_n_empeche_pas_les_suivantes():
+    """Sans cette garde, un module en cours d'écriture couperait les publications
+    de toutes les entreprises — et la panne ne se verrait que le lendemain.
+
+    La déclaration est déjà protégée par `charger` ; l'enregistrement des
+    commandes, lui, exécute du code du module et peut échouer tout autant : nom
+    de commande en doublon, description trop longue pour Discord.
+    """
+    passes: list[str] = []
+
+    def casse(bot):
+        raise RuntimeError("nom de commande deja pris")
+
+    modules = [
+        _module("casse", enregistrer=casse),
+        _module("promos", enregistrer=lambda bot: passes.append("promos")),
+    ]
+
+    refuses = greffer(object(), modules)
+
+    assert passes == ["promos"]
+    # La raison est retenue pour être dite dans le salon de logs : « casse n'a
+    # pas chargé » sans le pourquoi obligerait à aller lire les journaux Render.
+    assert "casse" in refuses
+    assert "nom de commande deja pris" in refuses["casse"]
 
 
 # --- Le balayage du dossier ------------------------------------------------

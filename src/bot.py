@@ -37,6 +37,7 @@ from src.filiales import (
     vers_import,
 )
 from src.journal import Journal
+from src.modules import decouvrir, greffer
 from src.modules import filiales as module_filiales
 from src.modules import promos as module_promos
 from src.money import (
@@ -141,6 +142,17 @@ class EmpireBot(discord.Client):
         self.journal = Journal(self, store)
         self.tree = ArbreProtege(self)
         self._planning: asyncio.Task | None = None
+
+        # Le balayage une seule fois, au démarrage : il importe des fichiers,
+        # donc exécute du code. Le refaire à chaque commande multiplierait les
+        # occasions de tomber sans rien apporter — un module n'apparaît qu'après
+        # un déploiement.
+        self.modules, self.modules_refuses = decouvrir()
+        # Les deux refus dans le même dictionnaire : de l'extérieur, « ce module
+        # n'est pas là » est un seul fait, qu'il ait échoué à se déclarer ou à
+        # greffer ses commandes. Aucune clé ne se recouvre, un module refusé au
+        # chargement n'atteignant jamais la greffe.
+        self.modules_refuses.update(greffer(self, self.modules))
         enregistrer_commandes(self)
 
     async def on_ready(self) -> None:
@@ -156,6 +168,12 @@ class EmpireBot(discord.Client):
             )
             log.info("Planification interne active (vérification chaque minute).")
         log.info("Connecté en tant que %s.", self.user)
+
+        # Ici et non dans `setup_hook` : le salon de logs se résout par l'API, ce
+        # qui demande une connexion établie. Signalé à chaque reconnexion plutôt
+        # qu'une seule fois : le message est rare, et le taire après une coupure
+        # laisserait le bot amputé sans trace visible.
+        await self.signaler_les_modules_refuses()
 
     async def setup_hook(self) -> None:
         if settings.GUILD_IDS:
@@ -328,6 +346,23 @@ class EmpireBot(discord.Client):
             await self.journal.publication(promos=promos, reussis=reussis, echecs=echecs)
         except Exception:
             log.warning("Journal Discord indisponible.", exc_info=True)
+
+    async def signaler_les_modules_refuses(self) -> None:
+        """Nomme dans le salon de logs les modules écartés au démarrage.
+
+        Muette quand tout va bien : un « 0 module refusé » à chaque démarrage
+        apprendrait à ne plus lire ce salon, et le vrai signalement passerait avec
+        le reste.
+        """
+        if not self.modules_refuses:
+            return
+        lignes = "\n".join(
+            f"• `{nom}` — {raison}"
+            for nom, raison in sorted(self.modules_refuses.items())
+        )
+        await self.journaliser_erreur(
+            f"{len(self.modules_refuses)} module(s) écarté(s) au démarrage :\n{lignes}"
+        )
 
     async def journaliser_erreur(self, message: str) -> None:
         """Publique, comme sa voisine : les modules signalent leurs pannes par ici."""
