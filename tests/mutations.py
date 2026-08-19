@@ -411,31 +411,67 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
         "vrai en écrivant ailleurs — un « ✅ » pour un post qui ne partirait "
         "nulle part",
     ),
-    # --- src/bot.py : ce qui reste dans le noyau ---------------------------
+    # --- src/reglages.py : le noyau des réglages ---------------------------
     (
-        "bot-fuseau-inconnu-ecrit-quand-meme",
-        "src/bot.py",
+        "reglages-fuseau-inconnu-ecrit-quand-meme",
+        "src/reglages.py",
         "            ZoneInfo(fuseau)",
         '            ZoneInfo("Europe/Paris")',
         "un fuseau inventé serait écrit tel quel, et chaque lecture de l'heure "
         "échouerait ensuite — donc les deux publications",
     ),
     (
-        "bot-fuseau-confirme-sans-ecrire",
-        "src/bot.py",
+        "reglages-fuseau-confirme-sans-ecrire",
+        "src/reglages.py",
         "        config = await bot.store.maj_config(fuseau=fuseau)",
         "        config = await bot.store.config()",
         "la commande confirmerait un fuseau qu'elle n'a pas enregistré",
     ),
     (
-        "bot-fuseau-relance-les-publications",
-        "src/bot.py",
+        "reglages-fuseau-relance-les-publications",
+        "src/reglages.py",
         "        config = await bot.store.maj_config(fuseau=fuseau)",
         "        config = await bot.store.maj_config(fuseau=fuseau)\n"
         "        await bot.store.oublier_publication()\n"
         "        await bot.store.marquer_publie_filiales(None)",
         "corriger l'horloge relancerait les deux posts du jour dans la minute, "
         "alors qu'on n'a rien demandé de tel",
+    ),
+    (
+        "reglages-groupe-jamais-greffe",
+        "src/reglages.py",
+        "    bot.tree.add_command(groupe)",
+        "    pass",
+        "le tiroir entier disparaîtrait du menu : plus rien pour régler le bot, "
+        "ni pour rendre la main",
+    ),
+    (
+        "reglages-source-reste-a-la-racine",
+        "src/reglages.py",
+        '        description="Provenance des données (API du jeu ou fichier)",\n'
+        "        parent=groupe,",
+        '        description="Provenance des données (API du jeu ou fichier)",\n'
+        "        parent=None,",
+        "`/source` repartirait à la racine, à côté de `/reglages` : deux portes "
+        "pour la même pièce, ce qu'on vient de défaire",
+    ),
+    (
+        "reglages-acces-ajouter-sans-garde-admin",
+        "src/reglages.py",
+        "    async def acces_ajouter(interaction: discord.Interaction, membre: discord.Member):\n"
+        "        if not administrateur(interaction):",
+        "    async def acces_ajouter(interaction: discord.Interaction, membre: discord.Member):\n"
+        "        if False:",
+        "un membre simplement autorisé pourrait s'ajouter des complices",
+    ),
+    (
+        "reglages-acces-retirer-sans-garde-admin",
+        "src/reglages.py",
+        "    async def acces_retirer(interaction: discord.Interaction, membre: discord.Member):\n"
+        "        if not administrateur(interaction):",
+        "    async def acces_retirer(interaction: discord.Interaction, membre: discord.Member):\n"
+        "        if False:",
+        "un membre autorisé pourrait mettre dehors celui qui l'a nommé",
     ),
     (
         "bot-promos-une-seule-fourchette",

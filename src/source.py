@@ -255,7 +255,7 @@ async def diagnostiquer(
 ) -> Diagnostic:
     """Teste une source de bout en bout : récupération, parsing, comptage.
 
-    N'échoue jamais par exception : la commande `/source tester` doit pouvoir
+    N'échoue jamais par exception : la commande `/reglages source tester` doit pouvoir
     afficher le problème au lieu de renvoyer une erreur Discord opaque. Toute
     panne devient un `Diagnostic` avec `ok=False` et un `erreur` lisible —
     donc dépourvu de la clé d'API, comme tout message de ce module.

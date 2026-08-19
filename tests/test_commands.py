@@ -100,15 +100,15 @@ def _champ(embed, nom: str) -> str:
     raise AssertionError(f"champ introuvable : {nom} (parmi {[c.name for c in embed.fields]})")
 
 
-# --- /source tester ---------------------------------------------------------
+# --- /reglages source tester ---------------------------------------------------------
 
-async def test_source_tester_rapporte_le_succes(tmp_path):
+async def test_reglages_source_tester_rapporte_le_succes(tmp_path):
     chemin = tmp_path / "export.csv"
     chemin.write_text(CSV, encoding="utf-8")
     bot = await _bot(CsvFileSource(chemin))
     interaction = InteractionFactice()
 
-    await _commande(bot, "source tester").callback(interaction)
+    await _commande(bot, "reglages source tester").callback(interaction)
 
     assert interaction.response.differee  # sinon Discord expire avant l'API
     embed = interaction.embeds[0]
@@ -120,23 +120,23 @@ async def test_source_tester_rapporte_le_succes(tmp_path):
     assert "2026-07-28 08:00:07" in _champ(embed, "Export")
 
 
-async def test_source_tester_rapporte_lechec_sans_planter(tmp_path):
+async def test_reglages_source_tester_rapporte_lechec_sans_planter(tmp_path):
     """Une source en panne doit produire un embed rouge, pas une exception."""
     bot = await _bot(CsvFileSource(tmp_path / "absent.csv"))
     interaction = InteractionFactice()
 
-    await _commande(bot, "source tester").callback(interaction)
+    await _commande(bot, "reglages source tester").callback(interaction)
 
     embed = interaction.embeds[0]
     assert "❌" in embed.title
     assert "absent.csv" in _champ(embed, "Erreur")
 
 
-async def test_source_tester_ne_revele_pas_la_cle():
+async def test_reglages_source_tester_ne_revele_pas_la_cle():
     bot = await _bot(ApiSource("http://127.0.0.1:1/x.csv?key={api_key}", cle="SECRET42"))
     interaction = InteractionFactice()
 
-    await _commande(bot, "source tester").callback(interaction)
+    await _commande(bot, "reglages source tester").callback(interaction)
 
     embed = interaction.embeds[0]
     rendu = repr(embed.to_dict())
@@ -146,20 +146,20 @@ async def test_source_tester_ne_revele_pas_la_cle():
     assert "EMPIRE_API_KEY" in _champ(embed, "À vérifier")
 
 
-async def test_source_tester_signale_zero_promotion_sans_echouer(tmp_path):
+async def test_reglages_source_tester_signale_zero_promotion_sans_echouer(tmp_path):
     chemin = tmp_path / "export.csv"
     chemin.write_text(CSV.replace(",17,", ",0,"), encoding="utf-8")
     bot = await _bot(CsvFileSource(chemin))
     interaction = InteractionFactice()
 
-    await _commande(bot, "source tester").callback(interaction)
+    await _commande(bot, "reglages source tester").callback(interaction)
 
     embed = interaction.embeds[0]
     assert "✅" in embed.title  # la source marche, c'est ce qu'on teste
     assert _champ(embed, "En promotion") == "aucune aujourd'hui"
 
 
-async def test_source_tester_reserve(tmp_path):
+async def test_reglages_source_tester_reserve(tmp_path):
     """Le rapport expose l'URL de l'API : pas pour tout le serveur.
 
     Le refus vient du `CommandTree` (voir `tests/test_acces.py`) : on vérifie
@@ -176,7 +176,7 @@ async def test_source_tester_reserve(tmp_path):
     assert "Réservé" in interaction.textes[0]
 
 
-async def test_source_tester_borne_la_liste_des_promotions(tmp_path):
+async def test_reglages_source_tester_borne_la_liste_des_promotions(tmp_path):
     """116 bâtiments peuvent tous être en promo : l'embed ne doit pas exploser.
 
     Les noms du jeu sont longs (« Mégapôle millenium désaffecté ») : sans
@@ -194,7 +194,7 @@ async def test_source_tester_borne_la_liste_des_promotions(tmp_path):
     bot = await _bot(CsvFileSource(chemin))
     interaction = InteractionFactice()
 
-    await _commande(bot, "source tester").callback(interaction)
+    await _commande(bot, "reglages source tester").callback(interaction)
 
     embed = interaction.embeds[0]
     assert _champ(embed, "En promotion") == "116"   # le compte reste exact
@@ -203,24 +203,24 @@ async def test_source_tester_borne_la_liste_des_promotions(tmp_path):
     assert len(valeur) <= 1024                       # limite Discord
 
 
-# --- /source voir -----------------------------------------------------------
+# --- /reglages source voir -----------------------------------------------------------
 
-async def test_source_voir_decrit_le_fichier(tmp_path):
+async def test_reglages_source_voir_decrit_le_fichier(tmp_path):
     bot = await _bot(CsvFileSource(tmp_path / "export.csv"))
     interaction = InteractionFactice()
 
-    await _commande(bot, "source voir").callback(interaction)
+    await _commande(bot, "reglages source voir").callback(interaction)
 
     embed = interaction.embeds[0]
     assert "fichier" in embed.description
     assert "EMPIRE_API_KEY" in _champ(embed, "Bascule")
 
 
-async def test_source_voir_masque_la_cle():
+async def test_reglages_source_voir_masque_la_cle():
     bot = await _bot(ApiSource("https://monde8.example/x.csv?key={api_key}", cle="SECRET42"))
     interaction = InteractionFactice()
 
-    await _commande(bot, "source voir").callback(interaction)
+    await _commande(bot, "reglages source voir").callback(interaction)
 
     embed = interaction.embeds[0]
     assert "SECRET42" not in repr(embed.to_dict())
@@ -252,7 +252,7 @@ async def test_apercu_affiche_lerreur_de_source():
 
 # --- Salons : voir `tests/test_commandes_fourchettes.py` --------------------
 #
-# `/config salon ajouter|retirer|liste` n'existe plus : un salon s'attache
+# `/reglages salon ajouter|retirer|liste` n'existe plus : un salon s'attache
 # désormais à une fourchette nommée (`/fourchette salon ajouter`). Les tests
 # d'attachement, de permissions et de listage ont suivi la commande.
 
@@ -298,30 +298,30 @@ async def test_salon_commandes_reservees(tmp_path):
     assert "Réservé" in interaction.textes[0]
 
 
-# --- /config logs -----------------------------------------------------------
+# --- /reglages logs -----------------------------------------------------------
 
-async def test_logs_definir_le_salon(tmp_path):
+async def test_reglages_logs_definir_le_salon(tmp_path):
     bot = await _bot_fichier(tmp_path)
     interaction = InteractionFactice()
 
-    await _commande(bot, "config logs").callback(interaction, SalonDiscordFactice(999))
+    await _commande(bot, "reglages logs").callback(interaction, SalonDiscordFactice(999))
 
     assert await bot.store.salon_logs() == "999"
     assert "✅" in interaction.textes[0]
 
 
-async def test_logs_sans_argument_desactive(tmp_path):
+async def test_reglages_logs_sans_argument_desactive(tmp_path):
     bot = await _bot_fichier(tmp_path)
     await bot.store.maj_config(logs_salon_id="999")
     interaction = InteractionFactice()
 
-    await _commande(bot, "config logs").callback(interaction, None)
+    await _commande(bot, "reglages logs").callback(interaction, None)
 
     assert await bot.store.salon_logs() is None
     assert "désactiv" in interaction.textes[0].lower()
 
 
-async def test_logs_reserve(tmp_path):
+async def test_reglages_logs_reserve(tmp_path):
     """Le journal peut relayer des erreurs : pas configurable par n'importe qui."""
     bot = await _bot_fichier(tmp_path)
     interaction = InteractionFactice(admin=False)
@@ -330,9 +330,9 @@ async def test_logs_reserve(tmp_path):
     assert await bot.store.salon_logs() is None
 
 
-# --- /config voir : refléter les fourchettes --------------------------------
+# --- /reglages voir : refléter les fourchettes --------------------------------
 
-async def test_config_voir_affiche_chaque_fourchette_et_ses_salons(tmp_path):
+async def test_reglages_voir_affiche_chaque_fourchette_et_ses_salons(tmp_path):
     """Une seule ligne « fourchette » ne dirait plus quel salon reçoit quoi."""
     from decimal import Decimal
 
@@ -344,7 +344,7 @@ async def test_config_voir_affiche_chaque_fourchette_et_ses_salons(tmp_path):
     await bot.store.maj_config(logs_salon_id="999")
     interaction = InteractionFactice()
 
-    await _commande(bot, "config voir").callback(interaction)
+    await _commande(bot, "reglages voir").callback(interaction)
 
     rendu = repr(interaction.embeds[0].to_dict())
     assert "grosses" in rendu and "petits" in rendu
@@ -352,23 +352,23 @@ async def test_config_voir_affiche_chaque_fourchette_et_ses_salons(tmp_path):
     assert "999" in rendu
 
 
-async def test_config_voir_sans_fourchette(tmp_path):
+async def test_reglages_voir_sans_fourchette(tmp_path):
     bot = await _bot_fichier(tmp_path)
     interaction = InteractionFactice()
 
-    await _commande(bot, "config voir").callback(interaction)
+    await _commande(bot, "reglages voir").callback(interaction)
 
     rendu = repr(interaction.embeds[0].to_dict())
     assert "non défini" in rendu or "aucun" in rendu.lower()
 
 
-# --- /config fuseau ---------------------------------------------------------
+# --- /reglages fuseau ---------------------------------------------------------
 #
 # Le fuseau ne peut pas voyager avec l'heure d'une publication : il est commun
 # aux deux, si bien que le régler depuis `/fourchette heure` déplacerait aussi le
 # tableau des frais. Il lui faut donc sa propre commande.
 
-async def test_config_fuseau_change_le_fuseau_sans_deplacer_les_heures(tmp_path):
+async def test_reglages_fuseau_change_le_fuseau_sans_deplacer_les_heures(tmp_path):
     """Chaque publication garde l'heure qu'on lui a réglée.
 
     Le fuseau est le seul réglage partagé par les deux : le confondre avec une
@@ -378,7 +378,7 @@ async def test_config_fuseau_change_le_fuseau_sans_deplacer_les_heures(tmp_path)
     await bot.store.maj_config(heure="09:00", filiales_heure="21:00")
     interaction = InteractionFactice()
 
-    await _commande(bot, "config fuseau").callback(interaction, "America/New_York")
+    await _commande(bot, "reglages fuseau").callback(interaction, "America/New_York")
 
     config = await bot.store.config()
     assert config["fuseau"] == "America/New_York"
@@ -387,7 +387,7 @@ async def test_config_fuseau_change_le_fuseau_sans_deplacer_les_heures(tmp_path)
     assert "✅" in interaction.textes[0]
 
 
-async def test_config_fuseau_dit_l_heure_qu_il_est_pour_reperer_une_erreur(tmp_path):
+async def test_reglages_fuseau_dit_l_heure_qu_il_est_pour_reperer_une_erreur(tmp_path):
     """Un fuseau valide mais faux ne se voit qu'à l'horloge.
 
     « ✅ America/New_York » n'apprend rien ; « il est 04:12 » se remarque tout de
@@ -398,18 +398,18 @@ async def test_config_fuseau_dit_l_heure_qu_il_est_pour_reperer_une_erreur(tmp_p
     bot = await _bot_fichier(tmp_path)
     interaction = InteractionFactice()
 
-    await _commande(bot, "config fuseau").callback(interaction, "Asia/Tokyo")
+    await _commande(bot, "reglages fuseau").callback(interaction, "Asia/Tokyo")
 
     assert maintenant_local("Asia/Tokyo").strftime("%H:%M") in interaction.textes[0]
 
 
-async def test_config_fuseau_refuse_un_fuseau_inconnu(tmp_path):
+async def test_reglages_fuseau_refuse_un_fuseau_inconnu(tmp_path):
     """Écrit tel quel, il ferait échouer chaque lecture de l'heure ensuite."""
     bot = await _bot_fichier(tmp_path)
     avant = (await bot.store.config())["fuseau"]
     interaction = InteractionFactice()
 
-    await _commande(bot, "config fuseau").callback(interaction, "Mars/Olympus")
+    await _commande(bot, "reglages fuseau").callback(interaction, "Mars/Olympus")
 
     assert (await bot.store.config())["fuseau"] == avant
     assert "❌" in interaction.textes[0]
@@ -417,7 +417,7 @@ async def test_config_fuseau_refuse_un_fuseau_inconnu(tmp_path):
     assert "Europe/Paris" in interaction.textes[0]
 
 
-async def test_config_fuseau_ne_consomme_pas_la_journee_des_publications(tmp_path):
+async def test_reglages_fuseau_ne_consomme_pas_la_journee_des_publications(tmp_path):
     """Corriger l'horloge n'est pas demander un nouveau post.
 
     Effacer les marques ferait repartir les deux publications dans la minute —
@@ -428,21 +428,21 @@ async def test_config_fuseau_ne_consomme_pas_la_journee_des_publications(tmp_pat
     await bot.store.marquer_publie_filiales("2026-08-19")
     interaction = InteractionFactice()
 
-    await _commande(bot, "config fuseau").callback(interaction, "Europe/Lisbon")
+    await _commande(bot, "reglages fuseau").callback(interaction, "Europe/Lisbon")
 
     assert await bot.store.derniere_publication() == "2026-08-19"
     assert await bot.store.derniere_publication_filiales() == "2026-08-19"
 
 
-# --- /template champs -------------------------------------------------------
+# --- /reglages template champs -------------------------------------------------------
 
-async def test_template_champs_ne_propose_plus_les_marqueurs(tmp_path):
+async def test_reglages_template_champs_ne_propose_plus_les_marqueurs(tmp_path):
     """Proposer `{hors_fourchette}` serait proposer un placeholder qui ne rend
     plus rien."""
     bot = await _bot_fichier(tmp_path)
     interaction = InteractionFactice()
 
-    await _commande(bot, "template champs").callback(interaction)
+    await _commande(bot, "reglages template champs").callback(interaction)
 
     rendu = repr(interaction.embeds[0].to_dict())
     assert "hors_fourchette" not in rendu

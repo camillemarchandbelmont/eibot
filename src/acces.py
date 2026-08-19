@@ -5,7 +5,7 @@ Discord ni de HTTP : les commandes slash (`ArbreProtege`) et l'API web
 (`src/api.py`) l'appellent toutes les deux avec les informations dont elles
 disposent.
 
-C'est ce qui garantit qu'un membre ajouté par `/config acces ajouter` obtient du
+C'est ce qui garantit qu'un membre ajouté par `/reglages acces ajouter` obtient du
 même coup l'accès au site : deux implémentations parallèles finiraient par
 diverger, et le site serait le maillon faible.
 """

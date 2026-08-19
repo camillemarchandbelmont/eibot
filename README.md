@@ -281,25 +281,25 @@ local, mais elle repart des valeurs de `.env` à chaque redémarrage.
 | `/fourchette heure [heure]` | Heure des promotions (`HH:MM`), distincte de celle du tableau ; sans argument, l'affiche |
 | `/fourchette apercu` | Prévisualise les posts du jour, un par fourchette, sans publier |
 | `/fourchette publier` | Publie les promotions maintenant, à la place de celles de l'heure prévue |
-| `/config voir` | Affiche la configuration courante |
-| `/config fuseau fuseau` | Fuseau horaire commun aux deux publications (ex : `Europe/Paris`) |
-| `/config mention [role]` | Rôle mentionné dans le post ; sans argument, aucune mention |
-| `/config logs [salon]` | Salon de journal ; sans argument, journal désactivé |
-| `/config acces ajouter membre` | Autorise un membre à utiliser les commandes |
-| `/config acces retirer membre` | Lui retire cet accès |
-| `/config acces liste` | Qui peut utiliser les commandes |
-| `/source tester` | Teste la récupération des données **maintenant** et rend un compte rendu |
-| `/source voir` | Affiche la source active (API ou fichier) |
-| `/template charger fichier` | Charge ton export Discohook `.json` |
-| `/template voir` | Renvoie le template actuel |
-| `/template champs` | Liste tous les placeholders disponibles |
+| `/reglages voir` | Affiche la configuration courante |
+| `/reglages fuseau fuseau` | Fuseau horaire commun aux deux publications (ex : `Europe/Paris`) |
+| `/reglages mention [role]` | Rôle mentionné dans le post ; sans argument, aucune mention |
+| `/reglages logs [salon]` | Salon de journal ; sans argument, journal désactivé |
+| `/reglages acces ajouter membre` | Autorise un membre à utiliser les commandes |
+| `/reglages acces retirer membre` | Lui retire cet accès |
+| `/reglages acces liste` | Qui peut utiliser les commandes |
+| `/reglages source tester` | Teste la récupération des données **maintenant** et rend un compte rendu |
+| `/reglages source voir` | Affiche la source active (API ou fichier) |
+| `/reglages template charger fichier` | Charge ton export Discohook `.json` |
+| `/reglages template voir` | Renvoie le template actuel |
+| `/reglages template champs` | Liste tous les placeholders disponibles |
 
 ## Qui peut utiliser les commandes
 
 **Toutes** les commandes, `/promos` comprise, sont réservées :
 
 - aux **administrateurs** du serveur, toujours ;
-- aux membres ajoutés par `/config acces ajouter`.
+- aux membres ajoutés par `/reglages acces ajouter`.
 
 Tout autre membre reçoit un refus visible de lui seul. Le contrôle est fait une
 fois pour tout l'arbre des commandes (`ArbreProtege` dans `src/bot.py`), pas
@@ -312,8 +312,8 @@ Deux conséquences à connaître :
 - **Gérer le serveur ne suffit plus.** Avant, cette permission ouvrait la
   configuration. Désormais il faut être administrateur ou figurer dans la liste.
 - **Gérer la liste est réservé aux administrateurs.** Un membre autorisé peut
-  tout faire *sauf* `/config acces ajouter|retirer` — sinon il pourrait
-  s'ajouter des complices ou retirer celui qui l'a nommé. `/config acces liste`
+  tout faire *sauf* `/reglages acces ajouter|retirer` — sinon il pourrait
+  s'ajouter des complices ou retirer celui qui l'a nommé. `/reglages acces liste`
   reste consultable par les membres autorisés.
 
 Un administrateur ne peut pas se verrouiller dehors : son accès ne vient pas de
@@ -367,7 +367,7 @@ Les salons peuvent vivre sur plusieurs serveurs Discord. Le bot résout les IDs
 de salons à travers tous les serveurs où il est présent — **la publication n'a
 rien de spécial à faire**.
 
-La **mention de rôle** (`/config mention`) se règle **par serveur** : elle vaut
+La **mention de rôle** (`/reglages mention`) se règle **par serveur** : elle vaut
 pour le serveur où la commande est tapée. Chaque serveur peut donc avoir son
 propre rôle mentionné, ou aucun.
 
@@ -389,7 +389,7 @@ aurait fait taire un salon déjà configuré, et ça ne se serait vu que le lend
 
 ## Salon de journal
 
-`/config logs #salon` fait raconter au bot ce qu'il fait, là où tu le
+`/reglages logs #salon` fait raconter au bot ce qu'il fait, là où tu le
 remarqueras :
 
 ```
@@ -403,12 +403,12 @@ Le journal ne peut pas casser la publication : un salon de logs supprimé ou
 sans permissions est signalé dans `bot.log` et rien d'autre. Il ne relaie que
 des messages déjà assainis, donc la clé d'API n'y apparaît jamais.
 
-`/config logs` sans argument désactive le journal.
+`/reglages logs` sans argument désactive le journal.
 
 ## Personnaliser l'embed
 
 Compose ton message sur Discohook, exporte le JSON, puis envoie-le avec
-`/template charger`. Le template décrit **un seul bâtiment** : le bot le
+`/reglages template charger`. Le template décrit **un seul bâtiment** : le bot le
 duplique pour chaque promotion trouvée.
 
 ```json
@@ -425,7 +425,7 @@ duplique pour chaque promotion trouvée.
 }]}
 ```
 
-**Placeholders** (`/template champs` les rappelle dans Discord) :
+**Placeholders** (`/reglages template champs` les rappelle dans Discord) :
 
 - Bâtiment : `{nom}` `{type}` `{niveau}` `{remise}` `{rang}` `{total}`
 - Monde : `{monde}` `{taux_promoteur}` `{mise_a_jour}` `{date}`
@@ -579,7 +579,7 @@ consommant le quota du jour et empêchant la publication réellement voulue.
 Régler l'heure d'une publication **oublie automatiquement** son post du jour :
 le nouvel horaire s'applique tout de suite, sans attendre demain. Chaque
 publication a sa propre marque, donc régler l'une ne fait pas repartir l'autre.
-`/config fuseau`, lui, n'efface aucune marque : corriger l'horloge n'est pas
+`/reglages fuseau`, lui, n'efface aucune marque : corriger l'horloge n'est pas
 demander un nouveau post.
 
 `GET /health` répond `ok` : c'est aussi la cible du health check Render.
@@ -685,9 +685,9 @@ les tests.
 **La clé n'apparaît jamais** — ni dans Discord, ni dans les logs, ni dans les
 messages d'erreur : l'URL y est toujours masquée en `?key=***`.
 
-### Vérifier que ça marche : `/source tester`
+### Vérifier que ça marche : `/reglages source tester`
 
-Après avoir renseigné une clé, `/source tester` fait un vrai appel et rend le
+Après avoir renseigné une clé, `/reglages source tester` fait un vrai appel et rend le
 compte rendu :
 
 ```
@@ -711,7 +711,7 @@ Erreur : L'API a répondu 401 : Clé API invalide ou révoquée. Vérifie EMPIRE
 
 La commande teste **la source, pas la fourchette** : « 0 promotion » n'est pas
 un échec, c'est peut-être simplement le cas du jour. Pour voir le post tel
-qu'il sortira, utilise `/fourchette apercu`. `/source voir` rappelle la source active
+qu'il sortira, utilise `/fourchette apercu`. `/reglages source voir` rappelle la source active
 sans appel réseau.
 
 Le bot distingue les pannes et les explique en clair, en reprenant le message

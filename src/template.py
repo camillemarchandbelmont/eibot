@@ -34,7 +34,7 @@ CHAMPS_SIMPLES = (
 
 #: Marqueurs de repêchage supprimés. Rendus vides plutôt qu'inconnus : un
 #: template chargé avant leur retrait les afficherait sinon littéralement dans
-#: le post, et `/template charger` les signalerait comme des fautes de frappe.
+#: le post, et `/reglages template charger` les signalerait comme des fautes de frappe.
 #: Volontairement absents de `PLACEHOLDERS` : plus proposés à l'usage.
 CHAMPS_OBSOLETES = ("hors_fourchette", "dans_fourchette")
 

@@ -1,4 +1,4 @@
-"""Tests des commandes `/config acces`.
+"""Tests des commandes `/reglages acces`.
 
 Gérer la liste reste **réservé aux administrateurs**, même si un membre
 autorisé peut utiliser toutes les autres commandes : sinon il pourrait
@@ -93,7 +93,7 @@ async def test_ajouter_un_membre(tmp_path):
     bot = await _bot(tmp_path)
     interaction = InteractionFactice(ADMIN())
 
-    await _commande(bot, "config acces ajouter").callback(interaction, Membre(42))
+    await _commande(bot, "reglages acces ajouter").callback(interaction, Membre(42))
 
     assert await bot.store.autorises() == ["42"]
     assert "✅" in interaction.textes[0]
@@ -102,12 +102,12 @@ async def test_ajouter_un_membre(tmp_path):
 async def test_ajouter_deux_fois_le_dit(tmp_path):
     bot = await _bot(tmp_path)
     membre = Membre(42)
-    await _commande(bot, "config acces ajouter").callback(
+    await _commande(bot, "reglages acces ajouter").callback(
         InteractionFactice(ADMIN()), membre
     )
 
     interaction = InteractionFactice(ADMIN())
-    await _commande(bot, "config acces ajouter").callback(interaction, membre)
+    await _commande(bot, "reglages acces ajouter").callback(interaction, membre)
 
     assert await bot.store.autorises() == ["42"]
     assert "déjà" in interaction.textes[0]
@@ -119,7 +119,7 @@ async def test_ajouter_un_bot_refuse(tmp_path):
     bot = await _bot(tmp_path)
     interaction = InteractionFactice(ADMIN())
 
-    await _commande(bot, "config acces ajouter").callback(interaction, Bot())
+    await _commande(bot, "reglages acces ajouter").callback(interaction, Bot())
 
     assert await bot.store.autorises() == []
     assert "bot" in interaction.textes[0].lower()
@@ -131,7 +131,7 @@ async def test_ajouter_un_administrateur_le_dit(tmp_path):
     bot = await _bot(tmp_path)
     interaction = InteractionFactice(ADMIN())
 
-    await _commande(bot, "config acces ajouter").callback(
+    await _commande(bot, "reglages acces ajouter").callback(
         interaction, Membre(7, admin=True)
     )
 
@@ -145,7 +145,7 @@ async def test_retirer_un_membre(tmp_path):
     await bot.store.autoriser("42")
     interaction = InteractionFactice(ADMIN())
 
-    await _commande(bot, "config acces retirer").callback(interaction, Membre(42))
+    await _commande(bot, "reglages acces retirer").callback(interaction, Membre(42))
 
     assert await bot.store.autorises() == []
     assert "✅" in interaction.textes[0]
@@ -155,7 +155,7 @@ async def test_retirer_un_membre_absent_le_dit(tmp_path):
     bot = await _bot(tmp_path)
     interaction = InteractionFactice(ADMIN())
 
-    await _commande(bot, "config acces retirer").callback(interaction, Membre(42))
+    await _commande(bot, "reglages acces retirer").callback(interaction, Membre(42))
 
     assert "pas" in interaction.textes[0].lower()
 
@@ -173,7 +173,7 @@ async def test_liste_vide_dit_que_les_admins_gardent_lacces(tmp_path):
     bot = await _bot(tmp_path)
     interaction = InteractionFactice(ADMIN())
 
-    await _commande(bot, "config acces liste").callback(interaction)
+    await _commande(bot, "reglages acces liste").callback(interaction)
 
     embed = interaction.embeds[0]
     assert "dministrateur" in (embed.description or "")
@@ -186,7 +186,7 @@ async def test_liste_affiche_les_membres(tmp_path):
     await bot.store.autoriser("43")
     interaction = InteractionFactice(ADMIN())
 
-    await _commande(bot, "config acces liste").callback(interaction)
+    await _commande(bot, "reglages acces liste").callback(interaction)
 
     champs = repr(interaction.embeds[0].to_dict()["fields"])
     assert "42" in champs and "43" in champs
@@ -201,7 +201,7 @@ async def test_un_membre_autorise_ne_peut_pas_ajouter(tmp_path):
     await bot.store.autoriser("42")
     interaction = InteractionFactice(Membre(42))
 
-    await _commande(bot, "config acces ajouter").callback(interaction, Membre(43))
+    await _commande(bot, "reglages acces ajouter").callback(interaction, Membre(43))
 
     assert await bot.store.autorises() == ["42"]
     assert "administrateur" in interaction.textes[0].lower()
@@ -214,7 +214,7 @@ async def test_un_membre_autorise_ne_peut_pas_retirer(tmp_path):
     await bot.store.autoriser("43")
     interaction = InteractionFactice(Membre(42))
 
-    await _commande(bot, "config acces retirer").callback(interaction, Membre(43))
+    await _commande(bot, "reglages acces retirer").callback(interaction, Membre(43))
 
     assert await bot.store.autorises() == ["42", "43"]
     assert "administrateur" in interaction.textes[0].lower()
@@ -226,6 +226,6 @@ async def test_un_membre_autorise_peut_voir_la_liste(tmp_path):
     await bot.store.autoriser("42")
     interaction = InteractionFactice(Membre(42))
 
-    await _commande(bot, "config acces liste").callback(interaction)
+    await _commande(bot, "reglages acces liste").callback(interaction)
 
     assert interaction.embeds or interaction.textes

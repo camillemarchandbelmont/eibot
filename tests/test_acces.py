@@ -154,7 +154,7 @@ async def test_toutes_les_commandes_sont_protegees(tmp_path):
     bot = await _bot(tmp_path)
     commandes = [c.qualified_name for c in bot.tree.walk_commands()]
 
-    assert "promos" in commandes and "config voir" in commandes
+    assert "promos" in commandes and "reglages voir" in commandes
     for nom in commandes:
         interaction = InteractionFactice(Membre(1), commande=nom)
         assert await bot.tree.autorisation(interaction) is False, nom

@@ -1,4 +1,4 @@
-"""Affichage correct de `/config voir` et `/config mention` avec role_id plat."""
+"""Affichage correct de `/reglages voir` et `/reglages mention` avec role_id plat."""
 
 from src.bot import EmpireBot
 from src.db import Store
@@ -73,25 +73,25 @@ async def _bot() -> EmpireBot:
     return bot
 
 
-# --- DEFECT B: /config voir n'affiche pas le repli plat ---------------------
+# --- DEFECT B: /reglages voir n'affiche pas le repli plat ---------------------
 
 
-async def test_config_voir_affiche_les_roles_par_serveur():
-    """Le cas neuf : roles() renvoie une table, et /config voir l'affiche."""
+async def test_reglages_voir_affiche_les_roles_par_serveur():
+    """Le cas neuf : roles() renvoie une table, et /reglages voir l'affiche."""
     bot = await _bot()
     await bot.store.definir_role("111", "42")
     await bot.store.definir_role("222", "43")
     interaction = InteractionFactice()
 
-    await _commande(bot, "config voir").callback(interaction)
+    await _commande(bot, "reglages voir").callback(interaction)
 
     rendu = repr(interaction.embeds[0].to_dict())
     assert "<@&42>" in rendu
     assert "<@&43>" in rendu
 
 
-async def test_config_voir_affiche_le_role_id_plat_comme_repli():
-    """Defect B : avec roles()={} mais role_id="7", /config voir affiche "aucune"
+async def test_reglages_voir_affiche_le_role_id_plat_comme_repli():
+    """Defect B : avec roles()={} mais role_id="7", /reglages voir affiche "aucune"
     alors que le bot pingue <@&7> partout.
 
     Le repli doit être rendu visible, avec un texte explicatif.
@@ -101,7 +101,7 @@ async def test_config_voir_affiche_le_role_id_plat_comme_repli():
     await bot.store.set("config", {"role_id": "7"})
     interaction = InteractionFactice()
 
-    await _commande(bot, "config voir").callback(interaction)
+    await _commande(bot, "reglages voir").callback(interaction)
 
     rendu = repr(interaction.embeds[0].to_dict())
     # Doit afficher le rôle
@@ -110,18 +110,18 @@ async def test_config_voir_affiche_le_role_id_plat_comme_repli():
     assert "*aucune*" not in rendu.lower()
 
 
-async def test_config_voir_affiche_aucune_quand_vraiment_rien():
+async def test_reglages_voir_affiche_aucune_quand_vraiment_rien():
     """Quand ni roles ni role_id ne sont définis."""
     bot = await _bot()
     interaction = InteractionFactice()
 
-    await _commande(bot, "config voir").callback(interaction)
+    await _commande(bot, "reglages voir").callback(interaction)
 
     rendu = repr(interaction.embeds[0].to_dict())
     assert "*aucune*" in rendu.lower() or "aucune" in rendu.lower()
 
 
-# --- DEFECT C: /config mention sous-estime la portée de l'effacement --------
+# --- DEFECT C: /reglages mention sous-estime la portée de l'effacement --------
 
 
 class RoleFactice:
@@ -130,13 +130,13 @@ class RoleFactice:
         self.mention = f"<@&{role_id}>"
 
 
-async def test_config_mention_efface_un_role_par_serveur():
+async def test_reglages_mention_efface_un_role_par_serveur():
     """Le cas neuf : un rôle dans roles[serveur_id]."""
     bot = await _bot()
     await bot.store.definir_role("111", "42")
     interaction = InteractionFactice(serveur_id=111)
 
-    await _commande(bot, "config mention").callback(interaction, role=None)
+    await _commande(bot, "reglages mention").callback(interaction, role=None)
 
     texte = interaction.textes[0]
     # Doit dire "sur ce serveur"
@@ -145,7 +145,7 @@ async def test_config_mention_efface_un_role_par_serveur():
     assert "tous les serveurs" not in texte.lower()
 
 
-async def test_config_mention_efface_le_role_id_plat_pour_tous():
+async def test_reglages_mention_efface_le_role_id_plat_pour_tous():
     """Defect C : effacer role_id="7" affecte tous les serveurs, mais le
     message dit "sur ce serveur".
 
@@ -156,19 +156,19 @@ async def test_config_mention_efface_le_role_id_plat_pour_tous():
     await bot.store.set("config", {"role_id": "7"})
     interaction = InteractionFactice(serveur_id=111)
 
-    await _commande(bot, "config mention").callback(interaction, role=None)
+    await _commande(bot, "reglages mention").callback(interaction, role=None)
 
     texte = interaction.textes[0]
     # Doit dire "sur tous les serveurs" ou équivalent
     assert "tous les serveurs" in texte.lower() or "tous" in texte.lower()
 
 
-async def test_config_mention_sans_rien_a_effacer():
+async def test_reglages_mention_sans_rien_a_effacer():
     """Quand ni roles ni role_id ne sont définis."""
     bot = await _bot()
     interaction = InteractionFactice(serveur_id=111)
 
-    await _commande(bot, "config mention").callback(interaction, role=None)
+    await _commande(bot, "reglages mention").callback(interaction, role=None)
 
     texte = interaction.textes[0]
     assert "aucune mention" in texte.lower()
