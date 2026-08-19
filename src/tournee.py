@@ -19,8 +19,8 @@ import logging
 from datetime import datetime
 from typing import Any
 
-from .modules import Publication
-from .schedule import doit_publier
+from src.modules import Publication
+from src.schedule import doit_publier
 
 log = logging.getLogger(__name__)
 

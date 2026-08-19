@@ -27,6 +27,8 @@ from src.filiales import (
     vers_import,
 )
 from src.journal import Journal
+from src.modules import filiales as module_filiales
+from src.modules import promos as module_promos
 from src.money import (
     DEVISE,
     ECHELLE,
@@ -58,6 +60,7 @@ from src.source import (
     decrire,
     diagnostiquer,
 )
+from src.tournee import faire_la_tournee
 from src.template import PLACEHOLDERS, TemplateError, placeholders_inconnus, valider_template
 
 log = logging.getLogger(__name__)
@@ -256,179 +259,30 @@ class EmpireBot(discord.Client):
         return salon
 
     async def publier_si_lheure(self, forcer: bool = False) -> str:
-        """Appelée par /tick et la boucle interne.
+        """Les promotions, si c'est l'heure. Appelée par `/tick` et la boucle.
 
-        Chaque fourchette publie son propre post dans ses propres salons.
-        L'isolation est à deux niveaux : une fourchette dont tous les salons
-        échouent n'empêche pas les suivantes, et un salon cassé ne prive pas les
-        autres salons de sa fourchette.
-
-        Renvoie un compte rendu pour la réponse HTTP.
+        Ne fait plus que déléguer : la mécanique est dans `src.tournee`, ce qui
+        est propre aux promotions dans `src.modules.promos`. Le nom reste pour
+        `/apercu`, le site de contrôle et les tests, qui l'appellent tel quel.
         """
-        config = await self.store.config()
-        maintenant = maintenant_local(config["fuseau"])
-
-        if not forcer:
-            derniere = await self.store.derniere_publication()
-            if not doit_publier(maintenant, config["heure"], derniere):
-                return "rien à faire"
-
-        fourchettes = await self.store.fourchettes()
-        if not fourchettes:
-            return "aucune fourchette configurée (/fourchette ajouter)"
-
-        servies = [f for f in fourchettes if f["salons"]]
-        if not servies:
-            return "aucun salon configuré (/fourchette salon ajouter)"
-
-        # L'export d'abord, une seule fois pour toutes les fourchettes : si
-        # l'API est en panne, on lève avant d'avoir touché à Discord, et surtout
-        # avant `marquer_publie` — sinon la panne de 09:00 annulerait la
-        # publication de toute la journée.
-        try:
-            donnees = await self.charger()
-        except SourceError as erreur:
-            await self._journaliser_erreur(str(erreur))
-            raise
-        except Exception as erreur:
-            # Panne non prévue (CSV corrompu) : elle doit rester visible dans
-            # Discord, pas seulement dans les logs du serveur.
-            await self._journaliser_erreur(f"{type(erreur).__name__} : {erreur}")
-            raise
-
-        promos = 0
-        reussis: list[str] = []
-        echecs: dict[str, str] = {}
-
-        for fourchette in servies:
-            try:
-                tolere_min, tolere_max = bornes_tolerees(fourchette)
-                embeds, contenu, repli = await self.construire_publication(
-                    Decimal(fourchette["prix_min"]),
-                    Decimal(fourchette["prix_max"]),
-                    donnees=donnees,
-                    tolere_min=tolere_min,
-                    tolere_max=tolere_max,
-                )
-            except Exception as erreur:
-                # Rendu impossible pour *cette* fourchette (template appliqué à
-                # des valeurs inattendues) : les autres doivent quand même
-                # partir, alors qu'une panne de l'export les condamnait toutes.
-                log.warning("Rendu impossible pour « %s » : %s", fourchette["nom"], erreur)
-                await self._journaliser_erreur(
-                    f"Fourchette « {fourchette['nom']} » : "
-                    f"{type(erreur).__name__} : {erreur}"
-                )
-                continue
-
-            promos += 0 if repli else len(embeds)
-
-            for salon_id in fourchette["salons"]:
-                try:
-                    salon = await self.resoudre_salon(salon_id)
-                    if repli:
-                        await salon.send(repli)
-                    else:
-                        # Le rôle du serveur **du salon**, et non un rôle global :
-                        # un rôle n'existe que dans son serveur, et `<@&123>`
-                        # envoyé ailleurs s'affiche en `@deleted-role`.
-                        serveur = getattr(salon, "guild", None)
-                        role_id = await self.store.role_du_serveur(
-                            getattr(serveur, "id", None)
-                        )
-                        await envoyer(salon, embeds, contenu, role_id)
-                except Exception as erreur:
-                    # Un salon cassé ne doit pas priver les autres : on note et
-                    # on continue. Le détail part dans le salon de logs.
-                    log.warning("Publication impossible dans %s : %s", salon_id, erreur)
-                    # La fourchette est nommée : un même salon peut servir deux
-                    # fourchettes, et « <#111> a échoué » serait ambigu.
-                    echecs[f"<#{salon_id}> ({fourchette['nom']})"] = (
-                        f"{type(erreur).__name__}: {erreur}"
-                    )
-                else:
-                    reussis.append(f"<#{salon_id}> ({fourchette['nom']})")
-
-        await self.journaliser_publication(promos, reussis, echecs)
-
-        if not reussis:
-            log.error("Publication échouée dans les %d envois.", len(echecs))
-            return f"échec dans les {len(echecs)} envoi(s)"
-
-        # Marqué dès qu'un salon a reçu le post : sinon le passage suivant
-        # reposterait là où ça avait marché.
-        await self.store.marquer_publie(maintenant.strftime("%Y-%m-%d"))
-        total = sum(len(f["salons"]) for f in servies)
-        log.info(
-            "Publication effectuée (%d/%d envois, %d fourchettes).",
-            len(reussis), total, len(servies),
-        )
-        # « Envois » et non « salons » : un salon servant deux fourchettes reçoit
-        # deux posts, et le compter une fois annoncerait moins que ce qui est
-        # parti.
-        return (
-            f"publié ({len(reussis)}/{total} envois, "
-            f"{len(servies)} fourchette{'s' if len(servies) > 1 else ''})"
-        )
+        return await self.faire_publication(module_promos.PUBLICATION, forcer=forcer)
 
     async def publier_filiales_si_lheure(self, forcer: bool = False) -> str:
-        """Le tableau des frais, une fois par jour, à son heure et dans ses salons.
+        """Le tableau des frais, si c'est son heure. Même délégation."""
+        return await self.faire_publication(
+            module_filiales.PUBLICATION, forcer=forcer
+        )
 
-        Ne touche **pas** à l'export du jeu : les relevés sont saisis à la main,
-        et une API en panne ne doit pas empêcher le tableau de sortir. C'est
-        toute la raison d'en faire une publication séparée plutôt qu'un embed de
-        plus dans celle des promotions.
+    async def faire_publication(self, publication, forcer: bool = False) -> str:
+        """Une publication quelconque, la même mécanique pour toutes.
 
-        Renvoie un compte rendu pour la réponse HTTP.
+        Le fuseau vient de la configuration, et non de l'horloge du serveur : Render
+        tourne en UTC, où « 09:00 » n'est pas la même heure qu'à Paris.
         """
         config = await self.store.config()
         maintenant = maintenant_local(config["fuseau"])
-
-        if not forcer:
-            derniere = await self.store.derniere_publication_filiales()
-            if not doit_publier(maintenant, await self.store.heure_filiales(), derniere):
-                return "rien à faire"
-
-        salons = await self.store.salons_filiales()
-        if not salons:
-            return "aucun salon pour le tableau des frais (/filiales salon ajouter)"
-
-        aujourdhui = maintenant.strftime("%Y-%m-%d")
-        # Publié même vide : l'absence de post ne se distinguerait pas d'une
-        # panne du bot, et l'embed vide dit comment le remplir.
-        filiales = await self.store.filiales()
-        embed = embed_filiales(filiales, aujourdhui)
-
-        reussis: list[str] = []
-        echecs: dict[str, str] = {}
-
-        for salon_id in salons:
-            try:
-                salon = await self.resoudre_salon(salon_id)
-                await salon.send(embed=embed)
-            except Exception as erreur:
-                # Un salon cassé ne prive pas les autres, comme pour les promos.
-                log.warning("Tableau des frais impossible dans %s : %s", salon_id, erreur)
-                echecs[f"<#{salon_id}> (filiales)"] = f"{type(erreur).__name__}: {erreur}"
-            else:
-                reussis.append(f"<#{salon_id}> (filiales)")
-
-        await self.journaliser_publication(len(filiales), reussis, echecs)
-
-        if not reussis:
-            log.error("Tableau des frais échoué dans les %d envois.", len(echecs))
-            return f"tableau des frais : échec dans les {len(echecs)} envoi(s)"
-
-        # Marqué dès qu'un salon a reçu le tableau : sinon le passage suivant
-        # reposterait là où ça avait marché.
-        await self.store.marquer_publie_filiales(aujourdhui)
-        log.info(
-            "Tableau des frais publié (%d/%d envois, %d filiales).",
-            len(reussis), len(salons), len(filiales),
-        )
-        return (
-            f"tableau des frais publié ({len(reussis)}/{len(salons)} envois, "
-            f"{len(filiales)} filiale{'s' if len(filiales) > 1 else ''})"
+        return await faire_la_tournee(
+            publication, self, self.store, maintenant, forcer=forcer
         )
 
     async def publier_tout(self, forcer: bool = False) -> str:
@@ -467,7 +321,8 @@ class EmpireBot(discord.Client):
         except Exception:
             log.warning("Journal Discord indisponible.", exc_info=True)
 
-    async def _journaliser_erreur(self, message: str) -> None:
+    async def journaliser_erreur(self, message: str) -> None:
+        """Publique, comme sa voisine : les modules signalent leurs pannes par ici."""
         try:
             await self.journal.erreur(message)
         except Exception:
