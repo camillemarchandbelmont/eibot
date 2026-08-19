@@ -75,6 +75,17 @@ async def test_les_promotions_lisent_leur_heure_dans_la_config():
     assert await publication.lire_heure(magasin) == "18:45"
 
 
+async def test_les_promotions_ecrivent_leur_heure_dans_la_config():
+    """Écrite là où elle est lue, sinon `/fourchette heure` confirmerait pour rien."""
+    publication = _publication(module_promos.MODULE, "promos")
+    magasin = await _magasin()
+
+    await publication.ecrire_heure(magasin, "18:45")
+
+    assert (await magasin.config())["heure"] == "18:45"
+    assert await publication.lire_heure(magasin) == "18:45"
+
+
 async def test_les_promotions_relisent_et_marquent_leur_ancienne_trace():
     publication = _publication(module_promos.MODULE, "promos")
     magasin = await _magasin()
@@ -105,6 +116,9 @@ async def test_une_fourchette_sans_salon_ne_donne_rien_a_envoyer():
 
     assert tournee.envois == ()
     assert "aucun salon" in tournee.raison
+    # Nommée, et pas seulement comptée : l'aperçu doit dire *laquelle* ne partira
+    # pas, sans quoi il faudrait la déduire de la liste des salons.
+    assert tournee.ecartes == (("petite", "aucun salon"),)
 
 
 # --- Le tableau des frais --------------------------------------------------
@@ -118,6 +132,38 @@ async def test_le_tableau_lit_son_heure_a_lui():
 
     assert await publication.lire_heure(magasin) == "21:15"
     assert await publication.lire_heure(magasin) != (await magasin.config())["heure"]
+
+
+async def test_le_tableau_ecrit_son_heure_sans_toucher_a_celle_des_promotions():
+    """Deux posts, deux horaires : régler l'un en déplaçant l'autre serait une
+    surprise découverte le lendemain."""
+    publication = _publication(module_filiales.MODULE, "filiales")
+    magasin = await _magasin()
+    avant = (await magasin.config())["heure"]
+
+    await publication.ecrire_heure(magasin, "21:15")
+
+    assert await publication.lire_heure(magasin) == "21:15"
+    assert (await magasin.config())["heure"] == avant
+
+
+async def test_le_tableau_range_ses_salons_dans_son_ancienne_liste():
+    """Les salons déjà réglés doivent rester ceux que la publication utilise.
+
+    Rangés dans le tiroir générique, le tableau du soir partirait dans le vide
+    alors que `/filiales salon ajouter` aurait répondu « ✅ ».
+    """
+    publication = _publication(module_filiales.MODULE, "filiales")
+    magasin = await _magasin()
+
+    assert await publication.ajouter_salon(magasin, "4242") is True
+    assert await publication.ajouter_salon(magasin, "4242") is False
+    assert await magasin.salons_filiales() == ["4242"]
+    assert await publication.lire_salons(magasin) == ["4242"]
+
+    assert await publication.retirer_salon(magasin, "4242") is True
+    assert await publication.retirer_salon(magasin, "4242") is False
+    assert await magasin.salons_filiales() == []
 
 
 async def test_le_tableau_relit_et_marque_son_ancienne_trace():

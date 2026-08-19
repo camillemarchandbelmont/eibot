@@ -38,23 +38,82 @@ def cle_derniere(cle: str) -> str:
     return f"{PREFIXE}:{cle}:derniere"
 
 
-async def _heure(publication: Publication, magasin: Any) -> str:
+def cle_salons(cle: str) -> str:
+    return f"{PREFIXE}:{cle}:salons"
+
+
+# Les six accès qui suivent sont publics : les commandes `heure`, `apercu`,
+# `publier` et `salon` passent par eux, et c'est ce qui leur permet d'être écrites
+# une seule fois pour toutes les publications. Chacune redirige vers ce que le
+# module a déclaré, ou retombe sur son tiroir générique.
+
+
+async def heure_de(publication: Publication, magasin: Any) -> str:
     if publication.lire_heure is not None:
         return await publication.lire_heure(magasin)
     return await magasin.get(cle_heure(publication.cle)) or publication.heure_par_defaut
 
 
-async def _derniere(publication: Publication, magasin: Any) -> str | None:
+async def ecrire_l_heure(publication: Publication, magasin: Any, heure: str) -> None:
+    if publication.ecrire_heure is not None:
+        await publication.ecrire_heure(magasin, heure)
+        return
+    await magasin.set(cle_heure(publication.cle), heure)
+
+
+async def derniere_de(publication: Publication, magasin: Any) -> str | None:
     if publication.lire_derniere is not None:
         return await publication.lire_derniere(magasin)
     return await magasin.get(cle_derniere(publication.cle))
 
 
-async def _marquer(publication: Publication, magasin: Any, date: str) -> None:
+async def marquer_le_jour(
+    publication: Publication, magasin: Any, date: str | None
+) -> None:
+    """Pose la trace de passage, ou l'efface si `date` vaut None."""
     if publication.marquer is not None:
         await publication.marquer(magasin, date)
         return
     await magasin.set(cle_derniere(publication.cle), date)
+
+
+async def salons_de(publication: Publication, magasin: Any) -> list[str]:
+    if publication.lire_salons is not None:
+        return [str(salon) for salon in await publication.lire_salons(magasin)]
+    return [str(salon) for salon in await magasin.get(cle_salons(publication.cle), [])]
+
+
+async def ajouter_un_salon(
+    publication: Publication, magasin: Any, salon_id: str
+) -> bool:
+    """Vrai si le salon a été ajouté, faux s'il y était déjà.
+
+    Le doublon est refusé et non ignoré : un salon compté deux fois recevrait
+    deux fois le même post.
+    """
+    if publication.ajouter_salon is not None:
+        return await publication.ajouter_salon(magasin, salon_id)
+    salons = await salons_de(publication, magasin)
+    if str(salon_id) in salons:
+        return False
+    await magasin.set(cle_salons(publication.cle), [*salons, str(salon_id)])
+    return True
+
+
+async def retirer_un_salon(
+    publication: Publication, magasin: Any, salon_id: str
+) -> bool:
+    """Vrai si le salon a été retiré, faux s'il n'y était pas."""
+    if publication.retirer_salon is not None:
+        return await publication.retirer_salon(magasin, salon_id)
+    salons = await salons_de(publication, magasin)
+    if str(salon_id) not in salons:
+        return False
+    await magasin.set(
+        cle_salons(publication.cle),
+        [salon for salon in salons if salon != str(salon_id)],
+    )
+    return True
 
 
 async def faire_la_tournee(
@@ -71,8 +130,8 @@ async def faire_la_tournee(
     panne pour que les autres publications sortent quand même.
     """
     if not forcer:
-        heure = await _heure(publication, magasin)
-        derniere = await _derniere(publication, magasin)
+        heure = await heure_de(publication, magasin)
+        derniere = await derniere_de(publication, magasin)
         # Le compte à rebours **avant** la préparation : préparer coûte un appel à
         # l'API du jeu, et le cron passe toutes les cinq minutes.
         if not doit_publier(maintenant, heure, derniere):
@@ -118,7 +177,7 @@ async def faire_la_tournee(
 
     # Marqué dès qu'un salon a reçu le post : sinon le passage suivant reposterait
     # là où ça avait marché.
-    await _marquer(publication, magasin, maintenant.strftime("%Y-%m-%d"))
+    await marquer_le_jour(publication, magasin, maintenant.strftime("%Y-%m-%d"))
 
     total = sum(len(envoi.salons) for envoi in tournee.envois)
     log.info(

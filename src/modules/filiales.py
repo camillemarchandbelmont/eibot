@@ -32,8 +32,13 @@ async def _preparer(bot: Any, magasin: Any, maintenant: Any) -> Tournee:
     filiales = await magasin.filiales()
     embed = embed_filiales(filiales, maintenant.strftime("%Y-%m-%d"))
 
-    async def envoyer_dans(salon: Any) -> None:
-        await salon.send(embed=embed)
+    async def envoyer_dans(cible: Any, ephemere: bool = False) -> None:
+        # `ephemeral` seulement quand il est demandé : un salon ordinaire ne
+        # connaît pas cet argument et refuserait l'envoi.
+        options: dict[str, Any] = {"embed": embed}
+        if ephemere:
+            options["ephemeral"] = True
+        await cible.send(**options)
 
     return Tournee(
         envois=(
@@ -48,12 +53,30 @@ async def _lire_heure(magasin: Any) -> str:
     return await magasin.heure_filiales()
 
 
+async def _ecrire_heure(magasin: Any, heure: str) -> None:
+    # `filiales_heure` et non `heure` : deux posts, deux horaires. Régler l'un en
+    # déplaçant l'autre serait une surprise découverte le lendemain.
+    await magasin.maj_config(filiales_heure=heure)
+
+
 async def _lire_derniere(magasin: Any) -> str | None:
     return await magasin.derniere_publication_filiales()
 
 
-async def _marquer(magasin: Any, date: str) -> None:
+async def _marquer(magasin: Any, date: str | None) -> None:
     await magasin.marquer_publie_filiales(date)
+
+
+async def _lire_salons(magasin: Any) -> list[str]:
+    return await magasin.salons_filiales()
+
+
+async def _ajouter_salon(magasin: Any, salon_id: str) -> bool:
+    return await magasin.ajouter_salon_filiales(salon_id)
+
+
+async def _retirer_salon(magasin: Any, salon_id: str) -> bool:
+    return await magasin.retirer_salon_filiales(salon_id)
 
 
 PUBLICATION = Publication(
@@ -61,8 +84,12 @@ PUBLICATION = Publication(
     titre="tableau des frais",
     preparer=_preparer,
     lire_heure=_lire_heure,
+    ecrire_heure=_ecrire_heure,
     lire_derniere=_lire_derniere,
     marquer=_marquer,
+    lire_salons=_lire_salons,
+    ajouter_salon=_ajouter_salon,
+    retirer_salon=_retirer_salon,
 )
 
 MODULE = Module(

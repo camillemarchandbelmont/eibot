@@ -21,7 +21,19 @@ from discord import app_commands
 
 from src.acces import gere_la_liste
 from src.db import bornes_tolerees
+from src.modules import Publication
 from src.money import ECHELLE, NOMS, format_money, parse_money
+from src.schedule import doit_publier, maintenant_local
+from src.source import SourceError
+from src.tournee import (
+    ajouter_un_salon,
+    derniere_de,
+    ecrire_l_heure,
+    heure_de,
+    marquer_le_jour,
+    retirer_un_salon,
+    salons_de,
+)
 
 
 def administrateur(interaction: discord.Interaction) -> bool:
@@ -176,3 +188,237 @@ def choix_symboles() -> list[app_commands.Choice]:
     # L'unité en tête : c'est le palier qu'on demande pour « voir tous les
     # chiffres », et il n'est pas dans la table.
     return [app_commands.Choice(name="Ø — unité", value="Ø"), *choix]
+
+
+# --- Le vocabulaire commun des publications ---------------------------------
+
+
+class ReponsePrivee:
+    """Le fil de réponse d'une commande, `ephemeral=True` forcé sur tout envoi.
+
+    L'aperçu passe ceci à un module en guise de salon. Le module reçoit déjà
+    `ephemere=True` et peut s'en servir ; s'il l'oublie, son contenu partirait en
+    clair dans le salon où la commande a été tapée — un aperçu public vaut
+    publication, soit l'inverse de ce qu'on demande. La garde est donc ici, du
+    côté qui ne dépend pas de la bonne volonté du module.
+    """
+
+    def __init__(self, fil: Any):
+        self._fil = fil
+
+    async def send(self, contenu: Any = None, **options: Any) -> None:
+        options["ephemeral"] = True
+        # Le contenu n'est passé que s'il existe : `send(None, embeds=…)` n'est pas
+        # la même requête que `send(embeds=…)` pour l'API de Discord.
+        if contenu is None:
+            await self._fil.send(**options)
+            return
+        await self._fil.send(contenu, **options)
+
+
+def ajouter_les_commandes_de_publication(
+    groupe: app_commands.Group,
+    bot: Any,
+    publication: Publication,
+    salons: bool = True,
+) -> None:
+    """Greffe `heure`, `apercu`, `publier` et `salon` sur le groupe d'un module.
+
+    Écrites une seule fois, pour toute publication présente ou à venir : le module
+    qui en déclare une troisième hérite des mêmes mots sans avoir à inventer les
+    siens, et sans réécrire ce qu'ils font. C'est l'autre moitié du contrat — la
+    première étant `src.tournee`, qui porte la mécanique d'envoi.
+
+    `salons=False` pour une publication dont les salons ne lui appartiennent pas :
+    les promotions attachent les leurs à une fourchette, et un `/fourchette salon
+    ajouter` générique cohabiterait avec le vrai sous le même nom en écrivant
+    ailleurs.
+    """
+    titre = publication.titre
+
+    @groupe.command(name="heure", description=f"Heure de publication ({titre})"[:100])
+    @app_commands.describe(heure="Format HH:MM — laisse vide pour l'afficher")
+    async def commande_heure(
+        interaction: discord.Interaction, heure: str | None = None
+    ) -> None:
+        config = await bot.store.config()
+        maintenant = maintenant_local(config["fuseau"])
+
+        # Consulter sans changer : demander l'heure ne doit pas obliger à la
+        # régler, sous peine de décaler le post pour avoir voulu le vérifier.
+        if heure is None:
+            actuelle = await heure_de(publication, bot.store)
+            await interaction.response.send_message(
+                f"🕒 {titre.capitalize()} : **{actuelle}** ({config['fuseau']}).\n"
+                f"-# Il est {maintenant.strftime('%H:%M')}.",
+                ephemeral=True,
+            )
+            return
+
+        propre = heure_valide(heure)
+        if propre is None:
+            await interaction.response.send_message(
+                "❌ Heure invalide. Format attendu : `HH:MM` (ex: `09:00`).",
+                ephemeral=True,
+            )
+            return
+
+        await ecrire_l_heure(publication, bot.store, propre)
+
+        # Régler l'heure exprime l'intention de publier à la nouvelle heure : on
+        # oublie la marque du jour, sinon un post déjà sorti bloquerait ce nouvel
+        # horaire jusqu'à demain.
+        await marquer_le_jour(publication, bot.store, None)
+
+        message = (
+            f"✅ {titre.capitalize()} : publication à **{propre}** "
+            f"({config['fuseau']}).\n"
+            f"-# Il est {maintenant.strftime('%H:%M')}."
+        )
+        if not doit_publier(maintenant, propre, None):
+            attendu = "aujourd'hui" if maintenant.strftime("%H:%M") < propre else "demain"
+            message += f" Prochain post {attendu}."
+        else:
+            message += " Publication imminente (dans la minute)."
+        if salons and not await salons_de(publication, bot.store):
+            message += "\n⚠️ Aucun salon configuré : rien ne sortira."
+
+        await interaction.response.send_message(message, ephemeral=True)
+
+    @groupe.command(
+        name="apercu", description=f"Prévisualise sans publier ({titre})"[:100]
+    )
+    async def commande_apercu(interaction: discord.Interaction) -> None:
+        """Le post tel qu'il sortira, sans consommer la journée.
+
+        Un envoi par contenu, comme à la publication : montrer tout en un seul
+        message serait plus court et mensonger — aucun salon ne recevrait ça.
+        """
+        # Différé : préparer peut coûter un appel à l'API du jeu, et Discord
+        # n'accorde que trois secondes.
+        await interaction.response.defer(ephemeral=True)
+        prive = ReponsePrivee(interaction.followup)
+        maintenant = maintenant_local((await bot.store.config())["fuseau"])
+
+        try:
+            tournee = await publication.preparer(bot, bot.store, maintenant)
+        except SourceError as erreur:
+            # Message déjà lisible et clé d'API masquée : le préfixer du nom de la
+            # classe n'ajouterait que du bruit.
+            await prive.send(f"❌ {erreur}")
+            return
+        except Exception as erreur:
+            # Panne imprévue : seul le type est montré. Le texte d'une exception
+            # inattendue peut porter une URL, donc la clé d'API.
+            await prive.send(
+                f"❌ Aperçu impossible ({type(erreur).__name__}). "
+                "Le salon de logs en dit plus."
+            )
+            return
+
+        # Ce qui est écarté d'abord, et nommé : un aperçu qui montrerait seulement
+        # ce qui part laisserait croire que tout part.
+        for etiquette, pourquoi in tournee.ecartes:
+            await prive.send(
+                f"⚠️ **{etiquette}** — {pourquoi} : ne sera pas publié."
+            )
+
+        if not tournee.envois:
+            # La raison, et pas seulement « rien » : sinon il faudrait deviner
+            # entre « aucun salon », « rien à dire » et une panne.
+            await prive.send(f"❌ Rien ne serait publié : {tournee.raison}")
+            return
+
+        for envoi in tournee.envois:
+            # L'étiquette en tête de chaque aperçu : deux contenus d'affilée
+            # seraient sinon indistinguables.
+            entete = f"**{envoi.etiquette}**"
+            if not envoi.salons:
+                entete += " ⚠️ aucun salon : ne sera pas publié"
+            await prive.send(entete)
+            await envoi.envoyer(prive, ephemere=True)
+
+    @groupe.command(
+        name="publier", description=f"Publie maintenant, sans attendre l'heure ({titre})"[:100]
+    )
+    async def commande_publier(interaction: discord.Interaction) -> None:
+        await interaction.response.defer(ephemeral=True)
+        compte_rendu = await bot.faire_publication(publication, forcer=True)
+
+        # La marque relue plutôt que le compte rendu interprété : elle dit si la
+        # journée a réellement été consommée, y compris quand tout a échoué.
+        aujourdhui = maintenant_local(
+            (await bot.store.config())["fuseau"]
+        ).strftime("%Y-%m-%d")
+        parti = await derniere_de(publication, bot.store) == aujourdhui
+
+        message = f"📣 {compte_rendu}"
+        if parti:
+            message += (
+                "\n-# Publier maintenant **remplace** le post de l'heure prévue : "
+                "il ne repassera pas aujourd'hui."
+            )
+        await interaction.followup.send(message, ephemeral=True)
+
+    if not salons:
+        return
+
+    salon_groupe = app_commands.Group(
+        name="salon", description=f"Salons où publier ({titre})"[:100], parent=groupe
+    )
+
+    @salon_groupe.command(name="ajouter", description=f"Publier dans un salon ({titre})"[:100])
+    async def commande_salon_ajouter(
+        interaction: discord.Interaction, salon: discord.TextChannel
+    ) -> None:
+        # Vérifié à l'attachement : une permission manquante découverte à l'heure
+        # du post est un post perdu.
+        manquantes = permissions_manquantes(interaction, salon)
+        if manquantes:
+            await interaction.response.send_message(
+                f"❌ Je n'ai pas la permission {manquantes} dans {salon.mention}.\n"
+                f"-# Ajoute-la puis relance la commande.",
+                ephemeral=True,
+            )
+            return
+
+        if not await ajouter_un_salon(publication, bot.store, str(salon.id)):
+            await interaction.response.send_message(
+                f"ℹ️ {salon.mention} reçoit déjà {titre}.", ephemeral=True
+            )
+            return
+
+        # Mémorisé pour le site, qui n'a pas accès à Discord et ne pourrait
+        # afficher qu'un id nu.
+        await bot.store.memoriser_salon(
+            str(salon.id), salon.name, str(interaction.guild.id), interaction.guild.name
+        )
+
+        await interaction.response.send_message(
+            f"✅ {titre.capitalize()} sera publié dans {salon.mention} à "
+            f"**{await heure_de(publication, bot.store)}**.",
+            ephemeral=True,
+        )
+
+    @salon_groupe.command(
+        name="retirer", description=f"Ne plus publier dans un salon ({titre})"[:100]
+    )
+    async def commande_salon_retirer(
+        interaction: discord.Interaction, salon: discord.TextChannel
+    ) -> None:
+        if not await retirer_un_salon(publication, bot.store, str(salon.id)):
+            await interaction.response.send_message(
+                f"❌ {titre.capitalize()} n'était pas publié dans {salon.mention}.",
+                ephemeral=True,
+            )
+            return
+
+        # Pas de `oublier_salons_orphelins` ici : sa notion de « salon encore
+        # servi » ne connaît que les fourchettes, si bien qu'appelée depuis une
+        # autre publication elle oublierait des salons toujours utilisés. Le
+        # cache de noms grossit donc un peu ; il est cosmétique, et l'étape du
+        # cloisonnement par serveur le reprendra.
+        await interaction.response.send_message(
+            f"✅ {titre.capitalize()} ne sera plus publié dans {salon.mention}.",
+            ephemeral=True,
+        )

@@ -248,6 +248,52 @@ def test_une_heure_par_defaut_bien_ecrite_passe(heure):
     assert publication.heure_par_defaut == heure
 
 
+async def _rien(*_arguments):
+    return None
+
+
+@pytest.mark.parametrize(
+    "moitie",
+    [
+        {"lire_heure": _rien},
+        {"ecrire_heure": _rien},
+        {"lire_derniere": _rien},
+        {"marquer": _rien},
+        {"lire_salons": _rien},
+        {"lire_salons": _rien, "ajouter_salon": _rien},
+        {"retirer_salon": _rien},
+    ],
+)
+def test_lire_ici_et_ecrire_ailleurs_est_refuse(moitie):
+    """Le tiroir générique étant le défaut de chaque accès *séparément*, un module
+    peut sans le vouloir lire son heure dans la config et l'écrire dans le tiroir.
+    La commande répondrait « ✅ », l'heure ne changerait pas, et ça ne se verrait
+    que le lendemain à l'heure du post.
+    """
+    with pytest.raises(ValueError) as refus:
+        Publication(cle="bonjour", titre="le bonjour", preparer=None, **moitie)
+
+    # Le message nomme ce qui manque : « paires incohérentes » obligerait à
+    # relire le contrat pour savoir quoi ajouter.
+    assert "il manque" in str(refus.value).lower()
+
+
+@pytest.mark.parametrize(
+    "paires",
+    [
+        {},
+        {"lire_heure": _rien, "ecrire_heure": _rien},
+        {"lire_derniere": _rien, "marquer": _rien},
+        {"lire_salons": _rien, "ajouter_salon": _rien, "retirer_salon": _rien},
+    ],
+)
+def test_des_paires_completes_passent(paires):
+    """Y compris aucune : tout laisser au tiroir générique est le cas ordinaire."""
+    assert Publication(
+        cle="bonjour", titre="le bonjour", preparer=None, **paires
+    ).cle == "bonjour"
+
+
 # --- Le balayage du dossier ------------------------------------------------
 
 

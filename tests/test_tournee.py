@@ -196,7 +196,15 @@ async def test_une_publication_peut_lire_son_heure_ailleurs():
     async def lire_heure(magasin):
         return await magasin.get("ailleurs")
 
-    publication = _publication(_tournee(("essai", ["1"])), lire_heure=lire_heure)
+    # Le lecteur et l'écrivain vont par paires, et `Publication` le vérifie : lire
+    # ici en écrivant dans le tiroir générique ferait répondre « ✅ » à un réglage
+    # d'heure qui ne changerait rien.
+    async def ecrire_heure(magasin, heure):
+        await magasin.set("ailleurs", heure)
+
+    publication = _publication(
+        _tournee(("essai", ["1"])), lire_heure=lire_heure, ecrire_heure=ecrire_heure
+    )
 
     await faire_la_tournee(publication, BotFactice(salons), magasin, _instant("09:30"))
 
@@ -211,8 +219,14 @@ async def test_une_publication_peut_marquer_ailleurs():
     async def marquer(magasin, date):
         marques.append(date)
 
+    async def lire_derniere(magasin):
+        return marques[-1] if marques else None
+
     publication = _publication(
-        _tournee(("essai", ["1"])), heure_par_defaut="09:00", marquer=marquer
+        _tournee(("essai", ["1"])),
+        heure_par_defaut="09:00",
+        marquer=marquer,
+        lire_derniere=lire_derniere,
     )
 
     await faire_la_tournee(publication, BotFactice(salons), magasin, _instant("09:30"))

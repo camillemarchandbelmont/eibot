@@ -71,9 +71,16 @@ class Envoi:
     #: serait alors ambigu.
     etiquette: str
     salons: tuple[str, ...]
-    #: `async (salon) -> None`. C'est le module qui sait envoyer son contenu :
-    #: un embed brut, un embed plus une mention de rôle, un fichier.
-    envoyer: Callable[[Any], Awaitable[None]]
+    #: `async (cible, ephemere=False) -> None`. C'est le module qui sait envoyer
+    #: son contenu : un embed brut, un embed plus une mention de rôle, un fichier.
+    #:
+    #: `cible` n'est pas toujours un salon : l'aperçu passe le fil de réponse de
+    #: la commande, et attend `ephemere=True`. Un contenu qui l'ignorerait
+    #: partirait en clair dans le salon — un aperçu public vaut publication, soit
+    #: l'inverse de ce qu'on demande. La commande d'aperçu force donc le drapeau
+    #: de son côté ; le module reste libre de s'en servir pour taire une mention
+    #: de rôle, qui n'a rien à faire dans une prévisualisation.
+    envoyer: Callable[..., Awaitable[None]]
 
 
 @dataclass(frozen=True)
@@ -95,6 +102,11 @@ class Tournee:
     #: ce qui a été servi — les promotions annoncent 12 promos dans 3 fourchettes.
     resume: str = ""
     raison: str = ""
+    #: Ce qui ne partira pas, en `(étiquette, pourquoi)` — une fourchette sans
+    #: salon, un contenu qu'on n'a pas su rendre. L'aperçu les nomme : sa question
+    #: est « qu'est-ce que le bot va poster ? », donc aussi ce qu'il ne postera
+    #: pas. Les taire laisserait croire que tout part.
+    ecartes: tuple[tuple[str, str], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -121,18 +133,37 @@ class Publication:
     #: neuf publie donc dès son premier jour : une première journée muette se
     #: lirait comme un module qui ne marche pas.
     heure_par_defaut: str = HEURE_PAR_DEFAUT
-    #: Lecteurs de l'heure et de la trace. Laissés vides, la publication utilise
-    #: son tiroir générique. Les deux publications historiques les fournissent :
-    #: leur heure vit dans la config depuis avant les modules, et la déplacer
-    #: demanderait une reprise de données que ce chantier n'a pas à faire.
+    #: Accès à l'heure, à la trace de passage et aux salons. Laissés vides, la
+    #: publication utilise son tiroir générique. Les deux publications historiques
+    #: les fournissent : leurs réglages vivent dans la config depuis avant les
+    #: modules, et les déplacer demanderait une reprise de données que ce chantier
+    #: n'a pas à faire.
+    #:
+    #: Lecteur et écrivain vont par paires, et `__post_init__` le vérifie : une
+    #: publication qui lirait son heure dans la config pendant que la commande
+    #: l'écrit dans le tiroir générique répondrait « ✅ » sans que l'heure change.
     lire_heure: Callable[..., Awaitable[str]] | None = None
+    #: `async (magasin, heure) -> None`.
+    ecrire_heure: Callable[..., Awaitable[None]] | None = None
     lire_derniere: Callable[..., Awaitable[str]] | None = None
+    #: `async (magasin, date | None) -> None`. `None` efface la marque : régler
+    #: l'heure oublie la journée, sinon un post déjà sorti bloquerait le nouvel
+    #: horaire jusqu'au lendemain.
     marquer: Callable[..., Awaitable[None]] | None = None
+    #: Salons de la publication. Une publication peut n'en avoir aucun en propre —
+    #: les promotions attachent les leurs à une fourchette : elle ne déclare alors
+    #: rien ici et n'expose pas les commandes `salon`.
+    lire_salons: Callable[..., Awaitable[list]] | None = None
+    #: `async (magasin, salon_id) -> bool`, faux si le salon y était déjà.
+    ajouter_salon: Callable[..., Awaitable[bool]] | None = None
+    #: `async (magasin, salon_id) -> bool`, faux si le salon n'y était pas.
+    retirer_salon: Callable[..., Awaitable[bool]] | None = None
 
     def __post_init__(self) -> None:
         _valider_nom(self.cle, "Clé de publication")
         if not (self.titre or "").strip():
             raise ValueError(f"Publication « {self.cle} » sans titre.")
+        self._verifier_les_paires()
         if not FORME_DE_L_HEURE.match(self.heure_par_defaut or ""):
             # Le planning retombe sur 09:00 devant une heure illisible, sans rien
             # dire : le module publierait à une heure qu'il n'a pas demandée.
@@ -141,6 +172,35 @@ class Publication:
                 f"({self.heure_par_defaut!r}). Attendu 'HH:MM' sur 24 h, "
                 "avec le zéro de tête (ex. « 09:00 »)."
             )
+
+    def _verifier_les_paires(self) -> None:
+        """Refuse une publication qui lirait ici et écrirait ailleurs.
+
+        Le tiroir générique est le défaut de chaque accès **séparément** : rien
+        n'empêche donc, en théorie, de lire l'heure dans la config et de l'écrire
+        dans le tiroir. La commande confirmerait, l'heure ne changerait pas, et ça
+        ne se verrait que le lendemain à l'heure du post.
+        """
+        paires = (
+            ("heure", ("lire_heure",), ("ecrire_heure",)),
+            ("trace de passage", ("lire_derniere",), ("marquer",)),
+            ("salons", ("lire_salons",), ("ajouter_salon", "retirer_salon")),
+        )
+        for quoi, lecteurs, ecrivains in paires:
+            fournis = [
+                nom for nom in (*lecteurs, *ecrivains) if getattr(self, nom) is not None
+            ]
+            if fournis and len(fournis) != len(lecteurs) + len(ecrivains):
+                manquants = [
+                    nom
+                    for nom in (*lecteurs, *ecrivains)
+                    if getattr(self, nom) is None
+                ]
+                raise ValueError(
+                    f"Publication « {self.cle} » : {quoi} lue et écrite à deux "
+                    f"endroits différents. Il manque {', '.join(manquants)} en "
+                    f"regard de {', '.join(fournis)}."
+                )
 
 
 @dataclass(frozen=True)

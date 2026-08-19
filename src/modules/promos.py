@@ -38,9 +38,15 @@ async def _preparer(bot: Any, magasin: Any, maintenant: Any) -> Tournee:
         return Tournee(raison="aucune fourchette configurée (/fourchette ajouter)")
 
     servies = [f for f in fourchettes if f["salons"]]
+    # Nommées et non comptées : l'aperçu doit dire *lesquelles* ne partiront pas,
+    # sinon il faudrait le déduire de la liste des salons.
+    ecartes = [(f["nom"], "aucun salon") for f in fourchettes if not f["salons"]]
     if not servies:
         # Le message parle de salon et non de fourchette : celles-ci existent.
-        return Tournee(raison="aucun salon configuré (/fourchette salon ajouter)")
+        return Tournee(
+            raison="aucun salon configuré (/fourchette salon ajouter)",
+            ecartes=tuple(ecartes),
+        )
 
     # L'export une seule fois pour toutes les fourchettes : recharger à chaque
     # tour multiplierait les appels à l'API du jeu pour des données identiques.
@@ -79,6 +85,7 @@ async def _preparer(bot: Any, magasin: Any, maintenant: Any) -> Tournee:
                 f"Fourchette « {fourchette['nom']} » : "
                 f"{type(erreur).__name__} : {erreur}"
             )
+            ecartes.append((fourchette["nom"], "rendu impossible"))
             continue
 
         promos += 0 if repli else len(embeds)
@@ -94,29 +101,36 @@ async def _preparer(bot: Any, magasin: Any, maintenant: Any) -> Tournee:
         # Toutes les fourchettes ont échoué au rendu : rien à envoyer, et surtout
         # rien à marquer — le passage suivant réessaiera.
         return Tournee(
-            raison=f"rendu impossible pour les {len(servies)} fourchette(s)"
+            raison=f"rendu impossible pour les {len(servies)} fourchette(s)",
+            ecartes=tuple(ecartes),
         )
 
     return Tournee(
         envois=tuple(envois),
         compte=promos,
         resume=f"{len(envois)} fourchette{'s' if len(envois) > 1 else ''}",
+        ecartes=tuple(ecartes),
     )
 
 
 def _envoyeur(magasin: Any, embeds: list[dict], contenu: str, repli: str):
     """Ce qui part dans un salon donné, une fois le contenu rendu."""
 
-    async def envoyer_dans(salon: Any) -> None:
+    async def envoyer_dans(salon: Any, ephemere: bool = False) -> None:
         if repli:
             await salon.send(repli)
             return
-        # Le rôle du serveur **du salon**, et non un rôle global : un rôle n'existe
-        # que dans son serveur, et `<@&123>` envoyé ailleurs s'affiche en
-        # `@deleted-role`.
-        serveur = getattr(salon, "guild", None)
-        role_id = await magasin.role_du_serveur(getattr(serveur, "id", None))
-        await envoyer(salon, embeds, contenu, role_id)
+        # Pas de mention dans un aperçu : celui qui prévisualise ne veut pas
+        # réveiller le rôle, et la cible n'est alors pas un salon — son serveur
+        # est inconnu, donc le rôle lu serait celui d'ailleurs.
+        role_id = None
+        if not ephemere:
+            # Le rôle du serveur **du salon**, et non un rôle global : un rôle
+            # n'existe que dans son serveur, et `<@&123>` envoyé ailleurs
+            # s'affiche en `@deleted-role`.
+            serveur = getattr(salon, "guild", None)
+            role_id = await magasin.role_du_serveur(getattr(serveur, "id", None))
+        await envoyer(salon, embeds, contenu, role_id, ephemere=ephemere)
 
     return envoyer_dans
 
@@ -125,19 +139,28 @@ async def _lire_heure(magasin: Any) -> str:
     return (await magasin.config())["heure"]
 
 
+async def _ecrire_heure(magasin: Any, heure: str) -> None:
+    await magasin.maj_config(heure=heure)
+
+
 async def _lire_derniere(magasin: Any) -> str | None:
     return await magasin.derniere_publication()
 
 
-async def _marquer(magasin: Any, date: str) -> None:
+async def _marquer(magasin: Any, date: str | None) -> None:
     await magasin.marquer_publie(date)
 
 
+# Pas d'accès aux salons : ceux des promotions appartiennent à une **fourchette**,
+# pas à la publication. Les commandes génériques `salon` ne sont donc pas greffées
+# sur `/fourchette` — elles y cohabiteraient avec les vraies sous le même nom, en
+# écrivant ailleurs.
 PUBLICATION = Publication(
     cle="promos",
     titre="promotions",
     preparer=_preparer,
     lire_heure=_lire_heure,
+    ecrire_heure=_ecrire_heure,
     lire_derniere=_lire_derniere,
     marquer=_marquer,
 )
