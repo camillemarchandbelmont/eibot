@@ -410,7 +410,75 @@ async def test_autocompletion_filtre_sur_la_saisie():
     assert [c.value for c in choix] == ["petits-prix"]
 
 
+# --- Le vocabulaire commun greffé sur /fourchette ---------------------------
+
+
+async def test_fourchette_recoit_les_mots_communs_aux_publications():
+    """Les mêmes qu'ailleurs : `/filiales heure` et `/fourchette heure` s'écrivent
+    pareil, et le module qui ajoutera une troisième publication héritera de ces
+    mots sans en inventer.
+
+    Ce que ces commandes *font* est éprouvé dans
+    `tests/test_commandes_publication.py`, sur une publication d'essai. Ici on
+    vérifie seulement qu'elles sont bien greffées sur les promotions.
+    """
+    bot = await _bot()
+    noms = {commande.qualified_name for commande in bot.tree.walk_commands()}
+
+    assert "fourchette heure" in noms
+    assert "fourchette apercu" in noms
+    assert "fourchette publier" in noms
+
+
+async def test_les_salons_d_une_fourchette_restent_ceux_de_la_fourchette():
+    """Le `salon ajouter` générique ne doit pas s'installer sur `/fourchette`.
+
+    Les salons des promotions appartiennent à une fourchette **nommée**, pas à la
+    publication : greffé ici, le générique porterait le même nom en écrivant dans
+    une autre liste, et la fourchette ne partirait nulle part malgré son « ✅ ».
+    Le nom est donc obligatoire — c'est ce qui distingue les deux commandes.
+    """
+    bot = await _bot()
+
+    parametres = _commande(bot, "fourchette salon ajouter")._params
+    assert "nom" in parametres
+    assert parametres["nom"].required
+
+
 # --- Les anciennes commandes ont disparu ------------------------------------
+
+
+async def test_apercu_n_est_plus_une_commande_a_part():
+    """Prévisualiser les promotions se dit maintenant `/fourchette apercu`.
+
+    Un `/apercu` nu ne pourrait plus dire de quelle publication il parle, alors
+    que le bot en a deux et pourra en avoir plus.
+    """
+    bot = await _bot()
+    noms = {commande.qualified_name for commande in bot.tree.walk_commands()}
+
+    assert "apercu" not in noms
+
+
+async def test_config_heure_a_disparu_au_profit_de_fourchette_heure():
+    """Elle réglait l'heure d'**une** des deux publications sous un nom qui ne le
+    disait pas — celle des promotions, sans jamais nommer les promotions."""
+    bot = await _bot()
+    noms = {commande.qualified_name for commande in bot.tree.walk_commands()}
+
+    assert "config heure" not in noms
+
+
+async def test_config_retester_a_disparu():
+    """Doublon de `/source tester`, et son nom promettait autre chose.
+
+    Elle effaçait la marque du jour des promotions seules : sur un bot à deux
+    publications, « retester » ne peut plus désigner l'une sans le dire.
+    """
+    bot = await _bot()
+    noms = {commande.qualified_name for commande in bot.tree.walk_commands()}
+
+    assert "config retester" not in noms
 
 
 async def test_config_prix_et_config_salon_ont_disparu():

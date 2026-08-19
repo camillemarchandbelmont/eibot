@@ -235,15 +235,17 @@ class SourceEnPanne:
 
 
 async def test_apercu_affiche_lerreur_de_source():
-    """Une fourchette est nécessaire : sans elle, `/apercu` refuse avant même de
-    charger l'export, et ce n'est pas ce cas-là qu'on teste ici."""
+    """Une fourchette **avec un salon** est nécessaire : sans elle, l'aperçu
+    refuse avant même de charger l'export, et ce n'est pas ce cas-là qu'on teste
+    ici."""
     from decimal import Decimal
 
     bot = await _bot(SourceEnPanne())
     await bot.store.ajouter_fourchette("grosses", Decimal("1e14"), Decimal("6e15"))
+    await bot.store.ajouter_salon_fourchette("grosses", "111")
     interaction = InteractionFactice()
 
-    await _commande(bot, "apercu").callback(interaction)
+    await _commande(bot, "fourchette apercu").callback(interaction)
 
     assert "API injoignable" in interaction.textes[0]
 
@@ -358,6 +360,78 @@ async def test_config_voir_sans_fourchette(tmp_path):
 
     rendu = repr(interaction.embeds[0].to_dict())
     assert "non défini" in rendu or "aucun" in rendu.lower()
+
+
+# --- /config fuseau ---------------------------------------------------------
+#
+# Le fuseau ne peut pas voyager avec l'heure d'une publication : il est commun
+# aux deux, si bien que le régler depuis `/fourchette heure` déplacerait aussi le
+# tableau des frais. Il lui faut donc sa propre commande.
+
+async def test_config_fuseau_change_le_fuseau_sans_deplacer_les_heures(tmp_path):
+    """Chaque publication garde l'heure qu'on lui a réglée.
+
+    Le fuseau est le seul réglage partagé par les deux : le confondre avec une
+    heure ferait sortir le tableau du soir à un autre moment que celui affiché.
+    """
+    bot = await _bot_fichier(tmp_path)
+    await bot.store.maj_config(heure="09:00", filiales_heure="21:00")
+    interaction = InteractionFactice()
+
+    await _commande(bot, "config fuseau").callback(interaction, "America/New_York")
+
+    config = await bot.store.config()
+    assert config["fuseau"] == "America/New_York"
+    assert config["heure"] == "09:00"
+    assert await bot.store.heure_filiales() == "21:00"
+    assert "✅" in interaction.textes[0]
+
+
+async def test_config_fuseau_dit_l_heure_qu_il_est_pour_reperer_une_erreur(tmp_path):
+    """Un fuseau valide mais faux ne se voit qu'à l'horloge.
+
+    « ✅ America/New_York » n'apprend rien ; « il est 04:12 » se remarque tout de
+    suite, au lieu d'attendre le post du lendemain.
+    """
+    from src.schedule import maintenant_local
+
+    bot = await _bot_fichier(tmp_path)
+    interaction = InteractionFactice()
+
+    await _commande(bot, "config fuseau").callback(interaction, "Asia/Tokyo")
+
+    assert maintenant_local("Asia/Tokyo").strftime("%H:%M") in interaction.textes[0]
+
+
+async def test_config_fuseau_refuse_un_fuseau_inconnu(tmp_path):
+    """Écrit tel quel, il ferait échouer chaque lecture de l'heure ensuite."""
+    bot = await _bot_fichier(tmp_path)
+    avant = (await bot.store.config())["fuseau"]
+    interaction = InteractionFactice()
+
+    await _commande(bot, "config fuseau").callback(interaction, "Mars/Olympus")
+
+    assert (await bot.store.config())["fuseau"] == avant
+    assert "❌" in interaction.textes[0]
+    # Un exemple, sinon rien ne dit à quoi ressemble un nom accepté.
+    assert "Europe/Paris" in interaction.textes[0]
+
+
+async def test_config_fuseau_ne_consomme_pas_la_journee_des_publications(tmp_path):
+    """Corriger l'horloge n'est pas demander un nouveau post.
+
+    Effacer les marques ferait repartir les deux publications dans la minute —
+    et il n'y aurait aucune raison d'en choisir une plutôt que l'autre.
+    """
+    bot = await _bot_fichier(tmp_path)
+    await bot.store.marquer_publie("2026-08-19")
+    await bot.store.marquer_publie_filiales("2026-08-19")
+    interaction = InteractionFactice()
+
+    await _commande(bot, "config fuseau").callback(interaction, "Europe/Lisbon")
+
+    assert await bot.store.derniere_publication() == "2026-08-19"
+    assert await bot.store.derniere_publication_filiales() == "2026-08-19"
 
 
 # --- /template champs -------------------------------------------------------

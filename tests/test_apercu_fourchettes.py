@@ -1,4 +1,4 @@
-"""Tests de `/promos` sans argument et de `/apercu`, avec plusieurs fourchettes.
+"""Tests de `/promos` sans argument et de `/fourchette apercu`.
 
 Ces deux commandes lisaient la fourchette unique de la racine, qui n'existe
 plus. Chacune répond à une question différente, d'où deux comportements
@@ -6,11 +6,16 @@ différents :
 
 - `/promos` sans argument : « qu'est-ce qui est en promo dans ce que je
   surveille ? » — l'**union** des bornes, une seule liste.
-- `/apercu` : « qu'est-ce que le bot va poster ? » — **un post par fourchette**,
-  puisque c'est exactement ce que fera la publication.
+- `/fourchette apercu` : « qu'est-ce que le bot va poster ? » — **un post par
+  fourchette**, puisque c'est exactement ce que fera la publication.
 
 Un aperçu qui montrerait l'union mentirait sur le contenu de chaque salon, et
 c'est précisément ce qu'on vient prévisualiser.
+
+L'aperçu vient du vocabulaire commun des publications (`src.commandes`), éprouvé
+là-bas sur une publication d'essai. Ce qui se vérifie ici est ce que ce
+vocabulaire donne **appliqué aux promotions** : le découpage par fourchette et
+les noms de commandes cités dans ses messages.
 """
 
 from decimal import Decimal
@@ -170,7 +175,7 @@ async def test_promos_sans_fourchette_le_dit_au_lieu_de_ne_rien_montrer():
     assert "/fourchette ajouter" in texte
 
 
-# --- /apercu ----------------------------------------------------------------
+# --- /fourchette apercu -----------------------------------------------------
 
 
 async def test_apercu_montre_un_post_par_fourchette():
@@ -182,7 +187,7 @@ async def test_apercu_montre_un_post_par_fourchette():
     await bot.store.ajouter_salon_fourchette("petits", "222")
     interaction = InteractionFactice()
 
-    await _commande(bot, "apercu").callback(interaction)
+    await _commande(bot, "fourchette apercu").callback(interaction)
 
     textes = " ".join(interaction.textes)
     assert "grosses" in textes and "petits" in textes
@@ -195,7 +200,7 @@ async def test_apercu_nomme_la_fourchette_de_chaque_post():
     await bot.store.ajouter_salon_fourchette("grosses", "111")
     interaction = InteractionFactice()
 
-    await _commande(bot, "apercu").callback(interaction)
+    await _commande(bot, "fourchette apercu").callback(interaction)
 
     assert any("grosses" in texte for texte in interaction.textes)
 
@@ -207,7 +212,7 @@ async def test_apercu_signale_une_fourchette_sans_salon():
     await bot.store.ajouter_fourchette("orpheline", Decimal("1e15"), Decimal("6e15"))
     interaction = InteractionFactice()
 
-    await _commande(bot, "apercu").callback(interaction)
+    await _commande(bot, "fourchette apercu").callback(interaction)
 
     textes = " ".join(interaction.textes)
     assert "orpheline" in textes
@@ -218,7 +223,7 @@ async def test_apercu_sans_fourchette_explique_quoi_faire():
     bot = await _bot()
     interaction = InteractionFactice()
 
-    await _commande(bot, "apercu").callback(interaction)
+    await _commande(bot, "fourchette apercu").callback(interaction)
 
     assert "/fourchette ajouter" in " ".join(interaction.textes)
 
@@ -244,6 +249,6 @@ async def test_apercu_lit_lexport_une_seule_fois():
         await bot.store.ajouter_fourchette(nom, Decimal("0"), Decimal("6e15"))
         await bot.store.ajouter_salon_fourchette(nom, str(index))
 
-    await _commande(bot, "apercu").callback(InteractionFactice())
+    await _commande(bot, "fourchette apercu").callback(InteractionFactice())
 
     assert source.lectures == 1

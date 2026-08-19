@@ -82,7 +82,7 @@ async def boucle_planning(
     Complète `/tick` sans le remplacer : sur Render le service s'endort et
     seul le cron externe peut le réveiller, mais partout ailleurs (local, ou
     un hébergement qui ne dort pas) cette boucle suffit à ce que
-    `/config heure` fonctionne sans dépendance extérieure.
+    l'heure réglée soit respectée sans dépendance extérieure.
 
     `publier` est idempotente (voir `doit_publier`) : l'appeler à chaque tour
     ne produit qu'une publication par jour, et le cron et la boucle peuvent

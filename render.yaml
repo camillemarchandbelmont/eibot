@@ -54,7 +54,7 @@ services:
       - key: FUSEAU
         value: "Europe/Paris"
       # Salons, rôle et journal ne sont pas déclarés ici : ils se règlent par
-      # /config salon ajouter, /config mention et /config logs, et sont
+      # /fourchette salon ajouter, /config mention et /config logs, et sont
       # persistés en base. Un ID codé dans le blueprint serait doublonné avec
       # la config Discord et prêterait à confusion.
 

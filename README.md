@@ -278,9 +278,11 @@ local, mais elle repart des valeurs de `.env` à chaque redémarrage.
 | `/fourchette liste` | Les fourchettes, leurs bornes et leurs salons |
 | `/fourchette salon ajouter nom salon` | Publie **cette** fourchette dans ce salon |
 | `/fourchette salon retirer nom salon` | Cesse de l'y publier |
+| `/fourchette heure [heure]` | Heure des promotions (`HH:MM`), distincte de celle du tableau ; sans argument, l'affiche |
+| `/fourchette apercu` | Prévisualise les posts du jour, un par fourchette, sans publier |
+| `/fourchette publier` | Publie les promotions maintenant, à la place de celles de l'heure prévue |
 | `/config voir` | Affiche la configuration courante |
-| `/config heure heure [fuseau]` | Heure du post quotidien (`HH:MM`) |
-| `/config retester` | Oublie la publication du jour pour retester le déclenchement |
+| `/config fuseau fuseau` | Fuseau horaire commun aux deux publications (ex : `Europe/Paris`) |
 | `/config mention [role]` | Rôle mentionné dans le post ; sans argument, aucune mention |
 | `/config logs [salon]` | Salon de journal ; sans argument, journal désactivé |
 | `/config acces ajouter membre` | Autorise un membre à utiliser les commandes |
@@ -291,7 +293,6 @@ local, mais elle repart des valeurs de `.env` à chaque redémarrage.
 | `/template charger fichier` | Charge ton export Discohook `.json` |
 | `/template voir` | Renvoie le template actuel |
 | `/template champs` | Liste tous les placeholders disponibles |
-| `/apercu` | Prévisualise le post du jour sans publier |
 
 ## Qui peut utiliser les commandes
 
@@ -561,11 +562,11 @@ persistants » plutôt que de le laisser deviner.
 
 Ce job unique remplit deux rôles : il empêche le service gratuit de
 s'endormir, et il déclenche la publication. L'heure exacte du post reste
-réglée par `/config heure` — le bot publie au premier ping suivant l'heure
-prévue, et une seule fois par jour.
+réglée par `/fourchette heure` et `/filiales heure` — le bot publie au premier
+ping suivant l'heure prévue, et une seule fois par jour et par publication.
 
 Le bot possède **aussi une boucle interne** qui vérifie l'heure chaque minute :
-en local, ou sur un hébergement qui ne s'endort pas, `/config heure` suffit
+en local, ou sur un hébergement qui ne s'endort pas, l'heure réglée suffit
 sans cron externe. Les deux mécanismes coexistent sans doubler les posts.
 
 ### Fenêtre de rattrapage
@@ -575,8 +576,11 @@ Un post manqué est rattrapé pendant **60 minutes** (`FENETRE_RATTRAPAGE` dans
 démarré à 16 h avec `heure = 09:00` publierait aussitôt « en retard de 7 h »,
 consommant le quota du jour et empêchant la publication réellement voulue.
 
-Régler `/config heure` **oublie automatiquement** la publication du jour : le
-nouvel horaire s'applique tout de suite, sans attendre demain.
+Régler l'heure d'une publication **oublie automatiquement** son post du jour :
+le nouvel horaire s'applique tout de suite, sans attendre demain. Chaque
+publication a sa propre marque, donc régler l'une ne fait pas repartir l'autre.
+`/config fuseau`, lui, n'efface aucune marque : corriger l'horloge n'est pas
+demander un nouveau post.
 
 `GET /health` répond `ok` : c'est aussi la cible du health check Render.
 
@@ -707,7 +711,7 @@ Erreur : L'API a répondu 401 : Clé API invalide ou révoquée. Vérifie EMPIRE
 
 La commande teste **la source, pas la fourchette** : « 0 promotion » n'est pas
 un échec, c'est peut-être simplement le cas du jour. Pour voir le post tel
-qu'il sortira, utilise `/apercu`. `/source voir` rappelle la source active
+qu'il sortira, utilise `/fourchette apercu`. `/source voir` rappelle la source active
 sans appel réseau.
 
 Le bot distingue les pannes et les explique en clair, en reprenant le message

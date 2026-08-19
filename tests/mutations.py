@@ -402,15 +402,40 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
         "            role_id = next(iter((await magasin.roles()).values()), None)",
         "un salon mentionnerait le rôle d'un autre serveur (@deleted-role)",
     ),
+    (
+        "bot-fourchette-salon-generique-greffe",
+        "src/modules/promos.py",
+        "    ajouter_les_commandes_de_publication(groupe, bot, PUBLICATION, salons=False)",
+        "    ajouter_les_commandes_de_publication(groupe, bot, PUBLICATION)",
+        "un `/fourchette salon ajouter` générique porterait le même nom que le "
+        "vrai en écrivant ailleurs — un « ✅ » pour un post qui ne partirait "
+        "nulle part",
+    ),
     # --- src/bot.py : ce qui reste dans le noyau ---------------------------
     (
-        "bot-apercu-une-seule-fourchette",
+        "bot-fuseau-inconnu-ecrit-quand-meme",
         "src/bot.py",
-        "        for fourchette in fourchettes:\n"
-        "            tolere_min, tolere_max = bornes_tolerees(fourchette)",
-        "        for fourchette in fourchettes[:1]:\n"
-        "            tolere_min, tolere_max = bornes_tolerees(fourchette)",
-        "l'aperçu mentirait sur ce que chaque salon recevra",
+        "            ZoneInfo(fuseau)",
+        '            ZoneInfo("Europe/Paris")',
+        "un fuseau inventé serait écrit tel quel, et chaque lecture de l'heure "
+        "échouerait ensuite — donc les deux publications",
+    ),
+    (
+        "bot-fuseau-confirme-sans-ecrire",
+        "src/bot.py",
+        "        config = await bot.store.maj_config(fuseau=fuseau)",
+        "        config = await bot.store.config()",
+        "la commande confirmerait un fuseau qu'elle n'a pas enregistré",
+    ),
+    (
+        "bot-fuseau-relance-les-publications",
+        "src/bot.py",
+        "        config = await bot.store.maj_config(fuseau=fuseau)",
+        "        config = await bot.store.maj_config(fuseau=fuseau)\n"
+        "        await bot.store.oublier_publication()\n"
+        "        await bot.store.marquer_publie_filiales(None)",
+        "corriger l'horloge relancerait les deux posts du jour dans la minute, "
+        "alors qu'on n'a rien demandé de tel",
     ),
     (
         "bot-promos-une-seule-fourchette",
@@ -1235,6 +1260,14 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
         '            publication, bot.store, maintenant.strftime("%Y-%m-%d")\n'
         "        )\n\n        try:",
         "un aperçu empêcherait le post du jour de sortir",
+    ),
+    (
+        "surface-apercu-un-seul-envoi",
+        "src/commandes.py",
+        "        for envoi in tournee.envois:",
+        "        for envoi in tournee.envois[:1]:",
+        "l'aperçu mentirait sur ce que chaque salon recevra — c'est justement ce "
+        "qu'on vient prévisualiser",
     ),
     (
         "web-tick-sans-le-tableau",

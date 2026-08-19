@@ -98,7 +98,7 @@ def _montant(brut: Any, champ: str) -> Decimal:
     """Lit un montant saisi sur le site, avec la grammaire de Discord.
 
     Une seule grammaire pour les deux façades : `100T`, `50 6P` ou `2.71 PØ`
-    recopié depuis un post fonctionnent ici comme dans `/config prix`.
+    recopié depuis un post fonctionnent ici comme dans `/fourchette prix`.
     """
     try:
         return parse_money(str(brut))
@@ -294,7 +294,7 @@ def enregistrer_routes(app: web.Application, bot) -> None:
             await bot.store.maj_config(**champs)
 
         if "heure" in champs:
-            # Comme `/config heure` : changer l'heure exprime l'intention de
+            # Comme `/fourchette heure` : changer l'heure exprime l'intention de
             # publier à la nouvelle, donc on oublie la marque du jour.
             await bot.store.oublier_publication()
 
