@@ -1043,6 +1043,131 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
         "`/promos` sans argument dirait « aucune fourchette configurée » à un "
         "serveur qui en a",
     ),
+
+    # --- Les modules lisent la configuration de leur serveur ---------------
+    #
+    # Chaque mutation ci-dessous rebranche une commande de module sur la
+    # configuration commune. Le symptôme est toujours le même : un « ✅ » sur un
+    # réglage que la tournée de ce serveur ne lira jamais, et des données d'une
+    # entreprise qui apparaissent chez une autre.
+    (
+        "bot-promos-fourchette-creee-dans-le-commun",
+        "src/modules/promos.py",
+        "            fourchette = await magasin.ajouter_fourchette(nom, prix_min, prix_max)",
+        "            fourchette = await bot.store.ajouter_fourchette(nom, prix_min, prix_max)",
+        "la fourchette ne publierait rien et apparaîtrait chez tous les voisins",
+    ),
+    (
+        "bot-promos-liste-du-commun",
+        "src/modules/promos.py",
+        "        fourchettes = await pour_ce_serveur(bot, interaction).fourchettes()\n"
+        "        embed = discord.Embed(",
+        "        fourchettes = await bot.store.fourchettes()\n"
+        "        embed = discord.Embed(",
+        "on lirait les marchés surveillés par une autre entreprise, et pas les siens",
+    ),
+    (
+        "bot-promos-suppression-dans-le-commun",
+        "src/modules/promos.py",
+        "        if not await magasin.supprimer_fourchette(nom):",
+        "        if not await bot.store.supprimer_fourchette(nom):",
+        "la fourchette resterait, et le post continuerait de sortir",
+    ),
+    (
+        "bot-promos-prix-regle-dans-le-commun",
+        "src/modules/promos.py",
+        "        if not await magasin.majprix_fourchette(nom, prix_min, prix_max):",
+        "        if not await bot.store.majprix_fourchette(nom, prix_min, prix_max):",
+        "les bornes annoncées ne seraient pas celles qui servent à chercher",
+    ),
+    (
+        "bot-promos-tolerance-du-commun",
+        "src/modules/promos.py",
+        "            regle = await magasin.majtolerance_fourchette(nom, tolere_min, tolere_max)",
+        "            regle = await bot.store.majtolerance_fourchette(nom, tolere_min, tolere_max)",
+        "la zone est invisible dans Discord : réglée ailleurs, rien ne le dirait",
+    ),
+    (
+        "bot-promos-salon-attache-dans-le-commun",
+        "src/modules/promos.py",
+        "        if not await magasin.ajouter_salon_fourchette(nom, str(salon.id)):",
+        "        if not await bot.store.ajouter_salon_fourchette(nom, str(salon.id)):",
+        "le salon ne recevrait rien malgré le « ✅ »",
+    ),
+    (
+        "bot-promos-salon-retire-du-commun",
+        "src/modules/promos.py",
+        "        if not await magasin.retirer_salon_fourchette(nom, str(salon.id)):",
+        "        if not await bot.store.retirer_salon_fourchette(nom, str(salon.id)):",
+        "le salon continuerait de recevoir la fourchette qu'on vient d'en retirer",
+    ),
+    (
+        "bot-promos-autocompletion-du-commun",
+        "src/modules/promos.py",
+        "            for f in await pour_ce_serveur(bot, interaction).fourchettes()",
+        "            for f in await bot.store.fourchettes()",
+        "on choisirait un nom que la commande refuse ensuite",
+    ),
+    (
+        "bot-filiales-releve-dans-le-commun",
+        "src/modules/filiales.py",
+        "            releve = await magasin.enregistrer_filiale(\n"
+        "                filiale, valeur, await _aujourdhui(magasin)\n"
+        "            )",
+        "            releve = await bot.store.enregistrer_filiale(\n"
+        "                filiale, valeur, await _aujourdhui(magasin)\n"
+        "            )",
+        "chaque entreprise verrait les frais de l'autre dans son tableau du soir",
+    ),
+    (
+        "bot-filiales-releve-date-du-fuseau-commun",
+        "src/modules/filiales.py",
+        "                filiale, valeur, await _aujourdhui(magasin)",
+        "                filiale, valeur, await _aujourdhui(bot.store)",
+        "le relevé du jour se lirait « relevé d'hier » dans un serveur décalé",
+    ),
+    (
+        "bot-filiales-liste-du-commun",
+        "src/modules/filiales.py",
+        "        filiales = await magasin.filiales()\n"
+        "        await interaction.response.send_message(",
+        "        filiales = await bot.store.filiales()\n"
+        "        await interaction.response.send_message(",
+        "le tableau montrerait des filiales qu'on ne possède pas ici",
+    ),
+    (
+        "bot-filiales-retrait-dans-le-commun",
+        "src/modules/filiales.py",
+        "        retirees, inconnus = await magasin.retirer_filiales(noms)",
+        "        retirees, inconnus = await bot.store.retirer_filiales(noms)",
+        "la filiale reviendrait dans le tableau du soir, et manquerait chez l'autre",
+    ),
+    (
+        "bot-filiales-vidage-dans-le-commun",
+        "src/modules/filiales.py",
+        "        combien = await magasin.remettre_a_zero_filiales(await _aujourdhui(magasin))",
+        "        combien = await bot.store.remettre_a_zero_filiales(await _aujourdhui(magasin))",
+        "un nouveau cycle ici effacerait les relevés que l'autre n'a pas publiés",
+    ),
+    (
+        "bot-filiales-export-du-commun",
+        "src/modules/filiales.py",
+        "        magasin = pour_ce_serveur(bot, interaction)\n"
+        "        filiales = await magasin.filiales()\n"
+        "        if not filiales:",
+        "        magasin = pour_ce_serveur(bot, interaction)\n"
+        "        filiales = await bot.store.filiales()\n"
+        "        if not filiales:",
+        "le fichier part dans le jeu : une ligne d'une autre entreprise y serait "
+        "importée pour de bon",
+    ),
+    (
+        "bot-filiales-autocompletion-du-commun",
+        "src/modules/filiales.py",
+        "            for f in await pour_ce_serveur(bot, interaction).filiales()",
+        "            for f in await bot.store.filiales()",
+        "le nom proposé ferait saisir un relevé sur une filiale d'un autre serveur",
+    ),
     (
         "journal-compte-des-salons",
         "src/journal.py",
@@ -1763,8 +1888,8 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
     (
         "bot-releve-montant-illisible-enregistre-quand-meme",
         "src/modules/filiales.py",
-        "            await interaction.response.send_message(\n                f\"❌ {erreur}\\n{aide_montants()}\", ephemeral=True\n            )\n            return\n\n        existait = index_de(await bot.store.filiales(), filiale) >= 0",
-        "            await interaction.response.send_message(\n                f\"❌ {erreur}\\n{aide_montants()}\", ephemeral=True\n            )\n\n        existait = index_de(await bot.store.filiales(), filiale) >= 0",
+        "            await interaction.response.send_message(\n                f\"❌ {erreur}\\n{aide_montants()}\", ephemeral=True\n            )\n            return\n\n        magasin = pour_ce_serveur(bot, interaction)",
+        "            await interaction.response.send_message(\n                f\"❌ {erreur}\\n{aide_montants()}\", ephemeral=True\n            )\n\n        magasin = pour_ce_serveur(bot, interaction)",
         "une filiale serait retenue à un montant faux et fausserait le total",
     ),
     (
@@ -1784,7 +1909,7 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
     (
         "bot-releve-sans-alerte-de-salon-manquant",
         "src/modules/filiales.py",
-        '        if not await bot.store.salons_filiales():\n            # Une saisie qui n\'ira nulle part doit se voir maintenant, pas au\n            # moment où l\'on s\'étonne de ne rien recevoir.\n            corps += "\\n⚠️ Aucun salon pour le tableau : `/filiales salon ajouter`."',
+        '        if not await magasin.salons_filiales():\n            # Une saisie qui n\'ira nulle part doit se voir maintenant, pas au\n            # moment où l\'on s\'étonne de ne rien recevoir.\n            corps += "\\n⚠️ Aucun salon pour le tableau : `/filiales salon ajouter`."',
         "        pass",
         "on saisirait des relevés que personne ne recevrait",
     ),
@@ -2003,14 +2128,14 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
     (
         "bot-export-vide-annonce-un-fichier",
         "src/modules/filiales.py",
-        "        filiales = await bot.store.filiales()\n        if not filiales:\n            # Pas de fichier vide",
-        "        filiales = await bot.store.filiales()\n        if False:\n            # Pas de fichier vide",
+        "        filiales = await magasin.filiales()\n        if not filiales:\n            # Pas de fichier vide",
+        "        filiales = await magasin.filiales()\n        if False:\n            # Pas de fichier vide",
         "un fichier de zéro octet se lirait comme une panne du bot",
     ),
     (
         "bot-export-nom-de-fichier-sans-date",
         "src/modules/filiales.py",
-        'filename=f"frais-{await _aujourdhui(bot)}.txt",',
+        'filename=f"frais-{await _aujourdhui(magasin)}.txt",',
         'filename="frais.txt",',
         "deux exports d'affilée se confondraient dans le fil",
     ),

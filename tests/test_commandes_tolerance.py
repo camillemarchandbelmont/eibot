@@ -11,7 +11,12 @@ from decimal import Decimal
 
 import pytest
 
-from tests.test_commandes_fourchettes import InteractionFactice, _bot, _commande
+from tests.test_commandes_fourchettes import (
+    InteractionFactice,
+    _bot,
+    _commande,
+    _magasin,
+)
 
 
 # --- Réglage ----------------------------------------------------------------
@@ -19,7 +24,7 @@ from tests.test_commandes_fourchettes import InteractionFactice, _bot, _commande
 
 async def test_regler_confirme_avec_les_bornes_formatees():
     bot = await _bot()
-    await bot.store.ajouter_fourchette("grosses", Decimal("1e14"), Decimal("6e15"))
+    await _magasin(bot).ajouter_fourchette("grosses", Decimal("1e14"), Decimal("6e15"))
     interaction = InteractionFactice()
 
     await _commande(bot, "fourchette tolerance").callback(
@@ -30,14 +35,14 @@ async def test_regler_confirme_avec_les_bornes_formatees():
     assert "grosses" in texte
     assert "50.00" in texte and "8.00" in texte
 
-    fourchette = (await bot.store.fourchettes())[0]
+    fourchette = (await _magasin(bot).fourchettes())[0]
     assert Decimal(fourchette["tolere_min"]) == Decimal("5e13")
     assert Decimal(fourchette["tolere_max"]) == Decimal("8e15")
 
 
 async def test_regler_montant_illisible_refuse_sans_rien_ecrire():
     bot = await _bot()
-    await bot.store.ajouter_fourchette("grosses", Decimal("1e14"), Decimal("6e15"))
+    await _magasin(bot).ajouter_fourchette("grosses", Decimal("1e14"), Decimal("6e15"))
     interaction = InteractionFactice()
 
     await _commande(bot, "fourchette tolerance").callback(
@@ -45,7 +50,7 @@ async def test_regler_montant_illisible_refuse_sans_rien_ecrire():
     )
 
     assert "❌" in " ".join(interaction.textes)
-    assert (await bot.store.fourchettes())[0]["tolere_min"] == ""
+    assert (await _magasin(bot).fourchettes())[0]["tolere_min"] == ""
 
 
 async def test_regler_sur_fourchette_inconnue_refuse_explicitement():
@@ -66,7 +71,7 @@ async def test_zone_plus_etroite_refusee_avec_la_raison():
     trompé de bornes qu'on a besoin de lire lesquelles sont attendues.
     """
     bot = await _bot()
-    await bot.store.ajouter_fourchette("grosses", Decimal("1e14"), Decimal("6e15"))
+    await _magasin(bot).ajouter_fourchette("grosses", Decimal("1e14"), Decimal("6e15"))
     interaction = InteractionFactice()
 
     await _commande(bot, "fourchette tolerance").callback(
@@ -75,7 +80,7 @@ async def test_zone_plus_etroite_refusee_avec_la_raison():
 
     texte = " ".join(interaction.textes)
     assert "❌" in texte and "plus large" in texte
-    assert (await bot.store.fourchettes())[0]["tolere_min"] == ""
+    assert (await _magasin(bot).fourchettes())[0]["tolere_min"] == ""
 
 
 # --- Effacement -------------------------------------------------------------
@@ -84,20 +89,22 @@ async def test_zone_plus_etroite_refusee_avec_la_raison():
 async def test_sans_bornes_efface_la_zone():
     """La forme nue de la commande : `/fourchette tolerance nom:grosses`."""
     bot = await _bot()
-    await bot.store.ajouter_fourchette("grosses", Decimal("1e14"), Decimal("6e15"))
-    await bot.store.majtolerance_fourchette("grosses", Decimal("5e13"), Decimal("8e15"))
+    await _magasin(bot).ajouter_fourchette("grosses", Decimal("1e14"), Decimal("6e15"))
+    await _magasin(bot).majtolerance_fourchette(
+        "grosses", Decimal("5e13"), Decimal("8e15")
+    )
     interaction = InteractionFactice()
 
     await _commande(bot, "fourchette tolerance").callback(interaction, nom="grosses")
 
     assert "✅" in " ".join(interaction.textes)
-    assert (await bot.store.fourchettes())[0]["tolere_min"] == ""
+    assert (await _magasin(bot).fourchettes())[0]["tolere_min"] == ""
 
 
 async def test_effacer_une_zone_absente_le_dit():
     """Confirmer un effacement imaginaire ferait croire qu'une zone existait."""
     bot = await _bot()
-    await bot.store.ajouter_fourchette("grosses", Decimal("1e14"), Decimal("6e15"))
+    await _magasin(bot).ajouter_fourchette("grosses", Decimal("1e14"), Decimal("6e15"))
     interaction = InteractionFactice()
 
     await _commande(bot, "fourchette tolerance").callback(interaction, nom="grosses")
@@ -109,7 +116,7 @@ async def test_une_seule_borne_refusee():
     """Une zone à moitié réglée serait ignorée par `find_promos` : autant le
     dire tout de suite plutôt que de confirmer un réglage sans effet."""
     bot = await _bot()
-    await bot.store.ajouter_fourchette("grosses", Decimal("1e14"), Decimal("6e15"))
+    await _magasin(bot).ajouter_fourchette("grosses", Decimal("1e14"), Decimal("6e15"))
     interaction = InteractionFactice()
 
     await _commande(bot, "fourchette tolerance").callback(
@@ -118,7 +125,7 @@ async def test_une_seule_borne_refusee():
 
     texte = " ".join(interaction.textes)
     assert "❌" in texte
-    assert (await bot.store.fourchettes())[0]["tolere_min"] == ""
+    assert (await _magasin(bot).fourchettes())[0]["tolere_min"] == ""
 
 
 # --- Visibilité -------------------------------------------------------------
@@ -127,8 +134,10 @@ async def test_une_seule_borne_refusee():
 async def test_la_liste_montre_la_zone():
     """Seul endroit où relire la zone : les posts ne la mentionnent pas."""
     bot = await _bot()
-    await bot.store.ajouter_fourchette("grosses", Decimal("1e14"), Decimal("6e15"))
-    await bot.store.majtolerance_fourchette("grosses", Decimal("5e13"), Decimal("8e15"))
+    await _magasin(bot).ajouter_fourchette("grosses", Decimal("1e14"), Decimal("6e15"))
+    await _magasin(bot).majtolerance_fourchette(
+        "grosses", Decimal("5e13"), Decimal("8e15")
+    )
     interaction = InteractionFactice()
 
     await _commande(bot, "fourchette liste").callback(interaction)
@@ -141,7 +150,7 @@ async def test_la_liste_reste_sobre_sans_zone():
     """Sans zone réglée, aucune ligne à son sujet : la liste doit rester lisible
     quand on a dix fourchettes."""
     bot = await _bot()
-    await bot.store.ajouter_fourchette("grosses", Decimal("1e14"), Decimal("6e15"))
+    await _magasin(bot).ajouter_fourchette("grosses", Decimal("1e14"), Decimal("6e15"))
     interaction = InteractionFactice()
 
     await _commande(bot, "fourchette liste").callback(interaction)
@@ -153,8 +162,10 @@ async def test_prix_signale_la_zone_repoussee():
     """Élargir les bornes déplace la zone : le taire laisserait croire qu'elle
     est restée là où on l'avait mise."""
     bot = await _bot()
-    await bot.store.ajouter_fourchette("grosses", Decimal("1e14"), Decimal("6e15"))
-    await bot.store.majtolerance_fourchette("grosses", Decimal("5e13"), Decimal("8e15"))
+    await _magasin(bot).ajouter_fourchette("grosses", Decimal("1e14"), Decimal("6e15"))
+    await _magasin(bot).majtolerance_fourchette(
+        "grosses", Decimal("5e13"), Decimal("8e15")
+    )
     interaction = InteractionFactice()
 
     await _commande(bot, "fourchette prix").callback(
@@ -167,8 +178,10 @@ async def test_prix_signale_la_zone_repoussee():
 
 async def test_prix_ne_parle_pas_de_zone_quand_elle_ne_bouge_pas():
     bot = await _bot()
-    await bot.store.ajouter_fourchette("grosses", Decimal("1e14"), Decimal("6e15"))
-    await bot.store.majtolerance_fourchette("grosses", Decimal("5e13"), Decimal("8e15"))
+    await _magasin(bot).ajouter_fourchette("grosses", Decimal("1e14"), Decimal("6e15"))
+    await _magasin(bot).majtolerance_fourchette(
+        "grosses", Decimal("5e13"), Decimal("8e15")
+    )
     interaction = InteractionFactice()
 
     await _commande(bot, "fourchette prix").callback(

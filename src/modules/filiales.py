@@ -18,7 +18,11 @@ from typing import Any
 import discord
 from discord import app_commands
 
-from src.commandes import ajouter_les_commandes_de_publication, aide_montants
+from src.commandes import (
+    aide_montants,
+    ajouter_les_commandes_de_publication,
+    pour_ce_serveur,
+)
 from src.filiales import (
     FilialeError,
     index_de,
@@ -113,9 +117,14 @@ PUBLICATION = Publication(
     retirer_salon=_retirer_salon,
 )
 
-async def _aujourdhui(bot: Any) -> str:
-    """La date du jour dans le fuseau réglé, au format que la base retient."""
-    return maintenant_local((await bot.store.config())["fuseau"]).strftime("%Y-%m-%d")
+async def _aujourdhui(magasin: Any) -> str:
+    """La date du jour dans le fuseau réglé, au format que la base retient.
+
+    Prend le magasin et non le bot : le fuseau est celui du serveur où la commande
+    est tapée. Datée d'ailleurs, une ligne se lirait « relevé d'hier » un jour sur
+    deux dans un serveur qui n'a pas le même décalage.
+    """
+    return maintenant_local((await magasin.config())["fuseau"]).strftime("%Y-%m-%d")
 
 
 def enregistrer(bot: Any) -> None:
@@ -138,19 +147,23 @@ def enregistrer(bot: Any) -> None:
         Le nom est la clé du jeu : retapé de mémoire, une faute de frappe
         créerait une **seconde** filiale au lieu de mettre la première à jour, et
         le tableau compterait deux fois la même.
+
+        Celles de ce serveur : proposé depuis un autre, un nom ferait saisir un
+        relevé sur une filiale qu'on ne possède pas ici.
         """
         debut = saisie.strip().casefold()
         return [
             app_commands.Choice(name=f.nom, value=f.nom)
-            for f in await bot.store.filiales()
+            for f in await pour_ce_serveur(bot, interaction).filiales()
             if debut in f.nom.casefold()
         ][:25]  # limite Discord
 
     @groupe.command(name="liste", description="Filiales enregistrées et total")
     async def filiales_liste(interaction: discord.Interaction) -> None:
-        filiales = await bot.store.filiales()
+        magasin = pour_ce_serveur(bot, interaction)
+        filiales = await magasin.filiales()
         await interaction.response.send_message(
-            embed=embed_filiales(filiales, await _aujourdhui(bot)), ephemeral=True
+            embed=embed_filiales(filiales, await _aujourdhui(magasin)), ephemeral=True
         )
 
     @groupe.command(name="releve", description="Enregistre les bénéfices d'une filiale")
@@ -182,18 +195,19 @@ def enregistrer(bot: Any) -> None:
             )
             return
 
-        existait = index_de(await bot.store.filiales(), filiale) >= 0
+        magasin = pour_ce_serveur(bot, interaction)
+        existait = index_de(await magasin.filiales(), filiale) >= 0
 
         try:
-            releve = await bot.store.enregistrer_filiale(
-                filiale, valeur, await _aujourdhui(bot)
+            releve = await magasin.enregistrer_filiale(
+                filiale, valeur, await _aujourdhui(magasin)
             )
         except FilialeError as erreur:
             # Discord accepte une chaîne d'espaces : la ligne serait anonyme.
             await interaction.response.send_message(f"❌ {erreur}", ephemeral=True)
             return
 
-        filiales = await bot.store.filiales()
+        filiales = await magasin.filiales()
         verbe = "mise à jour" if existait else "enregistrée"
 
         if releve.en_perte:
@@ -220,7 +234,7 @@ def enregistrer(bot: Any) -> None:
             f"-# {format_money_long(total)}"
         )
 
-        if not await bot.store.salons_filiales():
+        if not await magasin.salons_filiales():
             # Une saisie qui n'ira nulle part doit se voir maintenant, pas au
             # moment où l'on s'étonne de ne rien recevoir.
             corps += "\n⚠️ Aucun salon pour le tableau : `/filiales salon ajouter`."
@@ -256,7 +270,8 @@ def enregistrer(bot: Any) -> None:
             )
             return
 
-        connues = await bot.store.filiales()
+        magasin = pour_ce_serveur(bot, interaction)
+        connues = await magasin.filiales()
         tout = saisie.casefold() == "tout"
         noms = [f.nom for f in connues] if tout else noms_separes(saisie)
 
@@ -285,7 +300,7 @@ def enregistrer(bot: Any) -> None:
             )
             return
 
-        retirees, inconnus = await bot.store.retirer_filiales(noms)
+        retirees, inconnus = await magasin.retirer_filiales(noms)
 
         if not retirees:
             # Les connues listées : sinon on ne sait pas si c'est une faute de
@@ -299,7 +314,7 @@ def enregistrer(bot: Any) -> None:
             )
             return
 
-        restantes = await bot.store.filiales()
+        restantes = await magasin.filiales()
         message = (
             f"✅ {retirees} filiale(s) retirée(s) du tableau.\n"
             f"-# Reste {len(restantes)} filiale(s), "
@@ -329,7 +344,8 @@ def enregistrer(bot: Any) -> None:
         À zéro, chaque filiale s'affiche « en perte » dans le tableau, ce qui est
         exact — il n'y a rien à prélever.
         """
-        filiales = await bot.store.filiales()
+        magasin = pour_ce_serveur(bot, interaction)
+        filiales = await magasin.filiales()
 
         if not filiales:
             await interaction.response.send_message(
@@ -348,7 +364,7 @@ def enregistrer(bot: Any) -> None:
             )
             return
 
-        combien = await bot.store.remettre_a_zero_filiales(await _aujourdhui(bot))
+        combien = await magasin.remettre_a_zero_filiales(await _aujourdhui(magasin))
 
         await interaction.response.send_message(
             f"✅ {combien} filiale(s) remise(s) à 0 Ø, noms gardés.\n"
@@ -369,7 +385,8 @@ def enregistrer(bot: Any) -> None:
         ne pourrait pas porter le CRLF que le jeu attend. Une pièce jointe n'est
         pas rendue : les octets arrivent tels qu'ils ont été écrits.
         """
-        filiales = await bot.store.filiales()
+        magasin = pour_ce_serveur(bot, interaction)
+        filiales = await magasin.filiales()
         if not filiales:
             # Pas de fichier vide : un `.txt` de zéro octet se lirait comme une
             # panne du bot plutôt que comme un tableau vide.
@@ -385,7 +402,7 @@ def enregistrer(bot: Any) -> None:
         # et on ne saurait plus lequel est à jour.
         fichier = discord.File(
             fp=io.BytesIO(contenu.encode("utf-8")),
-            filename=f"frais-{await _aujourdhui(bot)}.txt",
+            filename=f"frais-{await _aujourdhui(magasin)}.txt",
         )
 
         # Un nom peut porter une tabulation ou un retour à la ligne **collés** :

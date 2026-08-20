@@ -251,11 +251,15 @@ def enregistrer(bot: Any) -> None:
 
         Sans ça le nom serait retapé à chaque commande, et une faute de frappe ne
         se verrait qu'au message d'erreur.
+
+        Celles de ce serveur seulement : proposer celles d'un autre ferait choisir
+        un nom que la commande refuse ensuite, et dirait au passage ce que l'autre
+        entreprise surveille.
         """
         debut = saisie.strip().casefold()
         return [
             app_commands.Choice(name=f["nom"], value=f["nom"])
-            for f in await bot.store.fourchettes()
+            for f in await pour_ce_serveur(bot, interaction).fourchettes()
             if debut in f["nom"].casefold()
         ][:25]  # limite Discord
 
@@ -263,9 +267,11 @@ def enregistrer(bot: Any) -> None:
         """Refuse en listant les noms valides.
 
         Sans la liste, impossible de savoir si c'est une faute de frappe ou une
-        fourchette jamais créée.
+        fourchette jamais créée. Les fourchettes de ce serveur : celles d'un autre
+        ne pourraient de toute façon pas être réglées d'ici.
         """
-        noms = [f["nom"] for f in await bot.store.fourchettes()]
+        connues = await pour_ce_serveur(bot, interaction).fourchettes()
+        noms = [f["nom"] for f in connues]
         connues = ", ".join(f"`{n}`" for n in noms) if noms else "*aucune*"
         await interaction.response.send_message(
             f"❌ Aucune fourchette nommée « {nom} ». Fourchettes : {connues}.",
@@ -289,8 +295,9 @@ def enregistrer(bot: Any) -> None:
             )
             return
 
+        magasin = pour_ce_serveur(bot, interaction)
         try:
-            fourchette = await bot.store.ajouter_fourchette(nom, prix_min, prix_max)
+            fourchette = await magasin.ajouter_fourchette(nom, prix_min, prix_max)
         except ValueError as erreur:
             await interaction.response.send_message(f"❌ {erreur}", ephemeral=True)
             return
@@ -307,11 +314,12 @@ def enregistrer(bot: Any) -> None:
     @groupe.command(name="supprimer", description="Supprime une fourchette")
     @app_commands.autocomplete(nom=completer_nom)
     async def fourchette_supprimer(interaction: discord.Interaction, nom: str) -> None:
-        if not await bot.store.supprimer_fourchette(nom):
+        magasin = pour_ce_serveur(bot, interaction)
+        if not await magasin.supprimer_fourchette(nom):
             await refuser_nom_inconnu(interaction, nom)
             return
 
-        restantes = await bot.store.fourchettes()
+        restantes = await magasin.fourchettes()
         message = f"✅ Fourchette **{nom.strip()}** supprimée."
         if not restantes:
             message += "\n⚠️ Plus aucune fourchette : le post quotidien ne sortira plus."
@@ -331,13 +339,14 @@ def enregistrer(bot: Any) -> None:
             )
             return
 
-        avant = await bot.store.fourchettes()
-        index_avant = bot.store._index(avant, nom)
+        magasin = pour_ce_serveur(bot, interaction)
+        avant = await magasin.fourchettes()
+        index_avant = magasin._index(avant, nom)
         zone_avant = (
             bornes_tolerees(avant[index_avant]) if index_avant >= 0 else (None, None)
         )
 
-        if not await bot.store.majprix_fourchette(nom, prix_min, prix_max):
+        if not await magasin.majprix_fourchette(nom, prix_min, prix_max):
             await refuser_nom_inconnu(interaction, nom)
             return
 
@@ -350,8 +359,8 @@ def enregistrer(bot: Any) -> None:
 
         # Les nouvelles bornes ont pu repousser la zone de tolérance. Le taire
         # laisserait croire qu'elle est restée là où on l'avait réglée.
-        apres = await bot.store.fourchettes()
-        zone_apres = bornes_tolerees(apres[bot.store._index(apres, nom)])
+        apres = await magasin.fourchettes()
+        zone_apres = bornes_tolerees(apres[magasin._index(apres, nom)])
         if zone_apres != zone_avant and zone_apres[0] is not None:
             message += (
                 f"\n-# Zone de tolérance élargie d'autant : "
@@ -381,6 +390,7 @@ def enregistrer(bot: Any) -> None:
         `find_promos` ignorerait la zone à moitié réglée — la commande aurait
         alors confirmé un réglage sans effet.
         """
+        magasin = pour_ce_serveur(bot, interaction)
         if (min is None) != (max is None):
             await interaction.response.send_message(
                 "❌ Donne les **deux** bornes, ou aucune pour effacer la zone.\n"
@@ -390,9 +400,9 @@ def enregistrer(bot: Any) -> None:
             return
 
         if min is None:
-            if not await bot.store.effacer_tolerance_fourchette(nom):
-                fourchettes = await bot.store.fourchettes()
-                if bot.store._index(fourchettes, nom) < 0:
+            if not await magasin.effacer_tolerance_fourchette(nom):
+                fourchettes = await magasin.fourchettes()
+                if magasin._index(fourchettes, nom) < 0:
                     await refuser_nom_inconnu(interaction, nom)
                 else:
                     await interaction.response.send_message(
@@ -417,7 +427,7 @@ def enregistrer(bot: Any) -> None:
             return
 
         try:
-            regle = await bot.store.majtolerance_fourchette(nom, tolere_min, tolere_max)
+            regle = await magasin.majtolerance_fourchette(nom, tolere_min, tolere_max)
         except ValueError as erreur:
             await interaction.response.send_message(f"❌ {erreur}", ephemeral=True)
             return
@@ -437,7 +447,7 @@ def enregistrer(bot: Any) -> None:
 
     @groupe.command(name="liste", description="Liste les fourchettes et leurs salons")
     async def fourchette_liste(interaction: discord.Interaction) -> None:
-        fourchettes = await bot.store.fourchettes()
+        fourchettes = await pour_ce_serveur(bot, interaction).fourchettes()
         embed = discord.Embed(
             title="Fourchettes de prix",
             description=lister_fourchettes(bot, fourchettes),
@@ -472,19 +482,21 @@ def enregistrer(bot: Any) -> None:
             )
             return
 
-        if bot.store._index(await bot.store.fourchettes(), nom) < 0:
+        magasin = pour_ce_serveur(bot, interaction)
+        if magasin._index(await magasin.fourchettes(), nom) < 0:
             await refuser_nom_inconnu(interaction, nom)
             return
 
-        if not await bot.store.ajouter_salon_fourchette(nom, str(salon.id)):
+        if not await magasin.ajouter_salon_fourchette(nom, str(salon.id)):
             await interaction.response.send_message(
                 f"ℹ️ {salon.mention} reçoit déjà **{nom.strip()}**.", ephemeral=True
             )
             return
 
         # Mémorisé pour le site, qui n'a pas accès à Discord et ne pourrait
-        # afficher qu'un id nu.
-        await bot.store.memoriser_salon(
+        # afficher qu'un id nu. Le cache reste commun — un nom de salon ne dépend
+        # pas de qui le regarde —, et c'est la vue qui le sait.
+        await magasin.memoriser_salon(
             str(salon.id), salon.name, str(interaction.guild.id), interaction.guild.name
         )
 
@@ -499,11 +511,12 @@ def enregistrer(bot: Any) -> None:
     async def fourchette_salon_retirer(
         interaction: discord.Interaction, nom: str, salon: discord.TextChannel
     ) -> None:
-        if bot.store._index(await bot.store.fourchettes(), nom) < 0:
+        magasin = pour_ce_serveur(bot, interaction)
+        if magasin._index(await magasin.fourchettes(), nom) < 0:
             await refuser_nom_inconnu(interaction, nom)
             return
 
-        if not await bot.store.retirer_salon_fourchette(nom, str(salon.id)):
+        if not await magasin.retirer_salon_fourchette(nom, str(salon.id)):
             await interaction.response.send_message(
                 f"❌ **{nom.strip()}** n'était pas publiée dans {salon.mention}.",
                 ephemeral=True,
@@ -512,7 +525,7 @@ def enregistrer(bot: Any) -> None:
 
         # Le salon n'est peut-être plus servi par aucune fourchette : son nom n'a
         # alors plus à occuper la config.
-        await bot.store.oublier_salons_orphelins()
+        await magasin.oublier_salons_orphelins()
 
         await interaction.response.send_message(
             f"✅ **{nom.strip()}** ne sera plus publiée dans {salon.mention}.",

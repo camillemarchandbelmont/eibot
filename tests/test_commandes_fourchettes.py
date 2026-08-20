@@ -155,7 +155,7 @@ async def test_ajouter_confirme_avec_les_bornes_formatees():
     texte = " ".join(interaction.textes)
     assert "grosses" in texte
     assert "100.00" in texte and "6.00" in texte
-    assert [f["nom"] for f in await bot.store.fourchettes()] == ["grosses"]
+    assert [f["nom"] for f in await _magasin(bot).fourchettes()] == ["grosses"]
 
 
 async def test_ajouter_montant_illisible_refuse_sans_rien_creer():
@@ -167,13 +167,13 @@ async def test_ajouter_montant_illisible_refuse_sans_rien_creer():
     )
 
     assert "❌" in " ".join(interaction.textes)
-    assert await bot.store.fourchettes() == []
+    assert await _magasin(bot).fourchettes() == []
 
 
 async def test_ajouter_nom_duplique_refuse_explicitement():
     """Le message doit dire *pourquoi*, sinon on croit à un bug."""
     bot = await _bot()
-    await bot.store.ajouter_fourchette("grosses", Decimal("1e14"), Decimal("6e15"))
+    await _magasin(bot).ajouter_fourchette("grosses", Decimal("1e14"), Decimal("6e15"))
     interaction = InteractionFactice()
 
     await _commande(bot, "fourchette ajouter").callback(
@@ -182,7 +182,7 @@ async def test_ajouter_nom_duplique_refuse_explicitement():
 
     texte = " ".join(interaction.textes)
     assert "❌" in texte and "existe déjà" in texte
-    assert len(await bot.store.fourchettes()) == 1
+    assert len(await _magasin(bot).fourchettes()) == 1
 
 
 async def test_ajouter_nom_vide_refuse():
@@ -194,7 +194,7 @@ async def test_ajouter_nom_vide_refuse():
     )
 
     assert "❌" in " ".join(interaction.textes)
-    assert await bot.store.fourchettes() == []
+    assert await _magasin(bot).fourchettes() == []
 
 
 # --- /fourchette supprimer --------------------------------------------------
@@ -202,19 +202,19 @@ async def test_ajouter_nom_vide_refuse():
 
 async def test_supprimer_confirme():
     bot = await _bot()
-    await bot.store.ajouter_fourchette("grosses", Decimal("1e14"), Decimal("6e15"))
+    await _magasin(bot).ajouter_fourchette("grosses", Decimal("1e14"), Decimal("6e15"))
     interaction = InteractionFactice()
 
     await _commande(bot, "fourchette supprimer").callback(interaction, nom="grosses")
 
     assert "✅" in " ".join(interaction.textes)
-    assert await bot.store.fourchettes() == []
+    assert await _magasin(bot).fourchettes() == []
 
 
 async def test_supprimer_inconnue_refuse_et_liste_les_noms():
     """Sans la liste, on ne saurait pas si c'est la casse ou une faute de frappe."""
     bot = await _bot()
-    await bot.store.ajouter_fourchette("grosses", Decimal("1e14"), Decimal("6e15"))
+    await _magasin(bot).ajouter_fourchette("grosses", Decimal("1e14"), Decimal("6e15"))
     interaction = InteractionFactice()
 
     await _commande(bot, "fourchette supprimer").callback(interaction, nom="fantome")
@@ -229,7 +229,7 @@ async def test_supprimer_inconnue_refuse_et_liste_les_noms():
 
 async def test_prix_modifie_les_bornes():
     bot = await _bot()
-    await bot.store.ajouter_fourchette("grosses", Decimal("1e14"), Decimal("6e15"))
+    await _magasin(bot).ajouter_fourchette("grosses", Decimal("1e14"), Decimal("6e15"))
     interaction = InteractionFactice()
 
     await _commande(bot, "fourchette prix").callback(
@@ -237,7 +237,7 @@ async def test_prix_modifie_les_bornes():
     )
 
     assert "✅" in " ".join(interaction.textes)
-    fourchette = (await bot.store.fourchettes())[0]
+    fourchette = (await _magasin(bot).fourchettes())[0]
     assert Decimal(fourchette["prix_max"]) == Decimal("1e12")
 
 
@@ -257,7 +257,7 @@ async def test_prix_sur_fourchette_inconnue_refuse():
 
 async def test_salon_ajouter_confirme_et_attache():
     bot = await _bot()
-    await bot.store.ajouter_fourchette("grosses", Decimal("1e14"), Decimal("6e15"))
+    await _magasin(bot).ajouter_fourchette("grosses", Decimal("1e14"), Decimal("6e15"))
     interaction = InteractionFactice()
 
     await _commande(bot, "fourchette salon ajouter").callback(
@@ -265,14 +265,14 @@ async def test_salon_ajouter_confirme_et_attache():
     )
 
     assert "✅" in " ".join(interaction.textes)
-    assert (await bot.store.fourchettes())[0]["salons"] == ["111"]
+    assert (await _magasin(bot).fourchettes())[0]["salons"] == ["111"]
 
 
 async def test_salon_ajouter_deux_fois_le_dit():
     """Un « ✅ » sur un ajout sans effet laisserait croire à un doublon créé."""
     bot = await _bot()
-    await bot.store.ajouter_fourchette("grosses", Decimal("1e14"), Decimal("6e15"))
-    await bot.store.ajouter_salon_fourchette("grosses", "111")
+    await _magasin(bot).ajouter_fourchette("grosses", Decimal("1e14"), Decimal("6e15"))
+    await _magasin(bot).ajouter_salon_fourchette("grosses", "111")
     interaction = InteractionFactice()
 
     await _commande(bot, "fourchette salon ajouter").callback(
@@ -281,7 +281,7 @@ async def test_salon_ajouter_deux_fois_le_dit():
 
     texte = " ".join(interaction.textes)
     assert "déjà" in texte
-    assert (await bot.store.fourchettes())[0]["salons"] == ["111"]
+    assert (await _magasin(bot).fourchettes())[0]["salons"] == ["111"]
 
 
 async def test_salon_ajouter_sur_fourchette_inconnue_refuse():
@@ -298,7 +298,7 @@ async def test_salon_ajouter_sur_fourchette_inconnue_refuse():
 async def test_salon_ajouter_refuse_sans_permission_decrire():
     """Sinon l'erreur n'apparaîtrait qu'à 09:00 le lendemain."""
     bot = await _bot()
-    await bot.store.ajouter_fourchette("grosses", Decimal("1e14"), Decimal("6e15"))
+    await _magasin(bot).ajouter_fourchette("grosses", Decimal("1e14"), Decimal("6e15"))
     interaction = InteractionFactice()
 
     await _commande(bot, "fourchette salon ajouter").callback(
@@ -308,7 +308,7 @@ async def test_salon_ajouter_refuse_sans_permission_decrire():
     )
 
     assert "Envoyer des messages" in " ".join(interaction.textes)
-    assert (await bot.store.fourchettes())[0]["salons"] == []
+    assert (await _magasin(bot).fourchettes())[0]["salons"] == []
 
 
 async def test_salon_ajouter_refuse_sans_permission_dintegrer():
@@ -318,7 +318,7 @@ async def test_salon_ajouter_refuse_sans_permission_dintegrer():
     vérifications passerait inaperçu.
     """
     bot = await _bot()
-    await bot.store.ajouter_fourchette("grosses", Decimal("1e14"), Decimal("6e15"))
+    await _magasin(bot).ajouter_fourchette("grosses", Decimal("1e14"), Decimal("6e15"))
     interaction = InteractionFactice()
 
     await _commande(bot, "fourchette salon ajouter").callback(
@@ -328,13 +328,13 @@ async def test_salon_ajouter_refuse_sans_permission_dintegrer():
     )
 
     assert "Intégrer des liens" in " ".join(interaction.textes)
-    assert (await bot.store.fourchettes())[0]["salons"] == []
+    assert (await _magasin(bot).fourchettes())[0]["salons"] == []
 
 
 async def test_salon_retirer_detache():
     bot = await _bot()
-    await bot.store.ajouter_fourchette("grosses", Decimal("1e14"), Decimal("6e15"))
-    await bot.store.ajouter_salon_fourchette("grosses", "111")
+    await _magasin(bot).ajouter_fourchette("grosses", Decimal("1e14"), Decimal("6e15"))
+    await _magasin(bot).ajouter_salon_fourchette("grosses", "111")
     interaction = InteractionFactice()
 
     await _commande(bot, "fourchette salon retirer").callback(
@@ -342,12 +342,12 @@ async def test_salon_retirer_detache():
     )
 
     assert "✅" in " ".join(interaction.textes)
-    assert (await bot.store.fourchettes())[0]["salons"] == []
+    assert (await _magasin(bot).fourchettes())[0]["salons"] == []
 
 
 async def test_salon_retirer_absent_le_dit():
     bot = await _bot()
-    await bot.store.ajouter_fourchette("grosses", Decimal("1e14"), Decimal("6e15"))
+    await _magasin(bot).ajouter_fourchette("grosses", Decimal("1e14"), Decimal("6e15"))
     interaction = InteractionFactice()
 
     await _commande(bot, "fourchette salon retirer").callback(
@@ -362,8 +362,8 @@ async def test_salon_retirer_absent_le_dit():
 
 async def test_liste_montre_bornes_et_salons():
     bot = await _bot()
-    await bot.store.ajouter_fourchette("grosses", Decimal("1e14"), Decimal("6e15"))
-    await bot.store.ajouter_salon_fourchette("grosses", "111")
+    await _magasin(bot).ajouter_fourchette("grosses", Decimal("1e14"), Decimal("6e15"))
+    await _magasin(bot).ajouter_salon_fourchette("grosses", "111")
     interaction = InteractionFactice()
 
     await _commande(bot, "fourchette liste").callback(interaction)
@@ -378,7 +378,7 @@ async def test_liste_montre_bornes_et_salons():
 async def test_liste_signale_une_fourchette_sans_salon():
     """Elle ne publiera rien : ça doit se voir sans avoir à le déduire."""
     bot = await _bot()
-    await bot.store.ajouter_fourchette("orpheline", Decimal("0"), Decimal("6e15"))
+    await _magasin(bot).ajouter_fourchette("orpheline", Decimal("0"), Decimal("6e15"))
     interaction = InteractionFactice()
 
     await _commande(bot, "fourchette liste").callback(interaction)
@@ -405,8 +405,10 @@ async def test_liste_vide_explique_quoi_faire():
 async def test_autocompletion_propose_les_fourchettes_existantes():
     """Sans elle, le nom serait retapé à la main à chaque commande."""
     bot = await _bot()
-    await bot.store.ajouter_fourchette("grosses-affaires", Decimal("1e14"), Decimal("6e15"))
-    await bot.store.ajouter_fourchette("petits-prix", Decimal("0"), Decimal("1e12"))
+    await _magasin(bot).ajouter_fourchette(
+        "grosses-affaires", Decimal("1e14"), Decimal("6e15")
+    )
+    await _magasin(bot).ajouter_fourchette("petits-prix", Decimal("0"), Decimal("1e12"))
 
     commande = _commande(bot, "fourchette prix")
     choix = await commande._params["nom"].autocomplete(InteractionFactice(), "")
@@ -416,8 +418,10 @@ async def test_autocompletion_propose_les_fourchettes_existantes():
 
 async def test_autocompletion_filtre_sur_la_saisie():
     bot = await _bot()
-    await bot.store.ajouter_fourchette("grosses-affaires", Decimal("1e14"), Decimal("6e15"))
-    await bot.store.ajouter_fourchette("petits-prix", Decimal("0"), Decimal("1e12"))
+    await _magasin(bot).ajouter_fourchette(
+        "grosses-affaires", Decimal("1e14"), Decimal("6e15")
+    )
+    await _magasin(bot).ajouter_fourchette("petits-prix", Decimal("0"), Decimal("1e12"))
 
     commande = _commande(bot, "fourchette prix")
     choix = await commande._params["nom"].autocomplete(InteractionFactice(), "pet")
