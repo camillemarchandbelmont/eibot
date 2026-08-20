@@ -20,11 +20,25 @@ from src.modules import Envoi, Publication, Tournee
 from src.tournee import faire_la_tournee
 
 
+class ServeurFactice:
+    def __init__(self, serveur_id: int):
+        self.id = serveur_id
+
+
 class SalonFactice:
-    def __init__(self, salon_id: int, erreur: Exception | None = None):
+    def __init__(
+        self,
+        salon_id: int,
+        erreur: Exception | None = None,
+        serveur: ServeurFactice | None = None,
+    ):
         self.id = salon_id
         self.mention = f"<#{salon_id}>"
         self.erreur = erreur
+        #: Le serveur du salon, laissé vide par défaut : la garde du
+        #: cloisonnement ne s'applique qu'aux magasins qui savent de quel serveur
+        #: ils sont, et la plupart des tests d'ici lisent la config commune.
+        self.guild = serveur
         self.envois: list[dict] = []
 
     async def send(self, contenu=None, **options):
@@ -46,9 +60,16 @@ class BotFactice:
             raise LookupError(f"salon {salon_id} introuvable")
         return salon
 
-    async def journaliser_publication(self, promos, reussis, echecs):
+    async def journaliser_publication(self, promos, reussis, echecs, magasin=None):
         self.journalisees.append(
-            {"compte": promos, "reussis": reussis, "echecs": echecs}
+            {
+                "compte": promos,
+                "reussis": reussis,
+                "echecs": echecs,
+                # Le magasin dont la tournée sort dit dans quel salon de logs
+                # raconter : chaque serveur a le sien.
+                "magasin": magasin,
+            }
         )
 
 
@@ -347,6 +368,71 @@ async def test_un_salon_introuvable_compte_comme_un_echec():
 
     assert "échec" in resultat
     assert bot.journalisees[0]["echecs"]
+
+
+# --- Le salon doit être dans le serveur dont on lit la configuration -------
+#
+# Une seule liste de salons couvrait autrefois tous les serveurs. Un id resté
+# dans les réglages d'un serveur alors qu'il désigne un salon d'ailleurs ferait
+# deux posts dans ce salon au lieu d'un. La garde est ici, au seul endroit qui
+# envoie ; `test_publication_par_serveur.py` en compte les messages de bout en
+# bout.
+
+
+async def test_sans_vue_de_serveur_aucun_salon_nest_ecarte():
+    """La configuration commune couvre des salons de plusieurs serveurs.
+
+    C'est celle que lit le site de contrôle, qui ne dit pas de quel serveur il
+    parle : y appliquer la garde ferait tout écarter, et le site cesserait de
+    publier sans rien annoncer.
+    """
+    salons = {1: SalonFactice(1, serveur=ServeurFactice(222))}
+    magasin = await _magasin()
+    publication = _publication(_tournee(("essai", ["1"])), heure_par_defaut="09:00")
+
+    await faire_la_tournee(publication, BotFactice(salons), magasin, _instant("09:30"))
+
+    assert salons[1].envois
+
+
+async def test_un_salon_du_bon_serveur_part_normalement():
+    """La garde ne doit pas se contenter d'écarter : elle doit laisser passer."""
+    salons = {1: SalonFactice(1, serveur=ServeurFactice(111))}
+    magasin = (await _magasin()).pour("111")
+    publication = _publication(_tournee(("essai", ["1"])), heure_par_defaut="09:00")
+
+    await faire_la_tournee(publication, BotFactice(salons), magasin, _instant("09:30"))
+
+    assert salons[1].envois
+
+
+async def test_un_salon_sans_serveur_est_ecarte():
+    """Un salon que discord.py n'a pas su rattacher n'est dans aucun serveur.
+
+    Le laisser passer serait pire que l'écarter : « je n'ai pas pu vérifier »
+    deviendrait « c'est bon », précisément dans le cas douteux.
+    """
+    salons = {1: SalonFactice(1)}
+    magasin = (await _magasin()).pour("111")
+    bot = BotFactice(salons)
+    publication = _publication(_tournee(("essai", ["1"])), heure_par_defaut="09:00")
+
+    await faire_la_tournee(publication, bot, magasin, _instant("09:30"))
+
+    assert salons[1].envois == []
+    assert list(bot.journalisees[0]["echecs"]) == ["<#1> (essai)"]
+
+
+async def test_le_journal_recoit_le_magasin_de_la_tournee():
+    """C'est lui qui dit dans quel salon de logs raconter : un par serveur."""
+    salons = {1: SalonFactice(1, serveur=ServeurFactice(111))}
+    magasin = (await _magasin()).pour("111")
+    bot = BotFactice(salons)
+    publication = _publication(_tournee(("essai", ["1"])), heure_par_defaut="09:00")
+
+    await faire_la_tournee(publication, bot, magasin, _instant("09:30"))
+
+    assert bot.journalisees[0]["magasin"] is magasin
 
 
 # --- La panne de préparation --------------------------------------------

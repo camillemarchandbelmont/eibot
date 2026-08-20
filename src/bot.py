@@ -244,66 +244,133 @@ class EmpireBot(discord.Client):
         return salon
 
     async def publier_si_lheure(self, forcer: bool = False) -> str:
-        """Les promotions, si c'est l'heure. Appelée par `/tick` et la boucle.
+        """Les promotions depuis la configuration **commune**, si c'est l'heure.
 
-        Ne fait plus que déléguer : la mécanique est dans `src.tournee`, ce qui
-        est propre aux promotions dans `src.modules.promos`. Le nom reste pour
-        `/fourchette apercu`, le site de contrôle et les tests, qui l'appellent
-        tel quel.
+        La tournée quotidienne ne passe plus par là : `publier_tout` la fait une
+        fois par serveur. Le nom reste pour le site de contrôle, qui ne dit pas de
+        quel serveur il parle et continue de lire la configuration commune.
         """
         return await self.faire_publication(module_promos.PUBLICATION, forcer=forcer)
 
     async def publier_filiales_si_lheure(self, forcer: bool = False) -> str:
-        """Le tableau des frais, si c'est son heure. Même délégation."""
+        """Le tableau des frais, depuis la configuration commune. Même rôle."""
         return await self.faire_publication(
             module_filiales.PUBLICATION, forcer=forcer
         )
 
-    async def faire_publication(self, publication, forcer: bool = False) -> str:
+    async def faire_publication(
+        self, publication, magasin=None, forcer: bool = False
+    ) -> str:
         """Une publication quelconque, la même mécanique pour toutes.
 
-        Le fuseau vient de la configuration, et non de l'horloge du serveur : Render
-        tourne en UTC, où « 09:00 » n'est pas la même heure qu'à Paris.
+        `magasin` désigne la configuration à lire : la vue d'un serveur pour la
+        tournée quotidienne, le magasin commun sans lui — le site de contrôle ne
+        dit pas de quel serveur il parle.
+
+        Le fuseau vient de la configuration lue, et non de l'horloge du serveur :
+        Render tourne en UTC, où « 09:00 » n'est pas la même heure qu'à Paris. De
+        celle-ci et non de la commune : deux entreprises peuvent vivre dans deux
+        fuseaux, et l'heure réglée dans un serveur n'aurait pas de sens dans
+        l'autre.
         """
-        config = await self.store.config()
+        magasin = self.store if magasin is None else magasin
+        config = await magasin.config()
         maintenant = maintenant_local(config["fuseau"])
         return await faire_la_tournee(
-            publication, self, self.store, maintenant, forcer=forcer
+            publication, self, magasin, maintenant, forcer=forcer
         )
+
+    def publications(self) -> list:
+        """Toutes les publications déclarées par les modules chargés.
+
+        Lues dans les modules et non écrites en dur : c'est exactement ce qui fait
+        qu'un module déclarant une troisième publication la voit partir sans
+        qu'on touche à la boucle. L'ordre est celui des modules, donc celui du
+        menu.
+        """
+        return [
+            publication
+            for module in self.modules
+            for publication in module.publications
+        ]
 
     async def publier_tout(self, forcer: bool = False) -> str:
         """Le tour complet appelé par `/tick` et la boucle interne.
 
-        Les deux publications sont **isolées** : la panne de l'export du jeu ne
-        doit pas faire taire un tableau dont les données sont saisies à la main,
-        et réciproquement. Chaque panne reste dans le compte rendu — avalée en
-        silence, on croirait que tout est normal.
+        Un tour **par serveur**, chacun sur sa propre configuration : c'est ce qui
+        donne à chaque entreprise ses fourchettes, son heure, ses salons et sa
+        trace de « déjà publié ». Un serveur qui n'a rien réglé ne publie nulle
+        part — il n'y a pas de repli sur la configuration commune, et
+        `/reglages importer` est le pont.
+
+        Chaque publication est **isolée**, et isolée par serveur : la panne de
+        l'export du jeu ne doit pas faire taire un tableau dont les données sont
+        saisies à la main, ni les autres entreprises. Chaque panne reste dans le
+        compte rendu — avalée en silence, on croirait que tout est normal.
         """
+        if not self.guilds:
+            # Une chaîne vide se lirait comme une panne du service dans la réponse
+            # au cron, qui passe toutes les cinq minutes.
+            return "aucun serveur"
+
+        publications = self.publications()
         comptes = []
-        for publier, quoi in (
-            (self.publier_si_lheure, "promotions"),
-            (self.publier_filiales_si_lheure, "filiales"),
-        ):
-            try:
-                comptes.append(await publier(forcer=forcer))
-            except Exception as erreur:
-                log.warning("Publication des %s impossible : %s", quoi, erreur)
-                comptes.append(f"{quoi} : {type(erreur).__name__} : {erreur}")
-        return " · ".join(comptes)
+        for serveur in self.guilds:
+            magasin = self.store.pour(serveur.id)
+            rendus = []
+            for publication in publications:
+                try:
+                    rendus.append(
+                        await self.faire_publication(
+                            publication, magasin=magasin, forcer=forcer
+                        )
+                    )
+                except Exception as erreur:
+                    log.warning(
+                        "Publication « %s » impossible dans %s : %s",
+                        publication.titre, serveur.id, erreur,
+                    )
+                    rendus.append(
+                        f"{publication.titre} : {type(erreur).__name__} : {erreur}"
+                    )
+            # « Aucune publication » et non rien : un nom de serveur suivi du vide
+            # se lirait comme « tout va bien », alors que tous les modules ont pu
+            # être écartés au démarrage.
+            comptes.append(
+                f"{serveur.name} — " + (" · ".join(rendus) or "aucune publication")
+            )
+        return " | ".join(comptes)
 
     # --- Journal : un observateur ne doit jamais bloquer l'essentiel --------
 
     async def journaliser_publication(
-        self, promos: int, reussis: list[str], echecs: dict[str, str]
+        self,
+        promos: int,
+        reussis: list[str],
+        echecs: dict[str, str],
+        magasin=None,
     ) -> None:
         """Publique : c'est par là que le moteur de tournée rend ses comptes.
+
+        `magasin` est la configuration dont la tournée sort, donc celle qui dit
+        dans quel salon de logs raconter. Un serveur a le sien : raconter la
+        tournée de l'un dans le salon de l'autre mélangerait deux entreprises dans
+        un même fil, et donnerait à chacune les ids de salons de l'autre.
 
         La panne est avalée ici, à l'unique endroit qui appelle le journal — un
         observateur ne doit jamais bloquer ce qu'il observe, et dupliquer la garde
         dans le moteur en ferait deux à maintenir.
         """
+        # Un journal à part pour la vue d'un serveur seulement : `self.journal` est
+        # celui de la configuration commune, et c'est lui qui doit continuer de
+        # servir le site de contrôle et les modules refusés au démarrage.
+        journal = (
+            Journal(self, magasin)
+            if getattr(magasin, "serveur_id", None) is not None
+            else self.journal
+        )
         try:
-            await self.journal.publication(promos=promos, reussis=reussis, echecs=echecs)
+            await journal.publication(promos=promos, reussis=reussis, echecs=echecs)
         except Exception:
             log.warning("Journal Discord indisponible.", exc_info=True)
 

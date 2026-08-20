@@ -116,6 +116,30 @@ async def retirer_un_salon(
     return True
 
 
+def _ailleurs(salon: Any, serveur_id: str | None) -> str:
+    """Pourquoi ce salon n'est pas dans ce serveur — chaîne vide s'il y est.
+
+    Une seule liste de salons couvrait autrefois tous les serveurs. Un id resté
+    dans les réglages d'un serveur alors qu'il désigne un salon d'ailleurs — une
+    reprise de configuration trop large, un id recopié à la main — ferait deux
+    posts dans ce salon au lieu d'un, et personne n'y verrait d'erreur.
+
+    `serveur_id` vaut None quand le magasin n'est pas la vue d'un serveur : le
+    site de contrôle ne dit pas de quel serveur il parle, et sa configuration
+    couvre des salons de plusieurs. Appliquer la garde là ferait tout écarter.
+    """
+    if serveur_id is None:
+        return ""
+    hote = getattr(getattr(salon, "guild", None), "id", None)
+    if hote is None:
+        # Un message privé, ou un salon que discord.py n'a pas su rattacher : il
+        # n'appartient à aucun serveur, donc pas à celui-ci.
+        return "salon hors serveur"
+    if str(hote) == serveur_id:
+        return ""
+    return f"salon du serveur {hote}, pas de {serveur_id}"
+
+
 async def faire_la_tournee(
     publication: Publication,
     bot: Any,
@@ -146,6 +170,14 @@ async def faire_la_tournee(
 
     reussis: list[str] = []
     echecs: dict[str, str] = {}
+    # Les salons d'un autre serveur, tenus à part des pannes : voir plus bas
+    # pourquoi eux seuls n'empêchent pas de marquer la journée.
+    etrangers: dict[str, str] = {}
+
+    # Lu sur le magasin plutôt que reçu en argument : la garde vise ainsi
+    # forcément le serveur dont on vient de lire la configuration. Passé à part,
+    # rien n'empêcherait les deux de se contredire.
+    serveur_id = getattr(magasin, "serveur_id", None)
 
     for envoi in tournee.envois:
         for salon_id in envoi.salons:
@@ -154,10 +186,26 @@ async def faire_la_tournee(
             ou = f"<#{salon_id}> ({envoi.etiquette})"
             try:
                 salon = await bot.resoudre_salon(salon_id)
-                await envoi.envoyer(salon)
             except Exception as erreur:
                 # Un salon cassé — supprimé, permissions retirées — ne doit pas
                 # priver les autres : on note et on continue.
+                log.warning(
+                    "%s impossible dans %s : %s", publication.titre, salon_id, erreur
+                )
+                echecs[ou] = f"{type(erreur).__name__}: {erreur}"
+                continue
+
+            ailleurs = _ailleurs(salon, serveur_id)
+            if ailleurs:
+                log.warning(
+                    "%s : %s écarté (%s).", publication.titre, salon_id, ailleurs
+                )
+                etrangers[ou] = ailleurs
+                continue
+
+            try:
+                await envoi.envoyer(salon)
+            except Exception as erreur:
                 log.warning(
                     "%s impossible dans %s : %s", publication.titre, salon_id, erreur
                 )
@@ -166,14 +214,29 @@ async def faire_la_tournee(
                 reussis.append(ou)
 
     # Le journal passe par le bot, qui avale ses propres pannes : un observateur
-    # ne doit jamais bloquer ce qu'il observe.
-    await bot.journaliser_publication(tournee.compte, reussis, echecs)
+    # ne doit jamais bloquer ce qu'il observe. Les salons d'ailleurs y figurent
+    # avec les pannes : le journal est l'endroit où l'on va chercher pourquoi un
+    # salon est resté muet, et le taire le ferait passer pour une panne.
+    await bot.journaliser_publication(
+        tournee.compte, reussis, {**echecs, **etrangers}, magasin=magasin
+    )
 
     if not reussis:
-        # Rien n'est parti : la journée reste à faire et le passage suivant
-        # réessaiera.
-        log.error("%s échouée dans les %d envois.", publication.titre, len(echecs))
-        return f"{publication.titre} : échec dans les {len(echecs)} envoi(s)"
+        if echecs:
+            # Rien n'est parti et une panne peut passer : la journée reste à faire
+            # et le passage suivant réessaiera.
+            log.error("%s échouée dans les %d envois.", publication.titre, len(echecs))
+            return f"{publication.titre} : échec dans les {len(echecs)} envoi(s)"
+
+        # Que des salons d'un autre serveur. La journée est quand même marquée :
+        # un salon d'ailleurs est une erreur de réglage, pas une panne passagère.
+        # Réessayer toutes les cinq minutes ne le rapprocherait pas, et écrirait
+        # près de trois cents lignes par jour dans le salon de logs.
+        await marquer_le_jour(publication, magasin, maintenant.strftime("%Y-%m-%d"))
+        return (
+            f"{publication.titre} : rien envoyé, "
+            f"{len(etrangers)} salon(s) d'un autre serveur"
+        )
 
     # Marqué dès qu'un salon a reçu le post : sinon le passage suivant reposterait
     # là où ça avait marché.
@@ -187,4 +250,10 @@ async def faire_la_tournee(
     # « Envois » et non « salons » : un salon servant deux envois en reçoit deux,
     # et le compter une fois annoncerait moins que ce qui est parti.
     resume = f", {tournee.resume}" if tournee.resume else ""
-    return f"{publication.titre} : publié ({len(reussis)}/{total} envois{resume})"
+    ailleurs = (
+        f", {len(etrangers)} salon(s) d'un autre serveur" if etrangers else ""
+    )
+    return (
+        f"{publication.titre} : publié "
+        f"({len(reussis)}/{total} envois{resume}){ailleurs}"
+    )

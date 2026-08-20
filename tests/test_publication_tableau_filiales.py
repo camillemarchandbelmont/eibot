@@ -13,13 +13,33 @@ import pytest
 
 from src.bot import EmpireBot
 from src.db import Store
+from src.modules import filiales as module_filiales
+from src.modules import promos as module_promos
 from src.schedule import maintenant_local
 from src.source import SourceError
 
 
+class ServeurFactice:
+    def __init__(self, serveur_id: int, nom: str = "Empire Immo"):
+        self.id = serveur_id
+        self.name = nom
+
+
+#: Le serveur du tour complet. Les autres tests d'ici lisent la configuration
+#: commune, où le serveur d'un salon n'entre pas en compte.
+SERVEUR = ServeurFactice(111)
+
+
 class SalonFactice:
-    def __init__(self, salon_id: int, erreur: Exception | None = None):
+    def __init__(
+        self,
+        salon_id: int,
+        erreur: Exception | None = None,
+        serveur: ServeurFactice | None = SERVEUR,
+    ):
         self.id = salon_id
+        self.name = f"salon-{salon_id}"
+        self.guild = serveur
         self.mention = f"<#{salon_id}>"
         self.erreur = erreur
         self.envois: list[dict] = []
@@ -95,16 +115,33 @@ def _maintenant() -> str:
     return maintenant_local("Europe/Paris").strftime("%H:%M")
 
 
-async def _bot(salons: dict[int, SalonFactice], source=None) -> EmpireBot:
+class BotDeTest(EmpireBot):
+    """`EmpireBot` dont on choisit les serveurs.
+
+    `guilds` est une propriété en lecture seule de `discord.Client` : la
+    redéfinir dans une sous-classe est le seul moyen de la garnir sans se
+    connecter à Discord.
+    """
+
+    @property
+    def guilds(self):
+        return self._serveurs
+
+
+async def _bot(salons: dict[int, SalonFactice], source=None) -> BotDeTest:
     """Bot sans connexion Discord, comme dans `test_publication_fourchettes`."""
     store = Store(dsn="")
     await store.connect()
 
-    bot = object.__new__(EmpireBot)
+    bot = object.__new__(BotDeTest)
     bot.store = store
     bot.source = source or SourceFactice()
     bot.journal = JournalFactice()
     bot.get_channel = salons.get
+    bot._serveurs = [SERVEUR]
+    # Le tour complet lit les publications des modules chargés : rien n'est écrit
+    # en dur dans la boucle, donc rien à écrire en dur ici non plus.
+    bot.modules = [module_promos.MODULE, module_filiales.MODULE]
     return bot
 
 
@@ -288,15 +325,20 @@ async def test_les_envois_sont_journalises():
 
 
 # --- Le tour complet, appelé par /tick --------------------------------------
+#
+# Le tour lit la configuration **du serveur**, une par entreprise : ce qui est
+# éprouvé ici reste l'indépendance des deux publications entre elles. Le
+# cloisonnement lui-même est dans `test_publication_par_serveur.py`.
 
 
 async def test_le_tour_publie_les_promotions_et_le_tableau():
     salons = {1: SalonFactice(1), 9: SalonFactice(9)}
     bot = await _bot(salons)
-    await bot.store.ajouter_fourchette("grosses", Decimal("1e15"), Decimal("6e15"))
-    await bot.store.ajouter_salon_fourchette("grosses", "9")
-    await bot.store.ajouter_salon_filiales("1")
-    await bot.store.maj_config(heure=_maintenant(), filiales_heure=_maintenant())
+    magasin = bot.store.pour(SERVEUR.id)
+    await magasin.ajouter_fourchette("grosses", Decimal("1e15"), Decimal("6e15"))
+    await magasin.ajouter_salon_fourchette("grosses", "9")
+    await magasin.ajouter_salon_filiales("1")
+    await magasin.maj_config(heure=_maintenant(), filiales_heure=_maintenant())
 
     resultat = await bot.publier_tout()
 
@@ -312,10 +354,11 @@ async def test_une_panne_des_promotions_laisse_sortir_le_tableau():
     doivent pas en dépendre."""
     salons = {1: SalonFactice(1)}
     bot = await _bot(salons, source=SourceEnPanne())
-    await bot.store.ajouter_fourchette("grosses", Decimal("1e15"), Decimal("6e15"))
-    await bot.store.ajouter_salon_fourchette("grosses", "1")
-    await bot.store.ajouter_salon_filiales("1")
-    await bot.store.maj_config(heure=_maintenant(), filiales_heure=_maintenant())
+    magasin = bot.store.pour(SERVEUR.id)
+    await magasin.ajouter_fourchette("grosses", Decimal("1e15"), Decimal("6e15"))
+    await magasin.ajouter_salon_fourchette("grosses", "1")
+    await magasin.ajouter_salon_filiales("1")
+    await magasin.maj_config(heure=_maintenant(), filiales_heure=_maintenant())
 
     resultat = await bot.publier_tout()
 
@@ -362,13 +405,14 @@ async def test_tick_declenche_le_tour_complet():
 async def test_une_panne_du_tableau_laisse_sortir_les_promotions():
     salons = {9: SalonFactice(9)}
     bot = await _bot(salons)
-    await bot.store.ajouter_fourchette("grosses", Decimal("1e15"), Decimal("6e15"))
-    await bot.store.ajouter_salon_fourchette("grosses", "9")
-    await bot.store.maj_config(heure=_maintenant(), filiales_heure=_maintenant())
+    magasin = bot.store.pour(SERVEUR.id)
+    await magasin.ajouter_fourchette("grosses", Decimal("1e15"), Decimal("6e15"))
+    await magasin.ajouter_salon_fourchette("grosses", "9")
+    await magasin.maj_config(heure=_maintenant(), filiales_heure=_maintenant())
 
     # Salon des filiales introuvable : `get_channel` renvoie None et l'envoi
     # lèvera.
-    await bot.store.ajouter_salon_filiales("404")
+    await magasin.ajouter_salon_filiales("404")
 
     resultat = await bot.publier_tout()
 

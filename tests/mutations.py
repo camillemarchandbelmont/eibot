@@ -478,6 +478,179 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
         "            pass",
         "un salon réglé avant le multi-salon perdrait son nom de la même façon",
     ),
+    # --- src/tournee.py, src/bot.py : la tournée, une par serveur -----------
+    #
+    # Cloisonner le stockage ne sert a rien tant que la boucle d'envoi n'en
+    # tient pas compte : chaque serveur publierait dans les salons de tous les
+    # autres, deux messages par salon au lieu d'un. Compter les messages est le
+    # seul vrai juge, et c'est ce que ces motifs obligent les tests a faire.
+    (
+        "cloisonnement-tournee-sans-garde",
+        "src/tournee.py",
+        '    serveur_id = getattr(magasin, "serveur_id", None)',
+        "    serveur_id = None",
+        "chaque serveur publierait dans les salons de tous les autres : deux "
+        "messages par salon, et personne n'y verrait d'erreur",
+    ),
+    (
+        "cloisonnement-garde-aussi-sur-la-config-commune",
+        "src/tournee.py",
+        '    if serveur_id is None:\n        return ""',
+        '    if False:\n        return ""',
+        "le site de contrôle ne dit pas de quel serveur il parle : tous ses "
+        "salons seraient écartés, et il cesserait de publier sans rien annoncer",
+    ),
+    (
+        "cloisonnement-salon-sans-serveur-laisse-passer",
+        "src/tournee.py",
+        '        return "salon hors serveur"',
+        '        return ""',
+        "« je n'ai pas pu vérifier » deviendrait « c'est bon », précisément "
+        "dans le cas douteux",
+    ),
+    (
+        "cloisonnement-garde-compare-un-id-a-un-texte",
+        "src/tournee.py",
+        "    if str(hote) == serveur_id:",
+        "    if hote == serveur_id:",
+        "l'id Discord est un int et le tiroir une chaîne : aucun salon ne "
+        "collerait jamais, et plus rien ne partirait",
+    ),
+    (
+        "cloisonnement-salon-etranger-servi-quand-meme",
+        "src/tournee.py",
+        "                etrangers[ou] = ailleurs\n                continue",
+        "                etrangers[ou] = ailleurs",
+        "le salon d'un autre serveur serait signalé dans le journal **et** "
+        "servi : le pire des deux, une trace qui dit le contraire des faits",
+    ),
+    (
+        "cloisonnement-salon-etranger-tu-dans-le-journal",
+        "src/tournee.py",
+        "        tournee.compte, reussis, {**echecs, **etrangers}, magasin=magasin",
+        "        tournee.compte, reussis, echecs, magasin=magasin",
+        "un salon resté muet sans trace ressemble à une panne : on chercherait "
+        "un bug là où il n'y a qu'un id à corriger",
+    ),
+    (
+        "cloisonnement-journal-sans-le-magasin",
+        "src/tournee.py",
+        "        tournee.compte, reussis, {**echecs, **etrangers}, magasin=magasin",
+        "        tournee.compte, reussis, {**echecs, **etrangers}",
+        "la tournée de chaque serveur serait racontée dans le salon de logs du "
+        "commun : deux entreprises mêlées dans un même fil",
+    ),
+    (
+        "cloisonnement-salon-etranger-bloque-la-journee",
+        "src/tournee.py",
+        "    if not reussis:\n        if echecs:",
+        "    if not reussis:\n        if True:",
+        "un id mal repris ferait réessayer toutes les cinq minutes, sans espoir "
+        "et à 288 lignes de logs par jour",
+    ),
+    (
+        "cloisonnement-panne-ne-laisse-plus-la-journee-a-faire",
+        "src/tournee.py",
+        "    if not reussis:\n        if echecs:",
+        "    if not reussis:\n        if False:",
+        "l'inverse : des permissions retirées une minute coûteraient le post du "
+        "jour, la journée étant marquée sans que rien ne soit parti",
+    ),
+    (
+        "cloisonnement-tour-sur-la-configuration-commune",
+        "src/bot.py",
+        "            magasin = self.store.pour(serveur.id)",
+        "            magasin = self.store",
+        "le tour quotidien relirait la configuration d'avant : une seule heure, "
+        "une seule liste de salons, pour toutes les entreprises",
+    ),
+    (
+        "cloisonnement-tour-du-premier-serveur-seul",
+        "src/bot.py",
+        "        for serveur in self.guilds:",
+        "        for serveur in self.guilds[:1]:",
+        "les entreprises suivantes ne publieraient plus rien, et leur silence "
+        "ne se remarquerait que le lendemain",
+    ),
+    (
+        "cloisonnement-fuseau-du-magasin-commun",
+        "src/bot.py",
+        "        config = await magasin.config()\n"
+        '        maintenant = maintenant_local(config["fuseau"])',
+        "        config = await self.store.config()\n"
+        '        maintenant = maintenant_local(config["fuseau"])',
+        "l'heure réglée dans un serveur serait lue dans le fuseau d'un autre : "
+        "le post sortirait à côté, ou pas du tout",
+    ),
+    (
+        "cloisonnement-publications-ecrites-en-dur",
+        "src/bot.py",
+        "        publications = self.publications()",
+        "        publications = [module_promos.PUBLICATION, module_filiales.PUBLICATION]",
+        "un module déclarant une troisième publication ne publierait rien, sans "
+        "que rien ne le signale",
+    ),
+    (
+        "cloisonnement-une-seule-publication-par-module",
+        "src/bot.py",
+        "            publication\n"
+        "            for module in self.modules\n"
+        "            for publication in module.publications",
+        "            publication\n"
+        "            for module in self.modules\n"
+        "            for publication in module.publications[:1]",
+        "un module qui déclare deux posts n'en sortirait qu'un : le plafond que "
+        "le contrat de module est censé avoir levé",
+    ),
+    (
+        "cloisonnement-tour-du-premier-module-seul",
+        "src/bot.py",
+        "            publication\n            for module in self.modules",
+        "            publication\n            for module in self.modules[:1]",
+        "le tableau des frais ne sortirait jamais : le tour ne demanderait ses "
+        "publications qu'au premier module",
+    ),
+    (
+        "cloisonnement-panne-dun-serveur-interrompt-le-tour",
+        "src/bot.py",
+        "                except Exception as erreur:",
+        "                except ZeroDivisionError as erreur:",
+        "un export du jeu illisible ferait taire un tableau qui n'en dépend "
+        "pas, et toutes les entreprises suivantes avec lui : la boucle "
+        "s'arrêterait avant de les atteindre",
+    ),
+    (
+        "cloisonnement-journal-toujours-celui-du-commun",
+        "src/bot.py",
+        '            if getattr(magasin, "serveur_id", None) is not None',
+        "            if False",
+        "chaque serveur raconterait sa tournée dans le salon de logs commun, en "
+        "y donnant les ids de salons des autres",
+    ),
+    (
+        "cloisonnement-sans-serveur-rendu-vide",
+        "src/bot.py",
+        '            return "aucun serveur"',
+        '            return ""',
+        "une réponse vide au cron, toutes les cinq minutes, se lirait comme une "
+        "panne du service",
+    ),
+    (
+        "cloisonnement-serveur-non-nomme-dans-le-rendu",
+        "src/bot.py",
+        '                f"{serveur.name} — " + (',
+        '                "" + (',
+        "`/tick` répondrait deux fois « publié » sans dire dans quelle "
+        "entreprise, donc sans permettre de trouver celle qui manque",
+    ),
+    (
+        "cloisonnement-aucune-publication-passee-sous-silence",
+        "src/bot.py",
+        '" · ".join(rendus) or "aucune publication"',
+        '" · ".join(rendus)',
+        "un nom de serveur suivi de rien se lirait comme « tout va bien », "
+        "alors que tous les modules ont pu être écartés au démarrage",
+    ),
     # --- src/tournee.py : la mécanique d'envoi, une pour toutes -------------
     #
     # Elle était écrite deux fois dans bot.py, une par publication. Les motifs
@@ -493,8 +666,12 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
     (
         "tournee-publie-plusieurs-fois-par-jour",
         "src/tournee.py",
+        # Le commentaire fait partie du motif : la marque est posée à deux
+        # endroits depuis le cloisonnement (l'un pour les salons d'un autre
+        # serveur), et la ligne seule serait trouvée deux fois -- donc ignorée.
+        "    # là où ça avait marché.\n"
         '    await marquer_le_jour(publication, magasin, maintenant.strftime("%Y-%m-%d"))',
-        "    pass",
+        "    # là où ça avait marché.\n    pass",
         "le post repartirait à chaque passage du cron, toutes les cinq minutes",
     ),
     (
@@ -1403,20 +1580,11 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
         "    salons = await magasin.salons()",
         "les frais de l'entreprise partiraient dans le salon des promotions",
     ),
-    (
-        "bot-tour-sans-le-tableau",
-        "src/bot.py",
-        '            (self.publier_filiales_si_lheure, "filiales"),',
-        "",
-        "le tableau ne sortirait jamais : /tick ne l'appellerait plus",
-    ),
-    (
-        "bot-tour-sans-isolation-des-pannes",
-        "src/bot.py",
-        "            except Exception as erreur:\n                log.warning(\"Publication des %s impossible : %s\", quoi, erreur)",
-        "            except _JamaisLevee as erreur:\n                log.warning(\"Publication des %s impossible : %s\", quoi, erreur)",
-        "une API du jeu en panne ferait taire un tableau qui n'en dépend pas",
-    ),
+    # `bot-tour-sans-le-tableau` et `bot-tour-sans-isolation-des-pannes` vivaient
+    # ici : ils visaient la liste des deux publications ecrite en dur dans
+    # `publier_tout`, que le tour par serveur a remplacee. Leurs equivalents sont
+    # dans le lot `cloisonnement-` : `cloisonnement-tour-du-premier-module-seul`
+    # et `cloisonnement-panne-dun-serveur-interrompt-le-tour`.
     (
         "bot-filiales-heure-ecrit-celle-des-promotions",
         "src/modules/filiales.py",
