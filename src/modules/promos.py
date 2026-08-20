@@ -28,6 +28,7 @@ from src.commandes import (
     bornes_demandees,
     lister_fourchettes,
     permissions_manquantes,
+    pour_ce_serveur,
 )
 from src.db import bornes_tolerees
 from src.modules import Envoi, Module, Publication, Tournee
@@ -206,7 +207,9 @@ def enregistrer(bot: Any) -> None:
     ) -> None:
         await interaction.response.defer()
         try:
-            prix_min, prix_max = await bornes_demandees(bot, min, max)
+            prix_min, prix_max = await bornes_demandees(
+                pour_ce_serveur(bot, interaction), min, max
+            )
         except MoneyError as erreur:
             await interaction.followup.send(
                 f"❌ {erreur}\n{aide_montants()}", ephemeral=True

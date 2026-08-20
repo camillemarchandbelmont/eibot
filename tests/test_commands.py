@@ -56,11 +56,24 @@ class Followup:
         self.messages.append({"contenu": contenu, **options})
 
 
+#: Le serveur où ces commandes sont tapées. Chaque serveur a sa configuration :
+#: une commande lit celle du serveur où elle est tapée, et le montage doit donc
+#: passer par le même tiroir.
+SERVEUR = 999
+
+
+class ServeurFactice:
+    def __init__(self, serveur_id: int = SERVEUR):
+        self.id = serveur_id
+        self.name = f"Serveur {serveur_id}"
+
+
 class InteractionFactice:
     def __init__(self, admin: bool = True, membre_id: int = 1):
         self.user = Utilisateur(admin, membre_id)
         self.response = Reponse()
         self.followup = Followup()
+        self.guild = ServeurFactice()
 
     @property
     def embeds(self) -> list:
@@ -241,8 +254,9 @@ async def test_apercu_affiche_lerreur_de_source():
     from decimal import Decimal
 
     bot = await _bot(SourceEnPanne())
-    await bot.store.ajouter_fourchette("grosses", Decimal("1e14"), Decimal("6e15"))
-    await bot.store.ajouter_salon_fourchette("grosses", "111")
+    magasin = bot.store.pour(SERVEUR)
+    await magasin.ajouter_fourchette("grosses", Decimal("1e14"), Decimal("6e15"))
+    await magasin.ajouter_salon_fourchette("grosses", "111")
     interaction = InteractionFactice()
 
     await _commande(bot, "fourchette apercu").callback(interaction)

@@ -73,8 +73,14 @@ class SalonFactice:
         return Permissions()
 
 
+#: Le serveur où les commandes de ces tests sont tapées. Nommé plutôt qu'écrit
+#: deux fois : chaque serveur a sa configuration, et une assertion qui irait
+#: chercher un autre id lirait un tiroir vide en croyant constater une panne.
+SERVEUR = 999
+
+
 class ServeurFactice:
-    def __init__(self, serveur_id: int = 999):
+    def __init__(self, serveur_id: int = SERVEUR):
         self.id = serveur_id
         self.name = f"Serveur {serveur_id}"
 
@@ -119,6 +125,15 @@ async def _bot() -> EmpireBot:
     store = Store(dsn="")
     await store.connect()
     return EmpireBot(store, SourceFactice())
+
+
+def _magasin(bot: EmpireBot):
+    """La configuration du serveur où `InteractionFactice` tape ses commandes.
+
+    Le montage et les assertions passent par elle, comme les commandes : réglé
+    dans la configuration commune, rien ne serait lu.
+    """
+    return bot.store.pour(SERVEUR)
 
 
 # --- /fourchette ajouter ----------------------------------------------------

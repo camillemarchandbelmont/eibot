@@ -16,12 +16,18 @@ from src.commandes import ajouter_les_commandes_de_publication
 from src.modules import Envoi, Publication, Tournee
 from src.schedule import maintenant_local
 
-from tests.test_commandes_fourchettes import InteractionFactice, SalonFactice, _bot
+from tests.test_commandes_fourchettes import (
+    InteractionFactice,
+    SalonFactice,
+    ServeurFactice,
+    _bot,
+    _magasin,
+)
 
 
 async def _aujourdhui(bot) -> str:
     """La date du jour telle que le moteur l'écrira, pas telle qu'on l'écrit ici."""
-    return maintenant_local((await bot.store.config())["fuseau"]).strftime("%Y-%m-%d")
+    return maintenant_local((await _magasin(bot).config())["fuseau"]).strftime("%Y-%m-%d")
 
 
 def _publication(tournee: Tournee | None = None, **surcharges) -> Publication:
@@ -123,7 +129,7 @@ async def test_heure_enregistre_et_confirme():
     await _commande(bot, "bonjour heure").callback(interaction, heure="21:30")
 
     assert "21:30" in " ".join(interaction.textes)
-    assert await bot.store.get("publication:bonjour:heure") == "21:30"
+    assert await _magasin(bot).get("publication:bonjour:heure") == "21:30"
 
 
 async def test_heure_est_normalisee_avant_d_etre_rangee():
@@ -134,7 +140,7 @@ async def test_heure_est_normalisee_avant_d_etre_rangee():
 
     await _commande(bot, "bonjour heure").callback(interaction, heure="9:5")
 
-    assert await bot.store.get("publication:bonjour:heure") == "09:05"
+    assert await _magasin(bot).get("publication:bonjour:heure") == "09:05"
 
 
 async def test_une_heure_illisible_est_refusee_sans_rien_ecrire():
@@ -145,7 +151,7 @@ async def test_une_heure_illisible_est_refusee_sans_rien_ecrire():
     await _commande(bot, "bonjour heure").callback(interaction, heure="midi")
 
     assert "❌" in " ".join(interaction.textes)
-    assert await bot.store.get("publication:bonjour:heure") is None
+    assert await _magasin(bot).get("publication:bonjour:heure") is None
 
 
 async def test_regler_l_heure_oublie_la_marque_du_jour():
@@ -156,13 +162,13 @@ async def test_regler_l_heure_oublie_la_marque_du_jour():
     """
     bot = await _bot()
     await _groupe(bot, _publication())
-    await bot.store.set("publication:bonjour:derniere", "2026-08-19")
+    await _magasin(bot).set("publication:bonjour:derniere", "2026-08-19")
 
     await _commande(bot, "bonjour heure").callback(
         InteractionFactice(), heure="21:30"
     )
 
-    assert await bot.store.get("publication:bonjour:derniere") is None
+    assert await _magasin(bot).get("publication:bonjour:derniere") is None
 
 
 async def test_heure_ecrit_ou_la_publication_le_demande():
@@ -188,7 +194,7 @@ async def test_heure_ecrit_ou_la_publication_le_demande():
     await _commande(bot, "bonjour heure").callback(interaction, heure="21:30")
 
     assert ecrites == ["21:30"]
-    assert await bot.store.get("publication:bonjour:heure") is None
+    assert await _magasin(bot).get("publication:bonjour:heure") is None
 
 
 # --- salon ------------------------------------------------------------------
@@ -203,7 +209,7 @@ async def test_salon_ajouter_range_le_salon_et_confirme():
     await _commande(bot, "bonjour salon ajouter").callback(interaction, salon=salon)
 
     assert "4242" in " ".join(interaction.textes)
-    assert await bot.store.get("publication:bonjour:salons") == ["4242"]
+    assert await _magasin(bot).get("publication:bonjour:salons") == ["4242"]
 
 
 async def test_salon_deja_ajoute_le_dit_sans_le_doubler():
@@ -218,7 +224,7 @@ async def test_salon_deja_ajoute_le_dit_sans_le_doubler():
     interaction = InteractionFactice()
     await _commande(bot, "bonjour salon ajouter").callback(interaction, salon=salon)
 
-    assert await bot.store.get("publication:bonjour:salons") == ["4242"]
+    assert await _magasin(bot).get("publication:bonjour:salons") == ["4242"]
     assert "déjà" in " ".join(interaction.textes)
 
 
@@ -233,7 +239,7 @@ async def test_un_salon_ou_le_bot_ne_peut_pas_ecrire_est_refuse():
     )
 
     assert "❌" in " ".join(interaction.textes)
-    assert await bot.store.get("publication:bonjour:salons") is None
+    assert await _magasin(bot).get("publication:bonjour:salons") is None
 
 
 async def test_salon_retirer_enleve_et_confirme():
@@ -247,7 +253,7 @@ async def test_salon_retirer_enleve_et_confirme():
     interaction = InteractionFactice()
     await _commande(bot, "bonjour salon retirer").callback(interaction, salon=salon)
 
-    assert await bot.store.get("publication:bonjour:salons") == []
+    assert await _magasin(bot).get("publication:bonjour:salons") == []
     assert "4242" in " ".join(interaction.textes)
 
 
@@ -276,7 +282,7 @@ async def test_apercu_montre_le_contenu_sans_rien_publier():
     await _commande(bot, "bonjour apercu").callback(interaction)
 
     assert "contenu de matin" in " ".join(interaction.textes)
-    assert await bot.store.get("publication:bonjour:derniere") is None
+    assert await _magasin(bot).get("publication:bonjour:derniere") is None
 
 
 async def test_l_apercu_reste_prive():
@@ -364,6 +370,28 @@ async def test_un_apercu_sans_rien_a_dire_explique_pourquoi():
     assert "aucun salon configuré" in " ".join(interaction.textes)
 
 
+def _resoudre_dans_le_serveur(bot, envoyes: list[str] | None = None) -> None:
+    """Branche la résolution des salons sur des cibles **de ce serveur**.
+
+    Le rattachement n'est pas décoratif : la tournée écarte un salon qui n'est pas
+    dans le serveur dont elle vient de lire la configuration. Une cible sans
+    serveur serait écartée comme telle, et le post ne partirait pas.
+    """
+
+    async def resoudre_salon(salon_id):
+        class Cible:
+            id = int(salon_id)
+            guild = ServeurFactice()
+
+            async def send(self, contenu=None, **options):
+                if envoyes is not None:
+                    envoyes.append(contenu)
+
+        return Cible()
+
+    bot.resoudre_salon = resoudre_salon
+
+
 # --- publier ----------------------------------------------------------------
 
 
@@ -372,16 +400,7 @@ async def test_publier_envoie_tout_de_suite():
     salons = {1: SalonFactice(1)}
     envoyes: list[str] = []
 
-    async def resoudre_salon(salon_id):
-        class Cible:
-            id = int(salon_id)
-
-            async def send(self, contenu=None, **options):
-                envoyes.append(contenu)
-
-        return Cible()
-
-    bot.resoudre_salon = resoudre_salon
+    _resoudre_dans_le_serveur(bot, envoyes)
     await _groupe(bot, _publication(_tournee("matin")))
     interaction = InteractionFactice()
 
@@ -398,16 +417,7 @@ async def test_publier_previent_qu_il_remplace_le_post_du_jour():
     """
     bot = await _bot()
 
-    async def resoudre_salon(salon_id):
-        class Cible:
-            id = int(salon_id)
-
-            async def send(self, contenu=None, **options):
-                return None
-
-        return Cible()
-
-    bot.resoudre_salon = resoudre_salon
+    _resoudre_dans_le_serveur(bot)
     await _groupe(bot, _publication(_tournee("matin")))
     interaction = InteractionFactice()
 
@@ -415,23 +425,17 @@ async def test_publier_previent_qu_il_remplace_le_post_du_jour():
 
     texte = " ".join(interaction.textes).lower()
     assert "remplace" in texte or "ne repassera" in texte
-    assert await bot.store.get("publication:bonjour:derniere") == await _aujourdhui(bot)
+    assert (
+        await _magasin(bot).get("publication:bonjour:derniere")
+        == await _aujourdhui(bot)
+    )
 
 
 async def test_publier_rend_le_compte_rendu_du_moteur():
     """Ce que la commande affiche est ce que le planning aurait écrit dans les logs."""
     bot = await _bot()
 
-    async def resoudre_salon(salon_id):
-        class Cible:
-            id = int(salon_id)
-
-            async def send(self, contenu=None, **options):
-                return None
-
-        return Cible()
-
-    bot.resoudre_salon = resoudre_salon
+    _resoudre_dans_le_serveur(bot)
     await _groupe(bot, _publication(_tournee("matin")))
     interaction = InteractionFactice()
 

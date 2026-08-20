@@ -69,11 +69,24 @@ class Utilisateur:
         administrator = True
 
 
+#: Le serveur où ces commandes sont tapées. Il y en a un, parce qu'il en faut
+#: un : chaque serveur a sa configuration, et des fourchettes rangées dans la
+#: configuration commune ne seraient lues par aucune commande.
+SERVEUR = 555
+
+
+class ServeurFactice:
+    def __init__(self, serveur_id: int = SERVEUR):
+        self.id = serveur_id
+        self.name = f"Serveur {serveur_id}"
+
+
 class InteractionFactice:
     def __init__(self):
         self.user = Utilisateur()
         self.response = Reponse()
         self.followup = Followup()
+        self.guild = ServeurFactice()
 
     @property
     def textes(self) -> list[str]:
@@ -108,6 +121,15 @@ async def _bot() -> EmpireBot:
     return EmpireBot(store, SourceFactice())
 
 
+def _magasin(bot: EmpireBot):
+    """La configuration du serveur où les commandes ci-dessous sont tapées.
+
+    Le montage passe par elle, comme les commandes : réglé ailleurs, rien de ce
+    qui suit ne serait visible.
+    """
+    return bot.store.pour(SERVEUR)
+
+
 # --- /promos sans argument ---------------------------------------------------
 
 
@@ -118,8 +140,8 @@ async def test_promos_sans_argument_couvre_toutes_les_fourchettes():
     commande sert justement à voir « ce qui bouge » sans réfléchir.
     """
     bot = await _bot()
-    await bot.store.ajouter_fourchette("grosses", Decimal("1e15"), Decimal("6e15"))
-    await bot.store.ajouter_fourchette("petits", Decimal("1e5"), Decimal("1e6"))
+    await _magasin(bot).ajouter_fourchette("grosses", Decimal("1e15"), Decimal("6e15"))
+    await _magasin(bot).ajouter_fourchette("petits", Decimal("1e5"), Decimal("1e6"))
     interaction = InteractionFactice()
 
     await _commande(bot, "promos").callback(interaction)
@@ -138,8 +160,8 @@ async def test_promos_union_ne_se_reduit_pas_a_la_premiere_fourchette():
     Technopôle de la liste.
     """
     bot = await _bot()
-    await bot.store.ajouter_fourchette("moyennes", Decimal("1e11"), Decimal("1e12"))
-    await bot.store.ajouter_fourchette("grosses", Decimal("1e15"), Decimal("6e15"))
+    await _magasin(bot).ajouter_fourchette("moyennes", Decimal("1e11"), Decimal("1e12"))
+    await _magasin(bot).ajouter_fourchette("grosses", Decimal("1e15"), Decimal("6e15"))
     interaction = InteractionFactice()
 
     await _commande(bot, "promos").callback(interaction)
@@ -152,7 +174,7 @@ async def test_promos_union_ne_se_reduit_pas_a_la_premiere_fourchette():
 async def test_promos_avec_arguments_ignore_les_fourchettes():
     """Une recherche ponctuelle ne dépend pas de la config : comportement conservé."""
     bot = await _bot()
-    await bot.store.ajouter_fourchette("grosses", Decimal("1e15"), Decimal("6e15"))
+    await _magasin(bot).ajouter_fourchette("grosses", Decimal("1e15"), Decimal("6e15"))
     interaction = InteractionFactice()
 
     await _commande(bot, "promos").callback(interaction, min="0", max="1M")
@@ -181,10 +203,10 @@ async def test_promos_sans_fourchette_le_dit_au_lieu_de_ne_rien_montrer():
 async def test_apercu_montre_un_post_par_fourchette():
     """C'est ce que la publication fera : un post par fourchette, pas une union."""
     bot = await _bot()
-    await bot.store.ajouter_fourchette("grosses", Decimal("1e15"), Decimal("6e15"))
-    await bot.store.ajouter_salon_fourchette("grosses", "111")
-    await bot.store.ajouter_fourchette("petits", Decimal("1e5"), Decimal("1e6"))
-    await bot.store.ajouter_salon_fourchette("petits", "222")
+    await _magasin(bot).ajouter_fourchette("grosses", Decimal("1e15"), Decimal("6e15"))
+    await _magasin(bot).ajouter_salon_fourchette("grosses", "111")
+    await _magasin(bot).ajouter_fourchette("petits", Decimal("1e5"), Decimal("1e6"))
+    await _magasin(bot).ajouter_salon_fourchette("petits", "222")
     interaction = InteractionFactice()
 
     await _commande(bot, "fourchette apercu").callback(interaction)
@@ -196,8 +218,8 @@ async def test_apercu_montre_un_post_par_fourchette():
 async def test_apercu_nomme_la_fourchette_de_chaque_post():
     """Sans le nom, deux posts d'affilée ne se distingueraient pas."""
     bot = await _bot()
-    await bot.store.ajouter_fourchette("grosses", Decimal("1e15"), Decimal("6e15"))
-    await bot.store.ajouter_salon_fourchette("grosses", "111")
+    await _magasin(bot).ajouter_fourchette("grosses", Decimal("1e15"), Decimal("6e15"))
+    await _magasin(bot).ajouter_salon_fourchette("grosses", "111")
     interaction = InteractionFactice()
 
     await _commande(bot, "fourchette apercu").callback(interaction)
@@ -209,7 +231,9 @@ async def test_apercu_signale_une_fourchette_sans_salon():
     """Elle ne publiera rien : l'aperçu doit le dire, pas la montrer comme les
     autres."""
     bot = await _bot()
-    await bot.store.ajouter_fourchette("orpheline", Decimal("1e15"), Decimal("6e15"))
+    await _magasin(bot).ajouter_fourchette(
+        "orpheline", Decimal("1e15"), Decimal("6e15")
+    )
     interaction = InteractionFactice()
 
     await _commande(bot, "fourchette apercu").callback(interaction)
@@ -246,8 +270,8 @@ async def test_apercu_lit_lexport_une_seule_fois():
     bot = EmpireBot(store, source)
 
     for index, nom in enumerate(("a", "b", "c"), start=1):
-        await bot.store.ajouter_fourchette(nom, Decimal("0"), Decimal("6e15"))
-        await bot.store.ajouter_salon_fourchette(nom, str(index))
+        await _magasin(bot).ajouter_fourchette(nom, Decimal("0"), Decimal("6e15"))
+        await _magasin(bot).ajouter_salon_fourchette(nom, str(index))
 
     await _commande(bot, "fourchette apercu").callback(InteractionFactice())
 

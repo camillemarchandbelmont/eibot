@@ -1034,6 +1034,16 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
         "`/promos` masquerait les promotions des autres fourchettes",
     ),
     (
+        "bot-promos-bornes-du-commun",
+        "src/modules/promos.py",
+        "            prix_min, prix_max = await bornes_demandees(\n"
+        "                pour_ce_serveur(bot, interaction), min, max\n"
+        "            )",
+        "            prix_min, prix_max = await bornes_demandees(bot.store, min, max)",
+        "`/promos` sans argument dirait « aucune fourchette configurée » à un "
+        "serveur qui en a",
+    ),
+    (
         "journal-compte-des-salons",
         "src/journal.py",
         'entete = f"✅ **Publication** · {sujet} · {len(reussis)}/{total} envoi"',
@@ -1813,7 +1823,7 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
     (
         "surface-heure-garde-la-marque-du-jour",
         "src/commandes.py",
-        "        await marquer_le_jour(publication, bot.store, None)",
+        "        await marquer_le_jour(publication, magasin, None)",
         "        pass",
         "le nouvel horaire serait bloqué jusqu'au lendemain",
     ),
@@ -1834,10 +1844,10 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
     (
         "surface-apercu-consomme-le-post-du-jour",
         "src/commandes.py",
-        '        maintenant = maintenant_local((await bot.store.config())["fuseau"])\n\n        try:',
-        '        maintenant = maintenant_local((await bot.store.config())["fuseau"])\n'
+        '        maintenant = maintenant_local((await magasin.config())["fuseau"])\n\n        try:',
+        '        maintenant = maintenant_local((await magasin.config())["fuseau"])\n'
         '        await marquer_le_jour(\n'
-        '            publication, bot.store, maintenant.strftime("%Y-%m-%d")\n'
+        '            publication, magasin, maintenant.strftime("%Y-%m-%d")\n'
         "        )\n\n        try:",
         "un aperçu empêcherait le post du jour de sortir",
     ),
@@ -1848,6 +1858,59 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
         "        for envoi in tournee.envois[:1]:",
         "l'aperçu mentirait sur ce que chaque salon recevra — c'est justement ce "
         "qu'on vient prévisualiser",
+    ),
+    # Le routage vers le serveur où la commande est tapée. Chaque mutation
+    # ci-dessous rebranche une commande sur la configuration commune : elle
+    # répondrait « ✅ » sans que rien ne change pour le serveur, et le réglage
+    # atterrirait là où plus aucune tournée ne va lire.
+    (
+        "surface-heure-ecrit-dans-le-commun",
+        "src/commandes.py",
+        "        magasin = pour_ce_serveur(bot, interaction)\n"
+        "        config = await magasin.config()",
+        "        magasin = bot.store\n        config = await magasin.config()",
+        "l'heure changerait pour tous les serveurs, et pour aucun",
+    ),
+    (
+        "surface-heure-oublie-la-marque-du-commun",
+        "src/commandes.py",
+        "        await marquer_le_jour(publication, magasin, None)",
+        "        await marquer_le_jour(publication, bot.store, None)",
+        "le post déjà sorti bloquerait le nouvel horaire jusqu'au lendemain",
+    ),
+    (
+        "surface-apercu-prepare-sur-le-commun",
+        "src/commandes.py",
+        "            tournee = await publication.preparer(bot, magasin, maintenant)",
+        "            tournee = await publication.preparer(bot, bot.store, maintenant)",
+        "l'aperçu montrerait un post qui ne sortira dans aucun salon d'ici",
+    ),
+    (
+        "surface-publier-dans-le-commun",
+        "src/commandes.py",
+        "        compte_rendu = await bot.faire_publication(\n"
+        "            publication, magasin=magasin, forcer=True\n"
+        "        )",
+        "        compte_rendu = await bot.faire_publication(publication, forcer=True)",
+        "publier maintenant enverrait dans les salons de tous les serveurs",
+    ),
+    (
+        "surface-salon-ajoute-au-commun",
+        "src/commandes.py",
+        "        magasin = pour_ce_serveur(bot, interaction)\n"
+        "        if not await ajouter_un_salon(publication, magasin, str(salon.id)):",
+        "        magasin = bot.store\n"
+        "        if not await ajouter_un_salon(publication, magasin, str(salon.id)):",
+        "le salon serait attaché à une configuration que ce serveur ne lit pas",
+    ),
+    (
+        "surface-salon-retire-du-commun",
+        "src/commandes.py",
+        "        magasin = pour_ce_serveur(bot, interaction)\n"
+        "        if not await retirer_un_salon(publication, magasin, str(salon.id)):",
+        "        magasin = bot.store\n"
+        "        if not await retirer_un_salon(publication, magasin, str(salon.id)):",
+        "retirer un salon répondrait « pas dans la liste » sans rien retirer",
     ),
     (
         "web-tick-sans-le-tableau",

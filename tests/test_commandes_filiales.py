@@ -25,6 +25,7 @@ from tests.test_commandes_fourchettes import (
     SalonFactice,
     _bot,
     _commande,
+    _magasin,
 )
 
 
@@ -485,7 +486,7 @@ async def test_heure_regle_l_heure_du_tableau():
 
     await _commande(bot, "filiales heure").callback(interaction, heure="20:30")
 
-    assert await bot.store.heure_filiales() == "20:30"
+    assert await _magasin(bot).heure_filiales() == "20:30"
     assert "20:30" in _texte(interaction)
 
 
@@ -513,11 +514,11 @@ async def test_regler_l_heure_oublie_la_marque_du_jour():
     """Régler l'heure exprime l'intention de publier à la nouvelle heure : un
     post déjà sorti bloquerait sinon ce nouvel horaire jusqu'à demain."""
     bot = await _bot()
-    await bot.store.marquer_publie_filiales("2026-08-11")
+    await _magasin(bot).marquer_publie_filiales("2026-08-11")
 
     await _commande(bot, "filiales heure").callback(InteractionFactice(), heure="20:30")
 
-    assert await bot.store.derniere_publication_filiales() is None
+    assert await _magasin(bot).derniere_publication_filiales() is None
 
 
 # --- /filiales salon --------------------------------------------------------
@@ -531,7 +532,7 @@ async def test_salon_ajouter_enregistre_le_salon():
         interaction, salon=SalonFactice(123)
     )
 
-    assert await bot.store.salons_filiales() == ["123"]
+    assert await _magasin(bot).salons_filiales() == ["123"]
     assert "✅" in _texte(interaction)
 
 
@@ -560,19 +561,19 @@ async def test_salon_ajouter_deux_fois_le_dit():
     await _commande(bot, "filiales salon ajouter").callback(interaction, salon=salon)
 
     assert "déjà" in _texte(interaction)
-    assert await bot.store.salons_filiales() == ["123"]
+    assert await _magasin(bot).salons_filiales() == ["123"]
 
 
 async def test_salon_retirer_retire_le_salon():
     bot = await _bot()
-    await bot.store.ajouter_salon_filiales("123")
+    await _magasin(bot).ajouter_salon_filiales("123")
     interaction = InteractionFactice()
 
     await _commande(bot, "filiales salon retirer").callback(
         interaction, salon=SalonFactice(123)
     )
 
-    assert await bot.store.salons_filiales() == []
+    assert await _magasin(bot).salons_filiales() == []
 
 
 async def test_salon_retirer_un_salon_absent_le_dit():
@@ -601,15 +602,15 @@ async def test_les_salons_du_tableau_ne_touchent_pas_a_ceux_des_promotions():
 
 async def test_apercu_montre_le_tableau_sans_publier():
     bot = await _bot()
-    await bot.store.ajouter_salon_filiales("1")
-    await bot.store.enregistrer_filiale("A", Decimal(1000), "2026-08-11")
+    await _magasin(bot).ajouter_salon_filiales("1")
+    await _magasin(bot).enregistrer_filiale("A", Decimal(1000), "2026-08-11")
     interaction = InteractionFactice()
 
     await _commande(bot, "filiales apercu").callback(interaction)
 
     assert "70 Ø" in _texte(interaction)
     # Rien n'a été marqué : le post du jour doit encore pouvoir sortir.
-    assert await bot.store.derniere_publication_filiales() is None
+    assert await _magasin(bot).derniere_publication_filiales() is None
 
 
 async def test_apercu_sans_salon_dit_qu_il_ne_sortirait_rien():

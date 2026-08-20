@@ -36,6 +36,19 @@ from src.tournee import (
 )
 
 
+def pour_ce_serveur(bot: Any, interaction: discord.Interaction) -> Any:
+    """La configuration du serveur où la commande a été tapée.
+
+    **Toute** commande passe par ici, et aucune ne touche `bot.store` : c'est la
+    règle qui rend le cloisonnement vérifiable d'un coup d'œil
+    (`tests/test_cloisonnement.py`). Ce qui reste malgré tout commun — le cache
+    des noms de salons, la table des rôles mentionnés — est décidé dans
+    `src/db.py`, par la vue elle-même, et non commande par commande : appeler
+    n'importe quel accès sur cette vue est donc sans danger.
+    """
+    return bot.store.pour(interaction.guild.id)
+
+
 def administrateur(interaction: discord.Interaction) -> bool:
     """Vrai si l'auteur est administrateur du serveur.
 
@@ -118,18 +131,21 @@ class AucuneFourchette(Exception):
 
 
 async def bornes_demandees(
-    bot: Any, min: str | None, max: str | None
+    magasin: Any, min: str | None, max: str | None
 ) -> tuple[Decimal, Decimal]:
     """Bornes d'une recherche `/promos`, remises dans l'ordre.
 
     Sans argument, couvre **l'union** de toutes les fourchettes : la commande
     sert à voir ce qui bouge dans tout ce qui est surveillé, pas à en interroger
     une en particulier — sinon il faudrait la nommer.
+
+    Prend le magasin et non le bot : l'union à couvrir est celle des fourchettes
+    du serveur où la commande est tapée.
     """
     if min and max:
         plancher, plafond = parse_money(min), parse_money(max)
     else:
-        fourchettes = await bot.store.fourchettes()
+        fourchettes = await magasin.fourchettes()
         if not fourchettes:
             raise AucuneFourchette(
                 "❌ Aucune fourchette configurée : précise `min:` et `max:`, ou "
@@ -241,13 +257,14 @@ def ajouter_les_commandes_de_publication(
     async def commande_heure(
         interaction: discord.Interaction, heure: str | None = None
     ) -> None:
-        config = await bot.store.config()
+        magasin = pour_ce_serveur(bot, interaction)
+        config = await magasin.config()
         maintenant = maintenant_local(config["fuseau"])
 
         # Consulter sans changer : demander l'heure ne doit pas obliger à la
         # régler, sous peine de décaler le post pour avoir voulu le vérifier.
         if heure is None:
-            actuelle = await heure_de(publication, bot.store)
+            actuelle = await heure_de(publication, magasin)
             await interaction.response.send_message(
                 f"🕒 {titre.capitalize()} : **{actuelle}** ({config['fuseau']}).\n"
                 f"-# Il est {maintenant.strftime('%H:%M')}.",
@@ -263,12 +280,13 @@ def ajouter_les_commandes_de_publication(
             )
             return
 
-        await ecrire_l_heure(publication, bot.store, propre)
+        await ecrire_l_heure(publication, magasin, propre)
 
         # Régler l'heure exprime l'intention de publier à la nouvelle heure : on
         # oublie la marque du jour, sinon un post déjà sorti bloquerait ce nouvel
-        # horaire jusqu'à demain.
-        await marquer_le_jour(publication, bot.store, None)
+        # horaire jusqu'à demain. Celle de ce serveur seulement : oublier celle
+        # d'un autre y ferait repartir un post déjà envoyé.
+        await marquer_le_jour(publication, magasin, None)
 
         message = (
             f"✅ {titre.capitalize()} : publication à **{propre}** "
@@ -280,7 +298,7 @@ def ajouter_les_commandes_de_publication(
             message += f" Prochain post {attendu}."
         else:
             message += " Publication imminente (dans la minute)."
-        if salons and not await salons_de(publication, bot.store):
+        if salons and not await salons_de(publication, magasin):
             message += "\n⚠️ Aucun salon configuré : rien ne sortira."
 
         await interaction.response.send_message(message, ephemeral=True)
@@ -298,10 +316,14 @@ def ajouter_les_commandes_de_publication(
         # n'accorde que trois secondes.
         await interaction.response.defer(ephemeral=True)
         prive = ReponsePrivee(interaction.followup)
-        maintenant = maintenant_local((await bot.store.config())["fuseau"])
+        # Préparé sur la configuration de ce serveur : l'aperçu répond à
+        # « qu'est-ce qui sortira **ici** ? », et celui d'un autre serveur
+        # montrerait un post qui ne sortira jamais.
+        magasin = pour_ce_serveur(bot, interaction)
+        maintenant = maintenant_local((await magasin.config())["fuseau"])
 
         try:
-            tournee = await publication.preparer(bot, bot.store, maintenant)
+            tournee = await publication.preparer(bot, magasin, maintenant)
         except SourceError as erreur:
             # Message déjà lisible et clé d'API masquée : le préfixer du nom de la
             # classe n'ajouterait que du bruit.
@@ -343,14 +365,20 @@ def ajouter_les_commandes_de_publication(
     )
     async def commande_publier(interaction: discord.Interaction) -> None:
         await interaction.response.defer(ephemeral=True)
-        compte_rendu = await bot.faire_publication(publication, forcer=True)
+        # Le magasin passé explicitement : sans lui, la tournée forcée lirait la
+        # configuration commune, enverrait dans les salons de tous les serveurs et
+        # consommerait une journée que plus personne ne lit.
+        magasin = pour_ce_serveur(bot, interaction)
+        compte_rendu = await bot.faire_publication(
+            publication, magasin=magasin, forcer=True
+        )
 
         # La marque relue plutôt que le compte rendu interprété : elle dit si la
         # journée a réellement été consommée, y compris quand tout a échoué.
         aujourdhui = maintenant_local(
-            (await bot.store.config())["fuseau"]
+            (await magasin.config())["fuseau"]
         ).strftime("%Y-%m-%d")
-        parti = await derniere_de(publication, bot.store) == aujourdhui
+        parti = await derniere_de(publication, magasin) == aujourdhui
 
         message = f"📣 {compte_rendu}"
         if parti:
@@ -382,7 +410,8 @@ def ajouter_les_commandes_de_publication(
             )
             return
 
-        if not await ajouter_un_salon(publication, bot.store, str(salon.id)):
+        magasin = pour_ce_serveur(bot, interaction)
+        if not await ajouter_un_salon(publication, magasin, str(salon.id)):
             await interaction.response.send_message(
                 f"ℹ️ {titre.capitalize()} : {salon.mention} est déjà servi.",
                 ephemeral=True,
@@ -390,8 +419,9 @@ def ajouter_les_commandes_de_publication(
             return
 
         # Mémorisé pour le site, qui n'a pas accès à Discord et ne pourrait
-        # afficher qu'un id nu.
-        await bot.store.memoriser_salon(
+        # afficher qu'un id nu. Le cache reste commun — un nom de salon ne dépend
+        # pas de qui le regarde —, et c'est la vue qui le sait.
+        await magasin.memoriser_salon(
             str(salon.id), salon.name, str(interaction.guild.id), interaction.guild.name
         )
 
@@ -400,7 +430,7 @@ def ajouter_les_commandes_de_publication(
             # « Tableau des frais sera publié » manquerait de son article, et le
             # lui donner obligerait chaque module à en choisir un dans son titre.
             f"✅ {titre.capitalize()} : publication dans {salon.mention} à "
-            f"**{await heure_de(publication, bot.store)}**.",
+            f"**{await heure_de(publication, magasin)}**.",
             ephemeral=True,
         )
 
@@ -410,7 +440,8 @@ def ajouter_les_commandes_de_publication(
     async def commande_salon_retirer(
         interaction: discord.Interaction, salon: discord.TextChannel
     ) -> None:
-        if not await retirer_un_salon(publication, bot.store, str(salon.id)):
+        magasin = pour_ce_serveur(bot, interaction)
+        if not await retirer_un_salon(publication, magasin, str(salon.id)):
             await interaction.response.send_message(
                 f"❌ {titre.capitalize()} : {salon.mention} n'est pas dans la liste.",
                 ephemeral=True,
