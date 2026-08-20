@@ -13,7 +13,8 @@ si l'on interrompt le script (Ctrl-C).
 
 Le nom d'une mutation dit où elle mord, donc quel lot la rejoue : `tournee-` la
 mécanique d'envoi commune, `surface-` le vocabulaire des commandes, `bot-` les
-commandes elles-mêmes et leurs modules, le reste le fichier de calcul visé.
+commandes elles-mêmes et leurs modules, `cloisonnement-` la séparation des
+serveurs, le reste le fichier de calcul visé.
 
 Déplacer du code oblige à repointer les motifs qui le visaient. Un motif dont le
 fichier a changé n'échoue pas : le script l'annonce introuvable et le compte
@@ -313,6 +314,169 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
         "        index = 0 if liste else -1\n"
         '        if index < 0 or str(salon_id) in liste[index]["salons"]:',
         "le salon recevrait les promotions d'une autre fourchette",
+    ),
+    # --- src/db.py : une configuration par serveur -------------------------
+    #
+    # Le cloisonnement ne leve rien quand il fuit : le bot repond, publie, et
+    # deux entreprises se marchent dessus en silence. Ce lot est donc le seul
+    # juge -- un test qui lirait la vue sans verifier ce que voit l'autre
+    # serveur passerait au vert sans rien prouver.
+    (
+        "cloisonnement-cle-non-prefixee",
+        "src/db.py",
+        '        return f"{PREFIXE_SERVEUR}:{self.serveur_id}:{cle}"',
+        "        return cle",
+        "tous les serveurs repartageraient une seule configuration",
+    ),
+    (
+        "cloisonnement-meme-tiroir-pour-tous",
+        "src/db.py",
+        '        return f"{PREFIXE_SERVEUR}:{self.serveur_id}:{cle}"',
+        '        return f"{PREFIXE_SERVEUR}:{cle}"',
+        "le tiroir serait bien séparé du commun, mais commun à tous les serveurs",
+    ),
+    (
+        "cloisonnement-repli-sur-la-config-commune",
+        "src/db.py",
+        "        return await self.commun.get(self._cle(cle), defaut)",
+        "        return await self.commun.get(self._cle(cle), None) or await self.commun.get(cle, defaut)",
+        "un serveur qui a supprimé ses fourchettes hériterait de celles du "
+        "commun, et republierait ce qu'on venait de lui retirer",
+    ),
+    (
+        "cloisonnement-ecriture-dans-le-commun",
+        "src/db.py",
+        "        await self.commun.set(self._cle(cle), valeur)",
+        "        await self.commun.set(cle, valeur)",
+        "régler un serveur écraserait la configuration que lit le site",
+    ),
+    (
+        "cloisonnement-cache-des-salons-cloisonne",
+        "src/db.py",
+        "    async def salons_connus(self) -> dict[str, dict]:\n"
+        "        return await self.commun.salons_connus()",
+        "    async def salons_connus(self) -> dict[str, dict]:\n"
+        "        return await Store.salons_connus(self)",
+        "le site ne verrait plus qu'une moitié des noms de salons",
+    ),
+    (
+        "cloisonnement-noms-de-serveurs-cloisonnes",
+        "src/db.py",
+        "    async def serveurs(self) -> dict[str, str]:\n"
+        "        return await self.commun.serveurs()",
+        "    async def serveurs(self) -> dict[str, str]:\n"
+        "        return await Store.serveurs(self)",
+        "le site afficherait un id de serveur nu là où il a un nom",
+    ),
+    (
+        "cloisonnement-memorisation-cloisonnee",
+        "src/db.py",
+        "        await self.commun.memoriser_salon(salon_id, nom, serveur_id, serveur_nom)",
+        "        await Store.memoriser_salon(self, salon_id, nom, serveur_id, serveur_nom)",
+        "les noms de salons se rangeraient en double, hors de portée du site",
+    ),
+    (
+        "cloisonnement-roles-cloisonnes",
+        "src/db.py",
+        "    async def roles(self) -> dict[str, str]:\n"
+        "        return await self.commun.roles()",
+        "    async def roles(self) -> dict[str, str]:\n"
+        "        return await Store.roles(self)",
+        "le rôle mentionné serait écrit d'un côté et lu de l'autre : plus "
+        "personne ne serait prévenu",
+    ),
+    (
+        "cloisonnement-persistant-toujours-en-memoire",
+        "src/db.py",
+        "        return self.commun.persistant",
+        "        return False",
+        "`/reglages voir` annoncerait une configuration perdue au redémarrage",
+    ),
+    (
+        "cloisonnement-vue-se-connecte",
+        "src/db.py",
+        "    async def connect(self) -> None:\n        raise RuntimeError(",
+        "    async def connect(self) -> None:\n        return None\n        raise RuntimeError(",
+        "une vue ouvrirait un second pool, par serveur",
+    ),
+    (
+        "cloisonnement-vue-ferme-la-base-des-autres",
+        "src/db.py",
+        "    async def close(self) -> None:\n        raise RuntimeError(",
+        "    async def close(self) -> None:\n        return None\n        raise RuntimeError(",
+        "fermer depuis un serveur couperait la base de tous les autres",
+    ),
+    (
+        "cloisonnement-vue-de-vue-acceptee",
+        "src/db.py",
+        '    def pour(self, serveur_id: str | int) -> "VueServeur":\n'
+        "        raise RuntimeError(",
+        '    def pour(self, serveur_id: str | int) -> "VueServeur":\n'
+        "        return VueServeur(self.commun, serveur_id)\n"
+        "        raise RuntimeError(",
+        "`pour(a).pour(b)` rendrait la vue de b sans dire que a est oublié",
+    ),
+    (
+        "cloisonnement-tout-cloisonne",
+        "src/db.py",
+        "        return await self.commun.tout()",
+        '        return {c: v for c, v in (await self.commun.tout()).items() '
+        'if c.startswith(self._cle(""))}',
+        "un déménagement de base ne recopierait qu'un serveur, et le manque ne "
+        "se verrait qu'une fois l'ancienne base éteinte",
+    ),
+    (
+        "cloisonnement-menage-decide-par-un-seul-serveur",
+        "src/db.py",
+        "        return await self.commun.oublier_salons_orphelins()",
+        "        return await Store.oublier_salons_orphelins(self)",
+        "le ménage écrirait dans le tiroir du serveur, et le cache commun "
+        "grossirait sans fin",
+    ),
+    (
+        "cloisonnement-menage-ne-regarde-quun-serveur",
+        "src/db.py",
+        "        servis = _salons_servis(await self.tout())",
+        '        servis = _salons_servis({"config": await self.get("config", {})})',
+        "retirer un salon dans un serveur effacerait les noms des salons de "
+        "tous les autres",
+    ),
+    (
+        "cloisonnement-menage-oublie-les-tiroirs-generiques",
+        "src/db.py",
+        '        if cle.endswith(":salons"):\n            ajouter(valeur)',
+        "        if False:\n            ajouter(valeur)",
+        "les salons d'une publication déclarée par un module seraient comptés "
+        "orphelins",
+    ),
+    (
+        "cloisonnement-menage-oublie-le-tableau-des-frais",
+        "src/db.py",
+        '            ajouter(valeur.get("filiales_salons"))',
+        "            pass",
+        "le salon du tableau des frais reperdrait son nom aussitôt mémorisé",
+    ),
+    (
+        "cloisonnement-menage-oublie-les-fourchettes",
+        "src/db.py",
+        '                    ajouter(fourchette.get("salons"))',
+        "                    pass",
+        "le ménage effacerait le nom de tous les salons qui publient",
+    ),
+    (
+        "cloisonnement-menage-oublie-la-config-plate",
+        "src/db.py",
+        '            ajouter(valeur.get("salons"))',
+        "            pass",
+        "un salon réglé avant le multi-fourchette perdrait son nom avant même "
+        "que la migration ne le lise",
+    ),
+    (
+        "cloisonnement-menage-oublie-le-salon-unique",
+        "src/db.py",
+        '            ajouter(valeur.get("salon_id"))',
+        "            pass",
+        "un salon réglé avant le multi-salon perdrait son nom de la même façon",
     ),
     # --- src/tournee.py : la mécanique d'envoi, une pour toutes -------------
     #

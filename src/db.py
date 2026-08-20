@@ -71,6 +71,14 @@ FOURCHETTE_MIGREE = "principale"
 #: est la signature d'un bot à migrer, par opposition à un bot neuf.
 _CHAMPS_PLATS = ("prix_min", "prix_max", "salons", "salon_id")
 
+#: Préfixe du tiroir d'un serveur : `serveur:<id>:<clé habituelle>`.
+#:
+#: Une seule table, mais des clés préfixées, plutôt qu'une colonne `serveur_id` :
+#: la table est un dictionnaire clé -> JSON, et tout `Store` sait déjà lire et
+#: écrire une clé. Cloisonner devient donc une affaire de nom de clé, et les
+#: soixante accesseurs restent tels quels.
+PREFIXE_SERVEUR = "serveur"
+
 
 def _cle_nom(nom: str) -> str:
     """Forme comparable d'un nom de fourchette.
@@ -79,6 +87,42 @@ def _cle_nom(nom: str) -> str:
     l'œil dans une liste, donc ils désignent la même fourchette.
     """
     return str(nom).strip().casefold()
+
+
+def _salons_servis(base: dict[str, Any]) -> set[str]:
+    """Ids des salons cités par une publication, n'importe où dans la base.
+
+    Lit les données brutes plutôt que d'interroger les publications : `Store` ne
+    connaît pas les modules, et n'a pas à les connaître pour reconnaître ses
+    propres tiroirs. Deux conventions suffisent — un tiroir de publication finit
+    par `:salons`, une config porte les siens sous `salons`, `salon_id`,
+    `filiales_salons`, et dans chaque fourchette.
+
+    Un tiroir d'une convention future serait ignoré, donc ses salons comptés
+    orphelins : le nom d'un salon disparaîtrait du site jusqu'au post suivant,
+    qui le remémorise. Faute cosmétique et réparable, contre le risque inverse
+    — garder tout, et laisser la table grossir sans fin.
+    """
+    servis: set[str] = set()
+
+    def ajouter(valeur: Any) -> None:
+        if isinstance(valeur, list):
+            servis.update(str(salon) for salon in valeur if salon)
+        elif valeur:
+            servis.add(str(valeur))
+
+    for cle, valeur in base.items():
+        if cle.endswith(":salons"):
+            ajouter(valeur)
+        elif (cle == "config" or cle.endswith(":config")) and isinstance(valeur, dict):
+            ajouter(valeur.get("salons"))
+            ajouter(valeur.get("salon_id"))
+            ajouter(valeur.get("filiales_salons"))
+            for fourchette in valeur.get("fourchettes") or []:
+                if isinstance(fourchette, dict):
+                    ajouter(fourchette.get("salons"))
+
+    return servis
 
 
 def _montant_ou_rien(brut: Any) -> Decimal | None:
@@ -230,6 +274,14 @@ class Store:
         async with self._pool.acquire() as connexion:
             lignes = await connexion.fetch("SELECT cle, valeur FROM bot_state")
         return {ligne["cle"]: json.loads(ligne["valeur"]) for ligne in lignes}
+
+    def pour(self, serveur_id: str | int) -> "VueServeur":
+        """Le même stockage, vu par un seul serveur.
+
+        Les mêmes accesseurs, mais chacun dans son tiroir : régler une fourchette
+        dans le serveur d'une entreprise ne touche plus celles des autres.
+        """
+        return VueServeur(self, serveur_id)
 
     # --- Accès métier ------------------------------------------------------
 
@@ -631,16 +683,21 @@ class Store:
         await self.set("config", config)
 
     async def oublier_salons_orphelins(self) -> int:
-        """Efface les salons qu'aucune fourchette ne sert. Renvoie le compte.
+        """Efface les salons qu'aucune publication ne sert. Renvoie le compte.
 
         Sans ça la table grossit indéfiniment avec des salons dont plus personne
         ne parle. Un serveur dont plus aucun salon ne dépend disparaît aussi.
+
+        Le balayage porte sur **toute la base**, et non sur la config d'un seul
+        serveur : le cache des noms est commun — un nom de salon ne dépend pas de
+        qui le regarde — donc un ménage décidé depuis un serveur effacerait les
+        noms des salons de tous les autres, absents de ses propres réglages.
+
+        Et sur **toutes** les publications, pas seulement les fourchettes : le
+        salon du tableau des frais était compté orphelin à chaque passage, et le
+        site reperdait son nom aussitôt mémorisé.
         """
-        servis = {
-            str(salon)
-            for fourchette in await self.fourchettes()
-            for salon in fourchette["salons"]
-        }
+        servis = _salons_servis(await self.tout())
         connus = await self.salons_connus()
         gardes = {
             salon: details for salon, details in connus.items() if salon in servis
@@ -853,3 +910,129 @@ class Store:
     async def oublier_publication(self) -> None:
         """Efface la marque du jour pour pouvoir retester le déclenchement."""
         await self.set("derniere_publication", None)
+
+
+class VueServeur(Store):
+    """Le magasin commun, vu par un seul serveur.
+
+    Un `Store` à part entière : les soixante accesseurs sont hérités tels quels,
+    et seules les deux portes qu'ils empruntent tous — `get` et `set` — sont
+    détournées vers `serveur:<id>:<clé>`. Chaque serveur a donc ses fourchettes,
+    ses filiales, son heure, son template, sa liste d'accès et sa trace de
+    « déjà publié », sans une ligne d'accesseur réécrite.
+
+    **Il n'y a pas de repli sur la configuration commune.** Un serveur neuf ne
+    voit rien : `/reglages importer` est le pont, à taper une fois. Un repli
+    serait pire qu'un vide — un serveur qui aurait délibérément supprimé ses
+    fourchettes hériterait de celles du commun, et publierait ce qu'on venait de
+    lui retirer.
+
+    Deux choses restent délibérément communes, et sont déléguées plus bas :
+
+    - le **cache des noms de salons et de serveurs**, cosmétique et destiné au
+      site : un nom de salon ne dépend pas de qui le regarde, et le cloisonner
+      le remplirait en double ;
+    - la **table des rôles à mentionner**, déjà rangée par serveur avant ce
+      changement et lue telle quelle par le site. La cloisonner la rangerait deux
+      fois — `serveur:111:roles` ne contenant qu'une entrée `111`.
+
+    La vue n'a **pas** d'attributs `_pool` ni `_memoire` : un accesseur ajouté
+    plus tard qui parlerait à la base sans passer par `get`/`set` lèverait
+    `AttributeError` au lieu de lire silencieusement la valeur commune sous le
+    nez d'un serveur qui croit lire la sienne. Un test structurel
+    (`tests/test_cloisonnement.py`) vérifie qu'il n'en existe aucun.
+    """
+
+    def __init__(self, commun: Store, serveur_id: str | int):
+        # Volontairement sans `super().__init__` : voir le dernier paragraphe du
+        # docstring. La vue n'a rien à elle, sinon le nom de son tiroir.
+        self.commun = commun
+        self.serveur_id = str(serveur_id)
+        self.dsn = commun.dsn
+
+    def __repr__(self) -> str:
+        return f"VueServeur({self.serveur_id})"
+
+    def _cle(self, cle: str) -> str:
+        return f"{PREFIXE_SERVEUR}:{self.serveur_id}:{cle}"
+
+    # --- Les portes vers la base -------------------------------------------
+
+    @property
+    def persistant(self) -> bool:
+        """Celle du magasin commun : la vue n'a pas de base à elle.
+
+        Répondre « en mémoire » ferait dire à `/reglages voir` que la
+        configuration sera perdue au redémarrage.
+        """
+        return self.commun.persistant
+
+    async def connect(self) -> None:
+        raise RuntimeError(
+            "Une vue de serveur n'ouvre pas de connexion : "
+            "connecter le magasin commun, puis appeler `.pour(serveur_id)`."
+        )
+
+    async def close(self) -> None:
+        raise RuntimeError(
+            "Une vue de serveur ne ferme pas la connexion des autres : "
+            "fermer le magasin commun."
+        )
+
+    async def get(self, cle: str, defaut: Any = None) -> Any:
+        return await self.commun.get(self._cle(cle), defaut)
+
+    async def set(self, cle: str, valeur: Any) -> None:
+        await self.commun.set(self._cle(cle), valeur)
+
+    async def tout(self) -> dict[str, Any]:
+        """Toute la base, tiroirs des autres serveurs compris.
+
+        `tout()` sert au déménagement d'une base à l'autre : cloisonné, il ne
+        recopierait que le tiroir d'un serveur, et le manque ne se verrait
+        qu'une fois l'ancienne base éteinte.
+        """
+        return await self.commun.tout()
+
+    def pour(self, serveur_id: str | int) -> "VueServeur":
+        raise RuntimeError(
+            "Une vue de serveur ne se resserre pas : "
+            f"`{self!r}.pour({serveur_id!r})` ne peut être qu'une confusion."
+        )
+
+    # --- Ce qui reste commun -----------------------------------------------
+
+    async def salons_connus(self) -> dict[str, dict]:
+        return await self.commun.salons_connus()
+
+    async def serveurs(self) -> dict[str, str]:
+        return await self.commun.serveurs()
+
+    async def memoriser_salon(
+        self,
+        salon_id: str | int,
+        nom: str,
+        serveur_id: str | int,
+        serveur_nom: str,
+    ) -> None:
+        await self.commun.memoriser_salon(salon_id, nom, serveur_id, serveur_nom)
+
+    async def oublier_salons_orphelins(self) -> int:
+        """Le ménage du cache commun, donc décidé sur toute la base.
+
+        Depuis la vue, il ne verrait que les réglages de ce serveur et effacerait
+        les noms des salons de tous les autres.
+        """
+        return await self.commun.oublier_salons_orphelins()
+
+    async def roles(self) -> dict[str, str]:
+        return await self.commun.roles()
+
+    async def role_du_serveur(self, serveur_id: str | int | None) -> str | None:
+        return await self.commun.role_du_serveur(serveur_id)
+
+    async def definir_role(self, serveur_id: str | int, role_id: str | int) -> None:
+        await self.commun.definir_role(serveur_id, role_id)
+
+    async def effacer_role(self, serveur_id: str | int) -> bool:
+        return await self.commun.effacer_role(serveur_id)
