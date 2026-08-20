@@ -61,6 +61,9 @@ async def test_reglages_rassemble_tout_ce_qui_configure_le_bot():
         "mention",
         "logs",
         "fuseau",
+        # Le pont vers la configuration par serveur : chaque serveur a la sienne,
+        # sans repli sur la commune, et c'est cette commande qui la reprend.
+        "importer",
         "acces",
         "acces ajouter",
         "acces retirer",

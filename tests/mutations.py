@@ -814,6 +814,218 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
         "        if False:",
         "un membre autorisé pourrait mettre dehors celui qui l'a nommé",
     ),
+    # --- src/importation.py, src/reglages.py : reprendre l'ancienne config ---
+    #
+    # Le cloisonnement n'a pas de repli : au déploiement, chaque serveur se
+    # réveille vide, et `/reglages importer` est le seul chemin de retour. Un bug
+    # ici se paie deux fois — soit deux ans de réglages à ressaisir à la main,
+    # soit chaque serveur publiant dans les salons de tous les autres.
+    #
+    # Les deux fichiers sont dans le même lot (`import` les rejoue tous) : le
+    # calcul et son raccordement se cassent des deux côtés pour le même effet
+    # visible.
+    (
+        "importation-salon-etranger-repris",
+        "src/importation.py",
+        "            if str(salon) in salons_du_serveur:",
+        "            if True:",
+        "chaque serveur publierait dans les salons de tous les autres, et le "
+        "compte rendu n'écarterait rien",
+    ),
+    (
+        "importation-salon-compare-sans-texte",
+        "src/importation.py",
+        "            if str(salon) in salons_du_serveur:",
+        "            if salon in salons_du_serveur:",
+        "un salon écrit en nombre dans le JSON passerait pour celui d'un autre "
+        "serveur et serait écarté — le serveur ne publierait plus nulle part",
+    ),
+    (
+        "importation-salons-de-la-config-non-filtres",
+        "src/importation.py",
+        "        for champ in _CHAMPS_SALONS:\n"
+        "            if champ in config:\n"
+        "                config[champ] = trier(config[champ])",
+        "        for champ in ():\n"
+        "            if champ in config:\n"
+        "                config[champ] = trier(config[champ])",
+        "les salons du voisin arriveraient dans `salons` et `filiales_salons`",
+    ),
+    (
+        "importation-fourchettes-non-filtrees",
+        "src/importation.py",
+        '                {**f, "salons": trier(f.get("salons"))} if isinstance(f, dict) else f',
+        "                f if isinstance(f, dict) else f",
+        "les salons rangés sous une fourchette échapperaient au tri : c'est là "
+        "que vivent tous les salons des promotions",
+    ),
+    (
+        "importation-fourchette-vide-disparait",
+        "src/importation.py",
+        '                {**f, "salons": trier(f.get("salons"))} if isinstance(f, dict) else f\n'
+        "                for f in fourchettes",
+        '                {**f, "salons": trier(f.get("salons"))} if isinstance(f, dict) else f\n'
+        "                for f in fourchettes\n"
+        "                if not isinstance(f, dict) or trier(f.get(\"salons\"))",
+        "une fourchette dont tous les salons étaient chez le voisin disparaîtrait "
+        "avec ses bornes, qu'il faudrait ressaisir alors qu'il n'y a qu'un salon "
+        "à corriger",
+    ),
+    (
+        "importation-salon-unique-garde-quand-meme",
+        "src/importation.py",
+        "            if config.get(champ) and not trier([config[champ]]):\n"
+        "                config.pop(champ)",
+        "            if False:\n"
+        "                config.pop(champ)",
+        "`salon_id` et `logs_salon_id` désigneraient un salon de l'autre serveur : "
+        "le journal y raconterait la tournée, avec les ids d'ici",
+    ),
+    (
+        "importation-salon-unique-vide-au-lieu-detre-retire",
+        "src/importation.py",
+        "                config.pop(champ)",
+        "                config[champ] = None",
+        "un `salon_id` vide reste la signature d'une config plate : le serveur se "
+        "croirait à migrer",
+    ),
+    (
+        "importation-tiroir-de-publication-non-filtre",
+        "src/importation.py",
+        '    if cle.endswith(":salons"):\n        return trier(valeur)',
+        '    if False:\n        return trier(valeur)',
+        "les salons d'une publication déclarée par un module passeraient sans tri",
+    ),
+    (
+        "importation-tiroirs-des-serveurs-repris",
+        "src/importation.py",
+        '        if cle.startswith(f"{PREFIXE_SERVEUR}:"):\n            continue',
+        "        if False:\n            continue",
+        "un serveur recevrait les réglages du voisin, et un tiroir se retrouverait "
+        "enfermé dans un tiroir",
+    ),
+    (
+        "importation-ecrase-ce-qui-est-deja-regle",
+        "src/importation.py",
+        "        if cle in deja:\n            laissees.append(cle)\n            continue",
+        "        if False:\n            laissees.append(cle)\n            continue",
+        "un import de trop ramènerait l'ancienne heure par-dessus celle qu'on "
+        "vient de régler à la main",
+    ),
+    (
+        "importation-deja-regle-cherche-la-cle-prefixee",
+        "src/importation.py",
+        "    deja = {cle[len(prefixe):] for cle in base if cle.startswith(prefixe)}",
+        "    deja = {cle for cle in base if cle.startswith(prefixe)}",
+        "aucune clé ne serait jamais reconnue comme déjà réglée : tout serait "
+        "écrasé en annonçant le contraire",
+    ),
+    (
+        "importation-cache-des-noms-recopie",
+        "src/importation.py",
+        "        config = {c: v for c, v in valeur.items() if c not in CLES_COMMUNES}",
+        "        config = dict(valeur)",
+        "le cache des noms et la table des mentions dormiraient dans le tiroir "
+        "sans lecteur, et aucun ménage ne viendrait les y nettoyer",
+    ),
+    (
+        "importation-seules-les-cles-connues-reprises",
+        "src/importation.py",
+        "        a_ecrire[cle] = _cloisonner(cle, valeur, trier)",
+        '        if cle in ("config", "template"):\n'
+        "            a_ecrire[cle] = _cloisonner(cle, valeur, trier)",
+        "les relevés des filiales, les marques du jour et le tiroir d'un module à "
+        "venir seraient oubliés en silence",
+    ),
+    (
+        "importation-cle-connue-non-nommee",
+        "src/importation.py",
+        "    if cle in connues:\n        return connues[cle]",
+        "    if False:\n        return connues[cle]",
+        "le compte rendu parlerait en noms de clés de base, illisibles pour qui "
+        "n'a jamais vu le stockage",
+    ),
+    (
+        "importation-cle-inconnue-passee-sous-silence",
+        "src/importation.py",
+        '    return f"`{cle}`"',
+        '    return ""',
+        "le tiroir d'un module à venir passerait sans laisser de ligne : on ne "
+        "pourrait pas constater qu'il est repris",
+    ),
+    (
+        "importation-publication-non-nommee",
+        "src/importation.py",
+        '        return f"{libelles.get(quoi, quoi)} de « {publication} »"',
+        '        return f"{libelles.get(quoi, quoi)}"',
+        "deux publications d'un même module ne se distingueraient plus dans le "
+        "compte rendu",
+    ),
+    (
+        "reglages-importer-sans-garde-admin",
+        "src/reglages.py",
+        "        if not administrateur(interaction):\n"
+        "            await interaction.response.send_message(REFUS_IMPORT, ephemeral=True)",
+        "        if False:\n"
+        "            await interaction.response.send_message(REFUS_IMPORT, ephemeral=True)",
+        "n'importe quel membre autorisé recopierait la liste d'accès du temps du "
+        "commun, donc déciderait qui se sert du bot ici",
+    ),
+    (
+        "reglages-importer-ecrit-dans-le-commun",
+        "src/reglages.py",
+        "        magasin = bot.store.pour(interaction.guild.id)",
+        "        magasin = bot.store",
+        "l'import ne changerait rien : le serveur continuerait de ne publier "
+        "nulle part, en annonçant que tout est repris",
+    ),
+    (
+        "reglages-importer-salons-en-nombres",
+        "src/reglages.py",
+        "            {str(salon.id) for salon in interaction.guild.channels},",
+        "            {salon.id for salon in interaction.guild.channels},",
+        "aucun salon ne correspondrait : tous seraient écartés comme étrangers, "
+        "et le serveur se retrouverait sans salon après un import annoncé réussi",
+    ),
+    (
+        "reglages-importer-nannonce-que-des-ecritures-fantomes",
+        "src/reglages.py",
+        "        for cle, valeur in reprise.a_ecrire.items():\n"
+        "            await magasin.set(cle, valeur)",
+        "        for cle, valeur in {}.items():\n"
+        "            await magasin.set(cle, valeur)",
+        "le compte rendu listerait ce qui aurait dû être écrit, sans rien écrire",
+    ),
+    (
+        "reglages-importer-rien-a-reprendre-passe-pour-un-succes",
+        "src/reglages.py",
+        "        if not reprise.a_ecrire and not reprise.deja_reglees:",
+        "        if False:",
+        "un import qui n'a rien trouvé répondrait « configuration reprise », et "
+        "on attendrait des posts qui ne viendront jamais",
+    ),
+    (
+        "reglages-importer-salons-ecartes-tus",
+        "src/reglages.py",
+        "        if reprise.salons_ecartes:",
+        "        if False:",
+        "on chercherait longtemps pourquoi une fourchette ne publie plus là où "
+        "elle publiait la veille",
+    ),
+    (
+        "reglages-importer-deja-regle-tu",
+        "src/reglages.py",
+        "        if reprise.deja_reglees:",
+        "        if False:",
+        "un import qui n'a rien complété passerait pour un import complet",
+    ),
+    (
+        "reglages-importer-noms-bruts-dans-le-compte-rendu",
+        "src/reglages.py",
+        '                value="\\n".join(f"• {nommer(cle)}" for cle in reprise.a_ecrire),',
+        '                value="\\n".join(f"• {cle}" for cle in reprise.a_ecrire),',
+        "le compte rendu s'adresse à quelqu'un qui n'a jamais vu la base",
+    ),
     (
         "bot-promos-une-seule-fourchette",
         "src/commandes.py",

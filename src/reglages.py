@@ -28,6 +28,7 @@ import discord
 from discord import app_commands
 
 from src.commandes import administrateur, lister_fourchettes, permissions_manquantes
+from src.importation import nommer, preparer
 from src.publish import envoyer
 from src.schedule import maintenant_local
 from src.source import ApiSource, SourceError, diagnostiquer
@@ -207,6 +208,102 @@ def enregistrer_les_reglages(bot: EmpireBot) -> None:
             f"rapportées.",
             ephemeral=True,
         )
+
+    # --- /reglages importer -------------------------------------------------
+
+    #: Importer recopie la liste d'accès : la commande décide donc qui pourra se
+    #: servir du bot dans ce serveur, exactement comme `/reglages acces`. D'où le
+    #: même verrou.
+    REFUS_IMPORT = (
+        "❌ Seul un administrateur peut importer la configuration.\n"
+        "-# L'import reprend la liste d'accès : il décide qui peut se servir du "
+        "bot ici."
+    )
+
+    @groupe.command(
+        name="importer",
+        description="Reprend l'ancienne configuration commune dans ce serveur",
+    )
+    async def reglages_importer(interaction: discord.Interaction):
+        """Le pont vers les réglages par serveur, à taper une fois par serveur.
+
+        Chaque serveur a désormais sa propre configuration, et il n'y a pas de
+        repli : un serveur qui n'a rien réglé ne publie nulle part. Cette commande
+        reprend ce qui était réglé du temps de la configuration commune, en ne
+        gardant que les salons de ce serveur-là.
+
+        Le calcul vit dans `src/importation.py`, pour être éprouvé sur des
+        dictionnaires nus : ici il ne reste qu'à demander à Discord quels salons
+        sont à ce serveur — la seule chose qu'un calcul ne peut pas savoir — et à
+        écrire dans le tiroir.
+        """
+        if not administrateur(interaction):
+            await interaction.response.send_message(REFUS_IMPORT, ephemeral=True)
+            return
+
+        magasin = bot.store.pour(interaction.guild.id)
+        reprise = preparer(
+            await bot.store.tout(),
+            interaction.guild.id,
+            # Tous les salons, y compris vocaux et catégories : la question posée
+            # est « est-il à ce serveur ? », pas « peut-on y publier ? ».
+            {str(salon.id) for salon in interaction.guild.channels},
+        )
+
+        for cle, valeur in reprise.a_ecrire.items():
+            await magasin.set(cle, valeur)
+
+        if not reprise.a_ecrire and not reprise.deja_reglees:
+            # Répondre « ✅ » à un import qui n'a rien fait laisserait attendre
+            # des posts qui ne viendront jamais.
+            await interaction.response.send_message(
+                "ℹ️ Il n'y avait **rien à reprendre** : aucune configuration "
+                "commune n'est enregistrée.\n"
+                "-# Règle ce serveur directement : `/fourchette ajouter`, "
+                "`/fourchette salon ajouter`, `/fourchette heure`.",
+                ephemeral=True,
+            )
+            return
+
+        embed = discord.Embed(
+            title=f"Configuration reprise dans {interaction.guild.name}",
+            description=(
+                "Rien n'a été effacé : l'ancienne configuration commune reste en "
+                "place, et cet import peut être retapé."
+            ),
+            color=0x5865F2,
+        )
+        if reprise.a_ecrire:
+            embed.add_field(
+                name=f"Repris ({len(reprise.a_ecrire)})",
+                value="\n".join(f"• {nommer(cle)}" for cle in reprise.a_ecrire),
+                inline=False,
+            )
+        if reprise.salons_ecartes:
+            # Le point de vigilance du plan, rendu visible : sans ce champ, on
+            # chercherait longtemps pourquoi une fourchette ne publie plus là où
+            # elle publiait la veille.
+            embed.add_field(
+                name=f"Salons écartés ({len(reprise.salons_ecartes)})",
+                value=(
+                    " ".join(f"<#{salon}>" for salon in reprise.salons_ecartes)
+                    + "\n-# Ils sont dans un autre serveur. Publier dedans depuis "
+                    "ici enverrait deux posts par salon."
+                ),
+                inline=False,
+            )
+        if reprise.deja_reglees:
+            embed.add_field(
+                name=f"Déjà réglé ici ({len(reprise.deja_reglees)})",
+                value=(
+                    "\n".join(f"• {nommer(cle)}" for cle in reprise.deja_reglees)
+                    + "\n-# Laissé tel quel : un réglage fait ici a la priorité "
+                    "sur l'ancien."
+                ),
+                inline=False,
+            )
+        embed.set_footer(text="À vérifier avec /reglages voir et /fourchette liste.")
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
     # Rien qui ressemble à l'ancien `/config retester` : elle effaçait la marque
     # du jour des promotions seules, sous un nom qui ne nommait aucune
