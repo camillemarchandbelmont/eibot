@@ -375,7 +375,7 @@ def enregistrer_les_reglages(bot: EmpireBot) -> None:
 
     acces_groupe = app_commands.Group(
         name="acces",
-        description="Qui peut utiliser les commandes du bot",
+        description="Qui peut utiliser les commandes du bot dans ce serveur",
         parent=groupe,
     )
 
@@ -413,7 +413,7 @@ def enregistrer_les_reglages(bot: EmpireBot) -> None:
             )
             return
 
-        if not await bot.store.autoriser(str(membre.id)):
+        if not await pour_ce_serveur(bot, interaction).autoriser(str(membre.id)):
             await interaction.response.send_message(
                 f"ℹ️ {membre.mention} est déjà autorisé.", ephemeral=True
             )
@@ -432,7 +432,8 @@ def enregistrer_les_reglages(bot: EmpireBot) -> None:
             await interaction.response.send_message(REFUS_ADMIN, ephemeral=True)
             return
 
-        if not await bot.store.retirer_autorise(str(membre.id)):
+        magasin = pour_ce_serveur(bot, interaction)
+        if not await magasin.retirer_autorise(str(membre.id)):
             await interaction.response.send_message(
                 f"ℹ️ {membre.mention} n'était pas dans la liste.", ephemeral=True
             )
@@ -450,9 +451,11 @@ def enregistrer_les_reglages(bot: EmpireBot) -> None:
 
     @acces_groupe.command(name="liste", description="Qui peut utiliser les commandes")
     async def acces_liste(interaction: discord.Interaction):
-        autorises = await bot.store.autorises()
+        autorises = await pour_ce_serveur(bot, interaction).autorises()
         embed = discord.Embed(
-            title="Accès aux commandes",
+            # « ce serveur » dans le titre : la liste est propre au serveur, et
+            # un membre autorisé ailleurs n'y passe pas.
+            title="Accès aux commandes dans ce serveur",
             # Les administrateurs sont cités même s'ils ne sont pas dans la
             # liste : sinon celle-ci se lirait comme exhaustive.
             description="Les **administrateurs** du serveur ont toujours accès.",

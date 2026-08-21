@@ -3,6 +3,10 @@
 Gérer la liste reste **réservé aux administrateurs**, même si un membre
 autorisé peut utiliser toutes les autres commandes : sinon il pourrait
 s'ajouter des complices, ou retirer celui qui l'a nommé.
+
+La liste appartient au serveur où la commande est tapée. Ce qui l'éprouve est
+`tests/test_acces_par_serveur.py` ; ici tout passe par `_magasin`, celui de ce
+serveur, pour que ces tests continuent de porter sur ce qu'ils annoncent.
 """
 
 import pytest
@@ -52,9 +56,22 @@ class Reponse:
         pass
 
 
+#: Le serveur où ces commandes sont tapées, et donc dont la liste d'accès est en
+#: jeu. Nommé plutôt qu'écrit deux fois : une assertion qui irait lire un autre
+#: tiroir le trouverait vide et croirait constater un refus.
+SERVEUR = 999
+
+
+class ServeurFactice:
+    def __init__(self, serveur_id: int = SERVEUR):
+        self.id = serveur_id
+        self.name = f"Serveur {serveur_id}"
+
+
 class InteractionFactice:
     def __init__(self, auteur: Membre):
         self.user = auteur
+        self.guild = ServeurFactice()
         self.response = Reponse()
 
     @property
@@ -84,6 +101,15 @@ async def _bot(tmp_path) -> EmpireBot:
     return EmpireBot(store, CsvFileSource(chemin))
 
 
+def _magasin(bot: EmpireBot):
+    """La liste d'accès du serveur où `InteractionFactice` tape ses commandes.
+
+    Le montage et les assertions passent par elle, comme les commandes :
+    autorisé dans la configuration commune, un membre n'entrerait nulle part.
+    """
+    return bot.store.pour(SERVEUR)
+
+
 ADMIN = lambda: Membre(1, nom="Admin", admin=True)
 
 
@@ -95,7 +121,7 @@ async def test_ajouter_un_membre(tmp_path):
 
     await _commande(bot, "reglages acces ajouter").callback(interaction, Membre(42))
 
-    assert await bot.store.autorises() == ["42"]
+    assert await _magasin(bot).autorises() == ["42"]
     assert "✅" in interaction.textes[0]
 
 
@@ -109,7 +135,7 @@ async def test_ajouter_deux_fois_le_dit(tmp_path):
     interaction = InteractionFactice(ADMIN())
     await _commande(bot, "reglages acces ajouter").callback(interaction, membre)
 
-    assert await bot.store.autorises() == ["42"]
+    assert await _magasin(bot).autorises() == ["42"]
     assert "déjà" in interaction.textes[0]
 
 
@@ -121,7 +147,7 @@ async def test_ajouter_un_bot_refuse(tmp_path):
 
     await _commande(bot, "reglages acces ajouter").callback(interaction, Bot())
 
-    assert await bot.store.autorises() == []
+    assert await _magasin(bot).autorises() == []
     assert "bot" in interaction.textes[0].lower()
 
 
@@ -142,12 +168,12 @@ async def test_ajouter_un_administrateur_le_dit(tmp_path):
 
 async def test_retirer_un_membre(tmp_path):
     bot = await _bot(tmp_path)
-    await bot.store.autoriser("42")
+    await _magasin(bot).autoriser("42")
     interaction = InteractionFactice(ADMIN())
 
     await _commande(bot, "reglages acces retirer").callback(interaction, Membre(42))
 
-    assert await bot.store.autorises() == []
+    assert await _magasin(bot).autorises() == []
     assert "✅" in interaction.textes[0]
 
 
@@ -182,8 +208,8 @@ async def test_liste_vide_dit_que_les_admins_gardent_lacces(tmp_path):
 
 async def test_liste_affiche_les_membres(tmp_path):
     bot = await _bot(tmp_path)
-    await bot.store.autoriser("42")
-    await bot.store.autoriser("43")
+    await _magasin(bot).autoriser("42")
+    await _magasin(bot).autoriser("43")
     interaction = InteractionFactice(ADMIN())
 
     await _commande(bot, "reglages acces liste").callback(interaction)
@@ -198,32 +224,32 @@ async def test_liste_affiche_les_membres(tmp_path):
 async def test_un_membre_autorise_ne_peut_pas_ajouter(tmp_path):
     """Sinon il s'ajouterait des complices sans passer par un administrateur."""
     bot = await _bot(tmp_path)
-    await bot.store.autoriser("42")
+    await _magasin(bot).autoriser("42")
     interaction = InteractionFactice(Membre(42))
 
     await _commande(bot, "reglages acces ajouter").callback(interaction, Membre(43))
 
-    assert await bot.store.autorises() == ["42"]
+    assert await _magasin(bot).autorises() == ["42"]
     assert "administrateur" in interaction.textes[0].lower()
 
 
 async def test_un_membre_autorise_ne_peut_pas_retirer(tmp_path):
     """Sinon il pourrait retirer les autres et rester seul aux commandes."""
     bot = await _bot(tmp_path)
-    await bot.store.autoriser("42")
-    await bot.store.autoriser("43")
+    await _magasin(bot).autoriser("42")
+    await _magasin(bot).autoriser("43")
     interaction = InteractionFactice(Membre(42))
 
     await _commande(bot, "reglages acces retirer").callback(interaction, Membre(43))
 
-    assert await bot.store.autorises() == ["42", "43"]
+    assert await _magasin(bot).autorises() == ["42", "43"]
     assert "administrateur" in interaction.textes[0].lower()
 
 
 async def test_un_membre_autorise_peut_voir_la_liste(tmp_path):
     """Consulter ne présente pas le même risque que modifier."""
     bot = await _bot(tmp_path)
-    await bot.store.autoriser("42")
+    await _magasin(bot).autoriser("42")
     interaction = InteractionFactice(Membre(42))
 
     await _commande(bot, "reglages acces liste").callback(interaction)

@@ -1035,6 +1035,64 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
         "        if False:",
         "un membre autorisé pourrait mettre dehors celui qui l'a nommé",
     ),
+
+    # --- src/bot.py, src/reglages.py : la liste d'accès par serveur ---------
+    #
+    # Le réglage le plus lourd du lot : une seule liste pour tous les serveurs
+    # voulait dire qu'inviter le bot ailleurs donnait les clés de toutes les
+    # entreprises. Le gardien et les trois commandes forment un tout — la liste
+    # écrite d'un côté doit être celle que l'autre relit, sinon plus personne
+    # n'entre, ou n'importe qui entre partout.
+    (
+        "cloisonnement-acces-gardien-lit-la-liste-commune",
+        "src/bot.py",
+        "            autorises=await magasin.autorises(),",
+        "            autorises=await self.store.autorises(),",
+        "un membre autorisé par une entreprise se servirait des commandes de "
+        "toutes les autres, et sa propre liste n'ouvrirait rien",
+    ),
+    (
+        "cloisonnement-acces-gardien-toujours-sur-le-commun",
+        "src/bot.py",
+        "        magasin = self.store.pour(serveur.id) if serveur else self.store",
+        "        magasin = self.store",
+        "même chose, prise par l'autre bout : le serveur où l'on tape ne "
+        "choisirait plus la liste",
+    ),
+    (
+        "cloisonnement-acces-gardien-sans-repli-hors-serveur",
+        "src/bot.py",
+        "        magasin = self.store.pour(serveur.id) if serveur else self.store",
+        "        magasin = self.store.pour(serveur.id)",
+        "en message privé le gardien lèverait avant chaque commande : le bot "
+        "répondrait « une erreur est survenue » à tout au lieu de refuser",
+    ),
+    (
+        "cloisonnement-acces-ajouter-dans-le-commun",
+        "src/reglages.py",
+        "        if not await pour_ce_serveur(bot, interaction).autoriser(str(membre.id)):",
+        "        if not await bot.store.autoriser(str(membre.id)):",
+        "le « ✅ » n'ouvrirait rien, et le membre ajouté serait refusé par le "
+        "gardien qui lit la liste de ce serveur",
+    ),
+    (
+        "cloisonnement-acces-retirer-dans-le-commun",
+        "src/reglages.py",
+        "        magasin = pour_ce_serveur(bot, interaction)\n"
+        "        if not await magasin.retirer_autorise(str(membre.id)):",
+        "        magasin = pour_ce_serveur(bot, interaction)\n"
+        "        if not await bot.store.retirer_autorise(str(membre.id)):",
+        "mettre quelqu'un dehors répondrait « il n'était pas dans la liste » et "
+        "le laisserait entrer",
+    ),
+    (
+        "cloisonnement-acces-liste-du-commun",
+        "src/reglages.py",
+        "        autorises = await pour_ce_serveur(bot, interaction).autorises()",
+        "        autorises = await bot.store.autorises()",
+        "la liste affichée ne serait pas celle que le gardien applique : on "
+        "chercherait pourquoi les membres cités sont refusés",
+    ),
     # --- src/importation.py, src/reglages.py : reprendre l'ancienne config ---
     #
     # Le cloisonnement n'a pas de repli : au déploiement, chaque serveur se

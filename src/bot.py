@@ -69,14 +69,23 @@ class ArbreProtege(app_commands.CommandTree):
         passer par discord.py.
 
         La décision est déléguée à `src.acces` : le site web applique la même
-        règle, donc un membre ajouté par `/reglages acces ajouter` obtient les deux
-        accès d'un coup.
+        règle, sur la liste **commune** qu'il continue de lire faute de dire de
+        quel serveur il parle. Un membre ajouté dans un serveur n'ouvre donc plus
+        le site, et c'est le chantier que le plan garde pour plus tard.
+
+        La liste est celle du serveur où l'on tape : la même liste partout
+        donnait, en invitant le bot ailleurs, les clés de toutes les entreprises.
+        Hors serveur — un message privé — il n'y a pas de liste à lire, et lever
+        ici ferait échouer *toutes* les commandes plutôt que de refuser celle-là.
         """
+        serveur = getattr(interaction, "guild", None)
+        magasin = self.store.pour(serveur.id) if serveur else self.store
+
         permissions = getattr(interaction.user, "guild_permissions", None)
         if acces_autorise(
             est_admin=bool(permissions and permissions.administrator),
             membre_id=getattr(interaction.user, "id", None),
-            autorises=await self.store.autorises(),
+            autorises=await magasin.autorises(),
         ):
             return True
 
