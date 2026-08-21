@@ -133,6 +133,9 @@ class EmpireBot(discord.Client):
         # qu'une seule fois : le message est rare, et le taire après une coupure
         # laisserait le bot amputé sans trace visible.
         await self.signaler_les_modules_refuses()
+        # De même pour la liste des serveurs, qui n'est garnie qu'une fois la
+        # connexion établie.
+        await self.signaler_les_serveurs_sans_configuration()
 
     async def setup_hook(self) -> None:
         if settings.GUILD_IDS:
@@ -189,6 +192,7 @@ class EmpireBot(discord.Client):
         donnees: tuple[Meta, list[Building]] | None = None,
         tolere_min: Decimal | None = None,
         tolere_max: Decimal | None = None,
+        magasin=None,
     ) -> tuple[list[dict], str, str]:
         """Renvoie (embeds, contenu, message de repli si aucune promo).
 
@@ -198,14 +202,21 @@ class EmpireBot(discord.Client):
 
         `tolere_min`/`tolere_max` décrivent la zone de tolérance de la
         fourchette, où l'on cherche avant de repêcher au hasard de la distance.
+
+        `magasin` désigne la configuration qui **habille** le post : son template
+        et son fuseau. Sans lui, la configuration commune — le site de contrôle ne
+        dit pas de quel serveur il parle. Deux entreprises n'ont pas la même
+        charte, et c'est tout l'intérêt d'un template par serveur : lu dans le
+        commun, il ne changerait jamais rien à ce qui sort.
         """
+        magasin = self.store if magasin is None else magasin
         meta, batiments = donnees if donnees is not None else await self.charger()
         promos = find_promos(
             batiments, prix_min, prix_max,
             tolere_min=tolere_min, tolere_max=tolere_max,
         )
-        modele = await self.store.template()
-        date = maintenant_local((await self.store.config())["fuseau"]).strftime("%Y-%m-%d")
+        modele = await magasin.template()
+        date = maintenant_local((await magasin.config())["fuseau"]).strftime("%Y-%m-%d")
 
         if not promos:
             return [], "", message_aucune_promo(prix_min, prix_max, meta)
@@ -389,6 +400,33 @@ class EmpireBot(discord.Client):
         )
         await self.journaliser_erreur(
             f"{len(self.modules_refuses)} module(s) écarté(s) au démarrage :\n{lignes}"
+        )
+
+    async def signaler_les_serveurs_sans_configuration(self) -> None:
+        """Nomme les serveurs qui n'ont rien réglé, donc où rien ne sortira.
+
+        Chaque serveur a désormais sa configuration, et il n'y a **pas de repli** :
+        un serveur qui n'a rien réglé ne publie nulle part, son journal se tait et
+        ses membres autorisés perdent l'accès. Le silence ressemble trait pour
+        trait à une panne du bot, et se chercherait des jours.
+
+        Dit dans le journal **commun** : celui du serveur en cause est muet par
+        définition, c'est justement sa configuration qui manque. Muette quand tout
+        est réglé — un rappel à chaque démarrage apprendrait à ne plus lire ce
+        salon, et le vrai signalement passerait avec le reste.
+        """
+        vierges = [
+            serveur for serveur in self.guilds
+            if await self.store.pour(serveur.id).vierge()
+        ]
+        if not vierges:
+            return
+        lignes = "\n".join(f"• {serveur.name} (`{serveur.id}`)" for serveur in vierges)
+        await self.journaliser_erreur(
+            f"{len(vierges)} serveur(s) sans configuration : rien n'y sera "
+            f"publié.\n{lignes}\n"
+            "-# `/reglages importer` reprend la configuration commune, à taper une "
+            "fois dans chacun."
         )
 
     async def journaliser_erreur(self, message: str) -> None:

@@ -27,7 +27,12 @@ from zoneinfo import ZoneInfo
 import discord
 from discord import app_commands
 
-from src.commandes import administrateur, lister_fourchettes, permissions_manquantes
+from src.commandes import (
+    administrateur,
+    lister_fourchettes,
+    permissions_manquantes,
+    pour_ce_serveur,
+)
 from src.importation import nommer, preparer
 from src.publish import envoyer
 from src.schedule import maintenant_local
@@ -55,31 +60,55 @@ def enregistrer_les_reglages(bot: EmpireBot) -> None:
 
     @groupe.command(name="voir", description="Affiche la configuration courante")
     async def reglages_voir(interaction: discord.Interaction):
-        config = await bot.store.config()
-        fourchettes = await bot.store.fourchettes()
-        logs = await bot.store.salon_logs()
-        roles = await bot.store.roles()
+        """La configuration de **ce** serveur, et l'aveu qu'il n'en a pas.
+
+        Celle du commun ne publie plus rien : l'afficher ici ferait croire ce
+        serveur réglé, et cacherait la seule chose à savoir de lui.
+        """
+        magasin = pour_ce_serveur(bot, interaction)
+        config = await magasin.config()
+        fourchettes = await magasin.fourchettes()
+        logs = await magasin.salon_logs()
+        roles = await magasin.roles()
         # Une ligne par serveur : une valeur unique laisserait croire que tous
         # les serveurs pinguent, ou qu'aucun ne le fait.
         if roles:
-            noms = await bot.store.serveurs()
+            noms = await magasin.serveurs()
             role = "\n".join(
                 f"{noms.get(serveur, serveur)} : <@&{role_id}>"
                 for serveur, role_id in roles.items()
             )
-        elif config.get("role_id"):
-            # Repli plat : role_id existe, mais roles est vide. Ce rôle est
-            # mentionné sur tous les serveurs (config d'avant le multi-serveurs).
+        # Repli plat : `role_id` existe, mais `roles` est vide. Ce rôle est
+        # mentionné sur tous les serveurs (config d'avant le multi-serveurs). Lu
+        # par `role_du_serveur`, qui le cherche là où il est resté — dans la
+        # configuration commune, que `/reglages importer` ne recopie pas faute de
+        # savoir à quel serveur il appartenait.
+        elif plat := await magasin.role_du_serveur(interaction.guild.id):
             role = (
-                f"<@&{config['role_id']}>\n"
+                f"<@&{plat}>\n"
                 "-# Réglage d'avant le multi-serveurs, appliqué à tous les serveurs. "
                 "Utilise `/reglages mention` pour le rendre par serveur."
             )
         else:
             role = "*aucune*"
-        stockage = "Postgres" if bot.store.persistant else "⚠️ mémoire (perdue au redémarrage)"
+        stockage = "Postgres" if magasin.persistant else "⚠️ mémoire (perdue au redémarrage)"
 
-        embed = discord.Embed(title="Configuration", color=0x5865F2)
+        embed = discord.Embed(
+            title="Configuration",
+            # Le vide est le pire des signalements : il ressemble trait pour trait
+            # à une panne du bot. Les deux chemins sont nommés, car un serveur
+            # tout neuf n'a aucune configuration commune à reprendre.
+            description=(
+                "⚠️ **Rien n'est réglé dans ce serveur** : il ne publiera nulle "
+                "part.\n"
+                "-# `/reglages importer` reprend la configuration d'avant, en ne "
+                "gardant que les salons de ce serveur. Sinon `/fourchette ajouter` "
+                "puis `/fourchette salon ajouter`."
+            )
+            if await magasin.vierge()
+            else None,
+            color=0x5865F2,
+        )
         # L'heure vue par le bot, pour rendre visible un décalage de fuseau.
         embed.add_field(
             name="Heure",
@@ -100,7 +129,10 @@ def enregistrer_les_reglages(bot: EmpireBot) -> None:
         )
         embed.add_field(name="Stockage", value=stockage, inline=False)
         embed.add_field(name="Données", value=bot.decrire_source(), inline=False)
-        embed.set_footer(text=f"Dernière publication : {await bot.store.derniere_publication() or 'jamais'}")
+        embed.set_footer(
+            text="Dernière publication : "
+            f"{await magasin.derniere_publication() or 'jamais'}"
+        )
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     # --- /reglages fuseau ---------------------------------------------------
@@ -116,6 +148,9 @@ def enregistrer_les_reglages(bot: EmpireBot) -> None:
         heure`). Le fuseau, lui, est partagé : le régler depuis l'une déplacerait
         l'autre, surprise qui ne se découvrirait que le lendemain. D'où sa propre
         commande, à l'endroit des réglages communs.
+
+        Commun aux publications d'un serveur, pas aux serveurs entre eux : deux
+        entreprises peuvent vivre dans deux décalages.
         """
         try:
             ZoneInfo(fuseau)
@@ -128,7 +163,8 @@ def enregistrer_les_reglages(bot: EmpireBot) -> None:
             )
             return
 
-        config = await bot.store.maj_config(fuseau=fuseau)
+        magasin = pour_ce_serveur(bot, interaction)
+        config = await magasin.maj_config(fuseau=fuseau)
 
         # Les marques du jour ne sont pas effacées : corriger l'horloge n'est pas
         # demander un nouveau post, et il n'y aurait aucune raison de choisir
@@ -138,7 +174,7 @@ def enregistrer_les_reglages(bot: EmpireBot) -> None:
             f"✅ Fuseau : **{config['fuseau']}**.\n"
             f"-# Il est {maintenant.strftime('%H:%M')} — "
             f"promotions à {config['heure']}, "
-            f"tableau des frais à {await bot.store.heure_filiales()}.",
+            f"tableau des frais à {await magasin.heure_filiales()}.",
             ephemeral=True,
         )
 
@@ -148,13 +184,25 @@ def enregistrer_les_reglages(bot: EmpireBot) -> None:
     async def reglages_mention(
         interaction: discord.Interaction, role: discord.Role | None = None
     ):
-        if role is None:
-            # Lire avant d'effacer pour savoir si on tape dans le repli plat
-            roles = await bot.store.roles()
-            config = await bot.store.config()
-            etait_plat = not roles and config.get("role_id")
+        """Le seul réglage déjà rangé par serveur avant le cloisonnement.
 
-            if await bot.store.effacer_role(str(interaction.guild.id)):
+        La table `roles` reste donc dans la configuration commune, et la vue la
+        délègue telle quelle : cloisonnée, elle se rangerait deux fois —
+        `serveur:111:roles` ne contenant qu'une entrée `111` — et le site de
+        contrôle ne la trouverait plus.
+        """
+        magasin = pour_ce_serveur(bot, interaction)
+
+        if role is None:
+            # Lire avant d'effacer pour savoir si on tape dans le repli plat.
+            # `role_du_serveur` cherche `role_id` là où il est resté, et ne le rend
+            # que si la table est vide : c'est exactement le repli plat.
+            roles = await magasin.roles()
+            etait_plat = not roles and await magasin.role_du_serveur(
+                interaction.guild.id
+            )
+
+            if await magasin.effacer_role(str(interaction.guild.id)):
                 if etait_plat:
                     message = (
                         "✅ Mention désactivée **sur tous les serveurs** : les posts ne "
@@ -172,7 +220,7 @@ def enregistrer_les_reglages(bot: EmpireBot) -> None:
             await interaction.response.send_message(message, ephemeral=True)
             return
 
-        await bot.store.definir_role(str(interaction.guild.id), str(role.id))
+        await magasin.definir_role(str(interaction.guild.id), str(role.id))
         await interaction.response.send_message(
             f"✅ {role.mention} sera mentionné à chaque post **sur ce serveur**.\n"
             "-# Les autres serveurs gardent leur propre réglage.",
@@ -187,8 +235,16 @@ def enregistrer_les_reglages(bot: EmpireBot) -> None:
     async def reglages_logs(
         interaction: discord.Interaction, salon: discord.TextChannel | None = None
     ):
+        """Le journal de ce serveur, et de lui seul.
+
+        Un compte rendu de tournée nomme des salons : raconté dans le journal d'une
+        autre entreprise, il mélangerait les deux dans un même fil et donnerait à
+        chacune les ids de l'autre.
+        """
+        magasin = pour_ce_serveur(bot, interaction)
+
         if salon is None:
-            await bot.store.desactiver_logs()
+            await magasin.desactiver_logs()
             await interaction.response.send_message(
                 "✅ Journal désactivé.", ephemeral=True
             )
@@ -202,7 +258,7 @@ def enregistrer_les_reglages(bot: EmpireBot) -> None:
             )
             return
 
-        await bot.store.maj_config(logs_salon_id=str(salon.id))
+        await magasin.maj_config(logs_salon_id=str(salon.id))
         await interaction.response.send_message(
             f"✅ Journal dans {salon.mention} : publications et erreurs y seront "
             f"rapportées.",
@@ -241,9 +297,12 @@ def enregistrer_les_reglages(bot: EmpireBot) -> None:
             await interaction.response.send_message(REFUS_IMPORT, ephemeral=True)
             return
 
-        magasin = bot.store.pour(interaction.guild.id)
+        magasin = pour_ce_serveur(bot, interaction)
         reprise = preparer(
-            await bot.store.tout(),
+            # Toute la base, et non le tiroir de ce serveur : c'est justement
+            # l'ancienne configuration commune qu'on vient reprendre. La vue le
+            # permet, `tout()` n'étant pas cloisonné.
+            await magasin.tout(),
             interaction.guild.id,
             # Tous les salons, y compris vocaux et catégories : la question posée
             # est « est-il à ce serveur ? », pas « peut-on y publier ? ».
@@ -508,7 +567,14 @@ def enregistrer_les_reglages(bot: EmpireBot) -> None:
     async def template_charger(
         interaction: discord.Interaction, fichier: discord.Attachment
     ):
+        """Le template de ce serveur : deux entreprises n'ont pas la même charte.
+
+        C'est tout l'intérêt d'un template par serveur — et l'aperçu qui suit est
+        rendu avec celui qu'on vient d'enregistrer, sans quoi la commande
+        confirmerait un réglage en montrant celui du voisin.
+        """
         await interaction.response.defer(ephemeral=True)
+        magasin = pour_ce_serveur(bot, interaction)
 
         try:
             modele = json.loads((await fichier.read()).decode("utf-8"))
@@ -525,7 +591,7 @@ def enregistrer_les_reglages(bot: EmpireBot) -> None:
             return
 
         inconnus = placeholders_inconnus(modele)
-        await bot.store.set_template(modele)
+        await magasin.set_template(modele)
 
         message = "✅ Template enregistré."
         if inconnus:
@@ -534,10 +600,12 @@ def enregistrer_les_reglages(bot: EmpireBot) -> None:
                 f"{', '.join('`{' + p + '}`' for p in sorted(inconnus))}"
             )
 
-        config = await bot.store.config()
+        config = await magasin.config()
         try:
             embeds, contenu, repli = await bot.construire_publication(
-                Decimal(config["prix_min"]), Decimal(config["prix_max"])
+                Decimal(config["prix_min"]),
+                Decimal(config["prix_max"]),
+                magasin=magasin,
             )
         except SourceError as erreur:
             await interaction.followup.send(
@@ -555,7 +623,7 @@ def enregistrer_les_reglages(bot: EmpireBot) -> None:
 
     @template_groupe.command(name="voir", description="Renvoie le template actuel")
     async def template_voir(interaction: discord.Interaction):
-        modele = await bot.store.template()
+        modele = await pour_ce_serveur(bot, interaction).template()
         contenu = json.dumps(modele, indent=2, ensure_ascii=False)
         fichier = discord.File(
             fp=io.BytesIO(contenu.encode("utf-8")),

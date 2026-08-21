@@ -1000,6 +1000,23 @@ class VueServeur(Store):
             f"`{self!r}.pour({serveur_id!r})` ne peut être qu'une confusion."
         )
 
+    async def vierge(self) -> bool:
+        """Vrai si rien n'a jamais été écrit pour ce serveur.
+
+        Il n'y a pas de repli : un serveur vierge est muet — ses posts ne sortent
+        pas, son journal se tait. Le dire demande de reconnaître cet état, et le
+        silence lui ressemble trait pour trait à une panne du bot. C'est ce que
+        lisent `/reglages voir` et le signalement du démarrage.
+
+        La question porte sur le **tiroir entier** et non sur une clé en
+        particulier : un serveur qui n'a réglé qu'une fourchette est réglé, même
+        s'il n'a jamais touché à sa configuration. Le cache commun des noms de
+        salons, lui, n'y est pas — il se remplit tout seul au premier post, et le
+        compter ferait taire le signalement pour un serveur qui n'a rien.
+        """
+        prefixe = self._cle("")
+        return not any(cle.startswith(prefixe) for cle in await self.commun.tout())
+
     # --- Ce qui reste commun -----------------------------------------------
 
     async def salons_connus(self) -> dict[str, dict]:

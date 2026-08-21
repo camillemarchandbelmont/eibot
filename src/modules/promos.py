@@ -88,6 +88,7 @@ async def _preparer(bot: Any, magasin: Any, maintenant: Any) -> Tournee:
                 donnees=donnees,
                 tolere_min=tolere_min,
                 tolere_max=tolere_max,
+                magasin=magasin,
             )
         except Exception as erreur:
             # Rendu impossible pour *cette* fourchette (template appliqué à des
@@ -206,10 +207,9 @@ def enregistrer(bot: Any) -> None:
         max: str | None = None,
     ) -> None:
         await interaction.response.defer()
+        magasin = pour_ce_serveur(bot, interaction)
         try:
-            prix_min, prix_max = await bornes_demandees(
-                pour_ce_serveur(bot, interaction), min, max
-            )
+            prix_min, prix_max = await bornes_demandees(magasin, min, max)
         except MoneyError as erreur:
             await interaction.followup.send(
                 f"❌ {erreur}\n{aide_montants()}", ephemeral=True
@@ -223,7 +223,9 @@ def enregistrer(bot: Any) -> None:
             prix_min, prix_max = prix_max, prix_min
 
         try:
-            embeds, contenu, repli = await bot.construire_publication(prix_min, prix_max)
+            embeds, contenu, repli = await bot.construire_publication(
+                prix_min, prix_max, magasin=magasin
+            )
         except SourceError as erreur:
             await interaction.followup.send(f"❌ {erreur}", ephemeral=True)
             return

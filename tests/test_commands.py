@@ -106,6 +106,15 @@ async def _bot(source) -> EmpireBot:
     return EmpireBot(store, source)
 
 
+def _magasin(bot: EmpireBot):
+    """La configuration du serveur où `InteractionFactice` tape ses commandes.
+
+    Le montage et les assertions passent par elle, comme les commandes : réglé
+    dans la configuration commune, rien ne serait lu.
+    """
+    return bot.store.pour(SERVEUR)
+
+
 def _champ(embed, nom: str) -> str:
     for champ in embed.fields:
         if champ.name == nom:
@@ -254,7 +263,7 @@ async def test_apercu_affiche_lerreur_de_source():
     from decimal import Decimal
 
     bot = await _bot(SourceEnPanne())
-    magasin = bot.store.pour(SERVEUR)
+    magasin = _magasin(bot)
     await magasin.ajouter_fourchette("grosses", Decimal("1e14"), Decimal("6e15"))
     await magasin.ajouter_salon_fourchette("grosses", "111")
     interaction = InteractionFactice()
@@ -308,7 +317,7 @@ async def test_salon_commandes_reservees(tmp_path):
     interaction = InteractionFactice(admin=False)
 
     assert await bot.tree.autorisation(interaction) is False
-    assert await bot.store.salons() == []
+    assert await _magasin(bot).salons() == []
     assert "Réservé" in interaction.textes[0]
 
 
@@ -320,18 +329,18 @@ async def test_reglages_logs_definir_le_salon(tmp_path):
 
     await _commande(bot, "reglages logs").callback(interaction, SalonDiscordFactice(999))
 
-    assert await bot.store.salon_logs() == "999"
+    assert await _magasin(bot).salon_logs() == "999"
     assert "✅" in interaction.textes[0]
 
 
 async def test_reglages_logs_sans_argument_desactive(tmp_path):
     bot = await _bot_fichier(tmp_path)
-    await bot.store.maj_config(logs_salon_id="999")
+    await _magasin(bot).maj_config(logs_salon_id="999")
     interaction = InteractionFactice()
 
     await _commande(bot, "reglages logs").callback(interaction, None)
 
-    assert await bot.store.salon_logs() is None
+    assert await _magasin(bot).salon_logs() is None
     assert "désactiv" in interaction.textes[0].lower()
 
 
@@ -341,7 +350,7 @@ async def test_reglages_logs_reserve(tmp_path):
     interaction = InteractionFactice(admin=False)
 
     assert await bot.tree.autorisation(interaction) is False
-    assert await bot.store.salon_logs() is None
+    assert await _magasin(bot).salon_logs() is None
 
 
 # --- /reglages voir : refléter les fourchettes --------------------------------
@@ -351,11 +360,12 @@ async def test_reglages_voir_affiche_chaque_fourchette_et_ses_salons(tmp_path):
     from decimal import Decimal
 
     bot = await _bot_fichier(tmp_path)
-    await bot.store.ajouter_fourchette("grosses", Decimal("1e14"), Decimal("6e15"))
-    await bot.store.ajouter_salon_fourchette("grosses", "111")
-    await bot.store.ajouter_fourchette("petits", Decimal("0"), Decimal("1e12"))
-    await bot.store.ajouter_salon_fourchette("petits", "222")
-    await bot.store.maj_config(logs_salon_id="999")
+    magasin = _magasin(bot)
+    await magasin.ajouter_fourchette("grosses", Decimal("1e14"), Decimal("6e15"))
+    await magasin.ajouter_salon_fourchette("grosses", "111")
+    await magasin.ajouter_fourchette("petits", Decimal("0"), Decimal("1e12"))
+    await magasin.ajouter_salon_fourchette("petits", "222")
+    await magasin.maj_config(logs_salon_id="999")
     interaction = InteractionFactice()
 
     await _commande(bot, "reglages voir").callback(interaction)
@@ -389,15 +399,15 @@ async def test_reglages_fuseau_change_le_fuseau_sans_deplacer_les_heures(tmp_pat
     heure ferait sortir le tableau du soir à un autre moment que celui affiché.
     """
     bot = await _bot_fichier(tmp_path)
-    await bot.store.maj_config(heure="09:00", filiales_heure="21:00")
+    await _magasin(bot).maj_config(heure="09:00", filiales_heure="21:00")
     interaction = InteractionFactice()
 
     await _commande(bot, "reglages fuseau").callback(interaction, "America/New_York")
 
-    config = await bot.store.config()
+    config = await _magasin(bot).config()
     assert config["fuseau"] == "America/New_York"
     assert config["heure"] == "09:00"
-    assert await bot.store.heure_filiales() == "21:00"
+    assert await _magasin(bot).heure_filiales() == "21:00"
     assert "✅" in interaction.textes[0]
 
 
@@ -420,12 +430,12 @@ async def test_reglages_fuseau_dit_l_heure_qu_il_est_pour_reperer_une_erreur(tmp
 async def test_reglages_fuseau_refuse_un_fuseau_inconnu(tmp_path):
     """Écrit tel quel, il ferait échouer chaque lecture de l'heure ensuite."""
     bot = await _bot_fichier(tmp_path)
-    avant = (await bot.store.config())["fuseau"]
+    avant = (await _magasin(bot).config())["fuseau"]
     interaction = InteractionFactice()
 
     await _commande(bot, "reglages fuseau").callback(interaction, "Mars/Olympus")
 
-    assert (await bot.store.config())["fuseau"] == avant
+    assert (await _magasin(bot).config())["fuseau"] == avant
     assert "❌" in interaction.textes[0]
     # Un exemple, sinon rien ne dit à quoi ressemble un nom accepté.
     assert "Europe/Paris" in interaction.textes[0]
@@ -438,14 +448,15 @@ async def test_reglages_fuseau_ne_consomme_pas_la_journee_des_publications(tmp_p
     et il n'y aurait aucune raison d'en choisir une plutôt que l'autre.
     """
     bot = await _bot_fichier(tmp_path)
-    await bot.store.marquer_publie("2026-08-19")
-    await bot.store.marquer_publie_filiales("2026-08-19")
+    magasin = _magasin(bot)
+    await magasin.marquer_publie("2026-08-19")
+    await magasin.marquer_publie_filiales("2026-08-19")
     interaction = InteractionFactice()
 
     await _commande(bot, "reglages fuseau").callback(interaction, "Europe/Lisbon")
 
-    assert await bot.store.derniere_publication() == "2026-08-19"
-    assert await bot.store.derniere_publication_filiales() == "2026-08-19"
+    assert await magasin.derniere_publication() == "2026-08-19"
+    assert await magasin.derniere_publication_filiales() == "2026-08-19"
 
 
 # --- /reglages template champs -------------------------------------------------------

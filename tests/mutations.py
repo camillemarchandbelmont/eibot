@@ -14,7 +14,8 @@ si l'on interrompt le script (Ctrl-C).
 Le nom d'une mutation dit où elle mord, donc quel lot la rejoue : `tournee-` la
 mécanique d'envoi commune, `surface-` le vocabulaire des commandes, `bot-` les
 commandes elles-mêmes et leurs modules, `cloisonnement-` la séparation des
-serveurs, le reste le fichier de calcul visé.
+serveurs, `reglages-` le noyau `src/reglages.py`, le reste le fichier de calcul
+visé.
 
 Déplacer du code oblige à repointer les motifs qui le visaient. Un motif dont le
 fichier a changé n'échoue pas : le script l'annonce introuvable et le compte
@@ -478,6 +479,100 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
         "            pass",
         "un salon réglé avant le multi-salon perdrait son nom de la même façon",
     ),
+    (
+        "cloisonnement-vierge-toujours-faux",
+        "src/db.py",
+        "        return not any(cle.startswith(prefixe) for cle in await self.commun.tout())",
+        "        return False",
+        "un serveur qui n'a rien réglé passerait pour réglé : plus aucun "
+        "avertissement, et son silence se chercherait des jours",
+    ),
+    (
+        "cloisonnement-vierge-toujours-vrai",
+        "src/db.py",
+        "        return not any(cle.startswith(prefixe) for cle in await self.commun.tout())",
+        "        return True",
+        "chaque serveur serait sommé d'importer sa configuration, celui qui vient "
+        "de la régler à la main compris",
+    ),
+    (
+        "cloisonnement-vierge-regarde-toute-la-base",
+        "src/db.py",
+        '        prefixe = self._cle("")',
+        '        prefixe = ""',
+        "la moindre clé commune ferait passer un serveur vierge pour réglé : "
+        "l'avertissement ne sortirait jamais, sur aucun serveur",
+    ),
+    # --- src/bot.py : l'habillage d'un post, et l'aveu d'un serveur vierge ---
+    #
+    # Un template et un fuseau par serveur ne servent qu'a une chose : habiller
+    # ce qui sort. Lus dans le commun, les deux commandes confirmeraient un
+    # reglage qui ne changerait jamais rien a un seul post.
+    (
+        "cloisonnement-habillage-toujours-commun",
+        "src/bot.py",
+        "        magasin = self.store if magasin is None else magasin\n"
+        "        meta, batiments = donnees if donnees is not None else await self.charger()",
+        "        magasin = self.store\n"
+        "        meta, batiments = donnees if donnees is not None else await self.charger()",
+        "chaque post sortirait avec la charte et la date du commun : régler un "
+        "template par serveur ne changerait jamais rien à ce qui part",
+    ),
+    (
+        "cloisonnement-template-du-commun",
+        "src/bot.py",
+        "        modele = await magasin.template()",
+        "        modele = await self.store.template()",
+        "deux entreprises auraient la même charte, celle que personne n'a réglée",
+    ),
+    (
+        "cloisonnement-date-du-fuseau-commun",
+        "src/bot.py",
+        '        date = maintenant_local((await magasin.config())["fuseau"]).strftime("%Y-%m-%d")',
+        '        date = maintenant_local((await self.store.config())["fuseau"]).strftime("%Y-%m-%d")',
+        "`{date}` daterait le post d'ailleurs : « post d'hier » un jour sur deux "
+        "dans un serveur qui n'a pas le même décalage",
+    ),
+    (
+        "cloisonnement-serveurs-vierges-non-signales",
+        "src/bot.py",
+        "        await self.signaler_les_serveurs_sans_configuration()",
+        "        pass",
+        "au déploiement chaque serveur se réveille vide : rien ne partirait plus "
+        "nulle part, et le journal n'en dirait pas un mot",
+    ),
+    (
+        "cloisonnement-modules-refuses-non-signales",
+        "src/bot.py",
+        "        await self.signaler_les_modules_refuses()",
+        "        pass",
+        "le signalement des modules écartés est branché au même endroit : "
+        "éprouvé mais jamais appelé, il ne dirait jamais rien",
+    ),
+    (
+        "cloisonnement-signalement-a-chaque-demarrage",
+        "src/bot.py",
+        "        if not vierges:\n            return",
+        "        if False:\n            return",
+        "un « 0 serveur sans configuration » à chaque démarrage apprendrait à ne "
+        "plus lire ce salon, et le vrai signalement passerait avec le reste",
+    ),
+    (
+        "cloisonnement-tous-les-serveurs-declares-vierges",
+        "src/bot.py",
+        "            if await self.store.pour(serveur.id).vierge()",
+        "            if True",
+        "un serveur déjà réglé serait sommé d'importer : on retaperait un import "
+        "par-dessus une configuration correcte",
+    ),
+    (
+        "cloisonnement-serveurs-vierges-non-nommes",
+        "src/bot.py",
+        '        lignes = "\\n".join(f"• {serveur.name} (`{serveur.id}`)" for serveur in vierges)',
+        '        lignes = ""',
+        "on saurait que des serveurs sont muets sans savoir lesquels : il "
+        "faudrait taper `/reglages voir` dans chacun pour trouver",
+    ),
     # --- src/tournee.py, src/bot.py : la tournée, une par serveur -----------
     #
     # Cloisonner le stockage ne sert a rien tant que la boucle d'envoi n'en
@@ -720,13 +815,11 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
         "                donnees=donnees,\n"
         "                tolere_min=tolere_min,\n"
         "                tolere_max=tolere_max,\n"
-        "            )\n"
-        "        except Exception as erreur:",
+        "                magasin=magasin,",
         "                donnees=await bot.charger(),\n"
         "                tolere_min=tolere_min,\n"
         "                tolere_max=tolere_max,\n"
-        "            )\n"
-        "        except Exception as erreur:",
+        "                magasin=magasin,",
         "l'export serait téléchargé une fois par fourchette",
     ),
     (
@@ -752,6 +845,22 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
         "vrai en écrivant ailleurs — un « ✅ » pour un post qui ne partirait "
         "nulle part",
     ),
+    (
+        "bot-post-quotidien-habille-par-le-commun",
+        "src/modules/promos.py",
+        "                tolere_max=tolere_max,\n                magasin=magasin,",
+        "                tolere_max=tolere_max,",
+        "le post du jour sortirait avec la charte et la date du commun : le "
+        "template réglé dans un serveur ne se verrait jamais",
+    ),
+    (
+        "bot-promos-habille-par-le-commun",
+        "src/modules/promos.py",
+        "                prix_min, prix_max, magasin=magasin",
+        "                prix_min, prix_max",
+        "`/promos` répondrait avec la charte du commun : l'aperçu ne montrerait "
+        "pas ce qui sortira le soir",
+    ),
     # --- src/reglages.py : le noyau des réglages ---------------------------
     (
         "reglages-fuseau-inconnu-ecrit-quand-meme",
@@ -764,19 +873,131 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
     (
         "reglages-fuseau-confirme-sans-ecrire",
         "src/reglages.py",
-        "        config = await bot.store.maj_config(fuseau=fuseau)",
-        "        config = await bot.store.config()",
+        "        config = await magasin.maj_config(fuseau=fuseau)",
+        "        config = await magasin.config()",
         "la commande confirmerait un fuseau qu'elle n'a pas enregistré",
     ),
     (
         "reglages-fuseau-relance-les-publications",
         "src/reglages.py",
-        "        config = await bot.store.maj_config(fuseau=fuseau)",
-        "        config = await bot.store.maj_config(fuseau=fuseau)\n"
-        "        await bot.store.oublier_publication()\n"
-        "        await bot.store.marquer_publie_filiales(None)",
+        "        config = await magasin.maj_config(fuseau=fuseau)",
+        "        config = await magasin.maj_config(fuseau=fuseau)\n"
+        "        await magasin.oublier_publication()\n"
+        "        await magasin.marquer_publie_filiales(None)",
         "corriger l'horloge relancerait les deux posts du jour dans la minute, "
         "alors qu'on n'a rien demandé de tel",
+    ),
+    (
+        "reglages-fuseau-regle-celui-du-commun",
+        "src/reglages.py",
+        "        magasin = pour_ce_serveur(bot, interaction)\n"
+        "        config = await magasin.maj_config(fuseau=fuseau)",
+        "        magasin = bot.store\n"
+        "        config = await magasin.maj_config(fuseau=fuseau)",
+        "corriger l'horloge d'une entreprise déplacerait les posts de l'autre, et "
+        "ne déplacerait pas les siens",
+    ),
+    (
+        "reglages-fuseau-rappelle-lheure-du-commun",
+        "src/reglages.py",
+        'f"tableau des frais à {await magasin.heure_filiales()}.",',
+        'f"tableau des frais à {await bot.store.heure_filiales()}.",',
+        "la réponse ferait guetter le tableau du soir à l'heure du voisin",
+    ),
+    (
+        "reglages-voir-montre-la-config-commune",
+        "src/reglages.py",
+        "        magasin = pour_ce_serveur(bot, interaction)\n"
+        "        config = await magasin.config()",
+        "        magasin = bot.store\n"
+        "        config = await magasin.config()",
+        "`/reglages voir` afficherait l'heure d'avant le cloisonnement : on "
+        "attendrait le post à un moment où il ne part pas",
+    ),
+    (
+        "reglages-voir-fourchettes-du-commun",
+        "src/reglages.py",
+        "        fourchettes = await magasin.fourchettes()",
+        "        fourchettes = await bot.store.fourchettes()",
+        "les fourchettes du commun ne publient plus rien : les lister ici ferait "
+        "croire ce serveur réglé, et cacherait qu'il n'a rien",
+    ),
+    (
+        "reglages-voir-journal-du-commun",
+        "src/reglages.py",
+        "        logs = await magasin.salon_logs()",
+        "        logs = await bot.store.salon_logs()",
+        "on croirait le journal réglé ici alors que ce serveur ne raconte rien",
+    ),
+    (
+        "reglages-voir-derniere-publication-du-commun",
+        "src/reglages.py",
+        "            f\"{await magasin.derniere_publication() or 'jamais'}\"",
+        "            f\"{await bot.store.derniere_publication() or 'jamais'}\"",
+        "le pied de l'embed dirait « jamais » à un serveur qui a publié ce matin, "
+        "ou l'inverse — la seule ligne qu'on lit pour savoir si le bot travaille",
+    ),
+    (
+        "reglages-voir-annonce-jamais-faite",
+        "src/reglages.py",
+        "            if await magasin.vierge()",
+        "            if False",
+        "un serveur qui n'a rien réglé est muet, et il n'y a pas de repli : sans "
+        "cet aveu, son silence ressemble trait pour trait à une panne du bot",
+    ),
+    (
+        "reglages-voir-annonce-toujours-faite",
+        "src/reglages.py",
+        "            if await magasin.vierge()",
+        "            if True",
+        "l'avertissement s'afficherait aussi à un serveur réglé : affiché "
+        "toujours, il n'est plus lu, et le vrai passerait avec le reste",
+    ),
+    (
+        "reglages-voir-repli-plat-perdu",
+        "src/reglages.py",
+        "        elif plat := await magasin.role_du_serveur(interaction.guild.id):",
+        "        elif False:",
+        "un rôle réglé avant le multi-serveurs disparaîtrait de l'affichage alors "
+        "que le bot le pingue toujours à chaque post",
+    ),
+    (
+        "reglages-logs-regle-le-journal-commun",
+        "src/reglages.py",
+        "        magasin = pour_ce_serveur(bot, interaction)\n"
+        "\n"
+        "        if salon is None:",
+        "        magasin = bot.store\n"
+        "\n"
+        "        if salon is None:",
+        "un compte rendu de tournée nomme des salons : les deux entreprises se "
+        "raconteraient dans un même fil, chacune recevant les ids de l'autre",
+    ),
+    (
+        "reglages-template-charge-dans-le-commun",
+        "src/reglages.py",
+        "        await interaction.response.defer(ephemeral=True)\n"
+        "        magasin = pour_ce_serveur(bot, interaction)",
+        "        await interaction.response.defer(ephemeral=True)\n"
+        "        magasin = bot.store",
+        "charger sa charte écraserait celle du voisin, sans rien changer à ses "
+        "propres posts",
+    ),
+    (
+        "reglages-template-apercu-du-voisin",
+        "src/reglages.py",
+        '                Decimal(config["prix_max"]),\n'
+        "                magasin=magasin,",
+        '                Decimal(config["prix_max"]),',
+        "la commande confirmerait un template en montrant celui du commun : "
+        "l'aperçu est le seul moyen de voir ce qu'on vient d'enregistrer",
+    ),
+    (
+        "reglages-template-voir-celui-du-commun",
+        "src/reglages.py",
+        "        modele = await pour_ce_serveur(bot, interaction).template()",
+        "        modele = await bot.store.template()",
+        "on repartirait d'un fichier qui n'est pas le sien pour retoucher sa charte",
     ),
     (
         "reglages-groupe-jamais-greffe",
@@ -974,8 +1195,10 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
     (
         "reglages-importer-ecrit-dans-le-commun",
         "src/reglages.py",
-        "        magasin = bot.store.pour(interaction.guild.id)",
-        "        magasin = bot.store",
+        "        magasin = pour_ce_serveur(bot, interaction)\n"
+        "        reprise = preparer(",
+        "        magasin = bot.store\n"
+        "        reprise = preparer(",
         "l'import ne changerait rien : le serveur continuerait de ne publier "
         "nulle part, en annonçant que tout est repris",
     ),
@@ -1036,9 +1259,7 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
     (
         "bot-promos-bornes-du-commun",
         "src/modules/promos.py",
-        "            prix_min, prix_max = await bornes_demandees(\n"
-        "                pour_ce_serveur(bot, interaction), min, max\n"
-        "            )",
+        "            prix_min, prix_max = await bornes_demandees(magasin, min, max)",
         "            prix_min, prix_max = await bornes_demandees(bot.store, min, max)",
         "`/promos` sans argument dirait « aucune fourchette configurée » à un "
         "serveur qui en a",

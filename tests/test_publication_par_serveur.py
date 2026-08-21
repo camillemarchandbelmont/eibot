@@ -182,6 +182,23 @@ async def test_un_serveur_sans_rien_de_regle_ne_publie_nulle_part():
     assert salons[2].envois == []
 
 
+async def test_le_post_du_jour_est_habille_par_le_template_de_son_serveur():
+    """Deux entreprises n'ont pas la même charte, et c'est le seul usage du
+    template : rendu depuis la configuration commune, régler le sien ne
+    changerait jamais rien à ce qui sort."""
+    salons = {1: SalonFactice(1, EMPIRE)}
+    bot = await _bot([EMPIRE], salons)
+    await bot.store.set_template({"embeds": [{"title": "Commun"}]})
+    magasin = bot.store.pour("111")
+    await _fourchette_dans(magasin, "1")
+    await magasin.set_template({"embeds": [{"title": "Chez Empire — {nom}"}]})
+
+    await bot.publier_tout(forcer=True)
+
+    titres = [embed.title for envoi in salons[1].envois for embed in envoi["embeds"]]
+    assert titres and titres[0].startswith("Chez Empire")
+
+
 async def test_le_compte_rendu_nomme_chaque_serveur():
     """Sinon `/tick` répondrait deux fois « promotions : publié » sans dire où."""
     salons = {1: SalonFactice(1, EMPIRE)}

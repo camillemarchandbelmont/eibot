@@ -274,6 +274,42 @@ async def test_les_roles_mentionnes_restent_dans_la_table_commune():
     assert await commun.pour("222").role_du_serveur("111") == "42"
 
 
+# --- Un serveur qui n'a rien réglé le sait ----------------------------------
+
+
+async def test_une_vue_sait_que_son_serveur_na_rien_de_regle():
+    """Sans repli, un serveur non réglé est muet : encore faut-il le dire.
+
+    C'est ce que lisent `/reglages voir` et le signalement du démarrage. La
+    question porte sur le **tiroir entier** et non sur une clé en particulier :
+    un serveur qui n'a qu'une fourchette est réglé, même s'il n'a jamais touché à
+    sa configuration.
+    """
+    commun = await _store()
+    await commun.maj_config(heure="06:00")
+    serveur = commun.pour("111")
+
+    assert await serveur.vierge() is True
+
+    await serveur.ajouter_fourchette("a", Decimal("0"), Decimal("1e15"))
+
+    assert await serveur.vierge() is False
+    assert await commun.pour("222").vierge() is True
+
+
+async def test_le_cache_commun_ne_fait_pas_passer_un_serveur_pour_regle():
+    """Le nom d'un salon se mémorise tout seul, au premier post.
+
+    Compté comme un réglage, il ferait taire le signalement pour un serveur qui
+    n'a toujours rien — et ce serveur-là a justement des salons connus, puisque
+    la configuration commune publiait dedans la veille.
+    """
+    commun = await _store()
+    await commun.pour("111").memoriser_salon("1", "promos", "111", "A")
+
+    assert await commun.pour("111").vierge() is True
+
+
 # --- La vue est un `Store` comme un autre -----------------------------------
 
 
