@@ -80,13 +80,13 @@ async def test_lheure_dune_publication_est_reglee_dans_son_serveur():
     bot = await _bot()
     await _groupe(bot, _publication())
 
-    await _commande(bot, "bonjour heure").callback(
+    await _commande(bot, "essai heure").callback(
         _interaction(EMPIRE), heure="21:30"
     )
 
-    assert await bot.store.pour(EMPIRE).get("publication:bonjour:heure") == "21:30"
-    assert await bot.store.pour(VOISIN).get("publication:bonjour:heure") is None
-    assert await bot.store.get("publication:bonjour:heure") is None
+    assert await bot.store.pour(EMPIRE).get("publication:essai:heure") == "21:30"
+    assert await bot.store.pour(VOISIN).get("publication:essai:heure") is None
+    assert await bot.store.get("publication:essai:heure") is None
 
 
 async def test_lheure_affichee_est_celle_du_serveur_ou_lon_demande():
@@ -94,11 +94,11 @@ async def test_lheure_affichee_est_celle_du_serveur_ou_lon_demande():
     pas montrer le réglage de l'autre."""
     bot = await _bot()
     await _groupe(bot, _publication(heure_par_defaut="07:45"))
-    await bot.store.pour(EMPIRE).set("publication:bonjour:heure", "21:30")
+    await bot.store.pour(EMPIRE).set("publication:essai:heure", "21:30")
 
     ici, ailleurs = _interaction(EMPIRE), _interaction(VOISIN)
-    await _commande(bot, "bonjour heure").callback(ici, heure=None)
-    await _commande(bot, "bonjour heure").callback(ailleurs, heure=None)
+    await _commande(bot, "essai heure").callback(ici, heure=None)
+    await _commande(bot, "essai heure").callback(ailleurs, heure=None)
 
     assert "21:30" in " ".join(ici.textes)
     assert "07:45" in " ".join(ailleurs.textes)
@@ -113,7 +113,7 @@ async def test_le_fuseau_affiche_est_celui_du_serveur():
     await bot.store.pour(EMPIRE).maj_config(fuseau="Europe/Paris")
     interaction = _interaction(EMPIRE)
 
-    await _commande(bot, "bonjour heure").callback(interaction, heure=None)
+    await _commande(bot, "essai heure").callback(interaction, heure=None)
 
     assert "Europe/Paris" in " ".join(interaction.textes)
 
@@ -130,16 +130,16 @@ async def test_regler_lheure_noublie_que_la_marque_du_serveur():
     await _groupe(bot, _publication())
     for serveur in (EMPIRE, VOISIN):
         await bot.store.pour(serveur).set(
-            "publication:bonjour:derniere", "2026-08-19"
+            "publication:essai:derniere", "2026-08-19"
         )
 
-    await _commande(bot, "bonjour heure").callback(
+    await _commande(bot, "essai heure").callback(
         _interaction(EMPIRE), heure="21:30"
     )
 
-    assert await bot.store.pour(EMPIRE).get("publication:bonjour:derniere") is None
+    assert await bot.store.pour(EMPIRE).get("publication:essai:derniere") is None
     assert (
-        await bot.store.pour(VOISIN).get("publication:bonjour:derniere")
+        await bot.store.pour(VOISIN).get("publication:essai:derniere")
         == "2026-08-19"
     )
 
@@ -148,13 +148,13 @@ async def test_un_salon_est_ajoute_au_serveur_ou_la_commande_est_tapee():
     bot = await _bot()
     await _groupe(bot, _publication())
 
-    await _commande(bot, "bonjour salon ajouter").callback(
+    await _commande(bot, "essai salon ajouter").callback(
         _interaction(EMPIRE), salon=SalonFactice(4242)
     )
 
-    assert await bot.store.pour(EMPIRE).get("publication:bonjour:salons") == ["4242"]
-    assert await bot.store.pour(VOISIN).get("publication:bonjour:salons") is None
-    assert await bot.store.get("publication:bonjour:salons") is None
+    assert await bot.store.pour(EMPIRE).get("publication:essai:salons") == ["4242"]
+    assert await bot.store.pour(VOISIN).get("publication:essai:salons") is None
+    assert await bot.store.get("publication:essai:salons") is None
 
 
 async def test_un_salon_ne_se_retire_pas_depuis_un_autre_serveur():
@@ -163,15 +163,15 @@ async def test_un_salon_ne_se_retire_pas_depuis_un_autre_serveur():
     bot = await _bot()
     await _groupe(bot, _publication())
     salon = SalonFactice(4242)
-    await _commande(bot, "bonjour salon ajouter").callback(
+    await _commande(bot, "essai salon ajouter").callback(
         _interaction(EMPIRE), salon=salon
     )
 
     ailleurs = _interaction(VOISIN)
-    await _commande(bot, "bonjour salon retirer").callback(ailleurs, salon=salon)
+    await _commande(bot, "essai salon retirer").callback(ailleurs, salon=salon)
 
     assert "❌" in " ".join(ailleurs.textes)
-    assert await bot.store.pour(EMPIRE).get("publication:bonjour:salons") == ["4242"]
+    assert await bot.store.pour(EMPIRE).get("publication:essai:salons") == ["4242"]
 
 
 async def test_lapercu_prepare_sur_la_configuration_du_serveur():
@@ -185,10 +185,10 @@ async def test_lapercu_prepare_sur_la_configuration_du_serveur():
         return Tournee(raison="rien à dire")
 
     await _groupe(
-        bot, Publication(cle="bonjour", titre="le bonjour", preparer=preparer)
+        bot, Publication(cle="essai", titre="l'essai", preparer=preparer)
     )
 
-    await _commande(bot, "bonjour apercu").callback(_interaction(EMPIRE))
+    await _commande(bot, "essai apercu").callback(_interaction(EMPIRE))
 
     assert vus == [str(EMPIRE)]
 
@@ -210,11 +210,11 @@ async def test_publier_maintenant_publie_la_configuration_du_serveur():
 
     bot.resoudre_salon = resoudre_salon
     await _groupe(
-        bot, Publication(cle="bonjour", titre="le bonjour", preparer=preparer)
+        bot, Publication(cle="essai", titre="l'essai", preparer=preparer)
     )
     interaction = _interaction(EMPIRE)
 
-    await _commande(bot, "bonjour publier").callback(interaction)
+    await _commande(bot, "essai publier").callback(interaction)
 
     assert vus == [str(EMPIRE)]
     assert cible.envois == ["contenu de matin"]
@@ -222,9 +222,9 @@ async def test_publier_maintenant_publie_la_configuration_du_serveur():
         (await bot.store.pour(EMPIRE).config())["fuseau"]
     ).strftime("%Y-%m-%d")
     assert (
-        await bot.store.pour(EMPIRE).get("publication:bonjour:derniere") == aujourdhui
+        await bot.store.pour(EMPIRE).get("publication:essai:derniere") == aujourdhui
     )
-    assert await bot.store.get("publication:bonjour:derniere") is None
+    assert await bot.store.get("publication:essai:derniere") is None
     # L'avertissement porte sur la journée de ce serveur, et elle est bien
     # consommée : sans lui, un `publier` du matin ferait croire à une panne le soir.
     assert "remplace" in " ".join(interaction.textes).lower()

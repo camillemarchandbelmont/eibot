@@ -35,8 +35,8 @@ def _publication(tournee: Tournee | None = None, **surcharges) -> Publication:
         return tournee if tournee is not None else Tournee(raison="rien à dire")
 
     return Publication(
-        cle=surcharges.pop("cle", "bonjour"),
-        titre=surcharges.pop("titre", "le bonjour"),
+        cle=surcharges.pop("cle", "essai"),
+        titre=surcharges.pop("titre", "l'essai"),
         preparer=preparer,
         **surcharges,
     )
@@ -58,8 +58,13 @@ async def _groupe(bot, publication: Publication, salons: bool = True):
     Greffé pour de vrai : `walk_commands` est la seule façon de vérifier les noms
     que Discord affichera, et une commande enregistrée autrement ne prouverait
     rien du menu.
+
+    « essai » et non un nom plausible : le bot est un vrai `EmpireBot`, donc ses
+    modules sont déjà greffés. Un double qui s'appellerait comme la commande d'un
+    module — présent ou à venir — ferait lever `CommandAlreadyRegistered`, et la
+    panne se lirait comme un défaut du module qu'on vient d'écrire.
     """
-    groupe = app_commands.Group(name="bonjour", description="Le bonjour du matin")
+    groupe = app_commands.Group(name="essai", description="Une publication d'essai")
     ajouter_les_commandes_de_publication(groupe, bot, publication, salons=salons)
     bot.tree.add_command(groupe)
     return groupe
@@ -83,11 +88,11 @@ async def test_une_publication_recoit_le_vocabulaire_complet():
     noms = {c.qualified_name for c in bot.tree.walk_commands()}
 
     assert {
-        "bonjour heure",
-        "bonjour apercu",
-        "bonjour publier",
-        "bonjour salon ajouter",
-        "bonjour salon retirer",
+        "essai heure",
+        "essai apercu",
+        "essai publier",
+        "essai salon ajouter",
+        "essai salon retirer",
     } <= noms
 
 
@@ -102,8 +107,8 @@ async def test_une_publication_peut_se_passer_des_commandes_de_salon():
 
     noms = {c.qualified_name for c in bot.tree.walk_commands()}
 
-    assert "bonjour heure" in noms
-    assert "bonjour salon ajouter" not in noms
+    assert "essai heure" in noms
+    assert "essai salon ajouter" not in noms
 
 
 # --- heure ------------------------------------------------------------------
@@ -115,7 +120,7 @@ async def test_heure_sans_argument_affiche_l_heure_courante():
     await _groupe(bot, _publication(heure_par_defaut="07:45"))
     interaction = InteractionFactice()
 
-    await _commande(bot, "bonjour heure").callback(interaction, heure=None)
+    await _commande(bot, "essai heure").callback(interaction, heure=None)
 
     assert "07:45" in " ".join(interaction.textes)
 
@@ -126,10 +131,10 @@ async def test_heure_enregistre_et_confirme():
     await _groupe(bot, publication)
     interaction = InteractionFactice()
 
-    await _commande(bot, "bonjour heure").callback(interaction, heure="21:30")
+    await _commande(bot, "essai heure").callback(interaction, heure="21:30")
 
     assert "21:30" in " ".join(interaction.textes)
-    assert await _magasin(bot).get("publication:bonjour:heure") == "21:30"
+    assert await _magasin(bot).get("publication:essai:heure") == "21:30"
 
 
 async def test_heure_est_normalisee_avant_d_etre_rangee():
@@ -138,9 +143,9 @@ async def test_heure_est_normalisee_avant_d_etre_rangee():
     await _groupe(bot, _publication())
     interaction = InteractionFactice()
 
-    await _commande(bot, "bonjour heure").callback(interaction, heure="9:5")
+    await _commande(bot, "essai heure").callback(interaction, heure="9:5")
 
-    assert await _magasin(bot).get("publication:bonjour:heure") == "09:05"
+    assert await _magasin(bot).get("publication:essai:heure") == "09:05"
 
 
 async def test_une_heure_illisible_est_refusee_sans_rien_ecrire():
@@ -148,10 +153,10 @@ async def test_une_heure_illisible_est_refusee_sans_rien_ecrire():
     await _groupe(bot, _publication())
     interaction = InteractionFactice()
 
-    await _commande(bot, "bonjour heure").callback(interaction, heure="midi")
+    await _commande(bot, "essai heure").callback(interaction, heure="midi")
 
     assert "❌" in " ".join(interaction.textes)
-    assert await _magasin(bot).get("publication:bonjour:heure") is None
+    assert await _magasin(bot).get("publication:essai:heure") is None
 
 
 async def test_regler_l_heure_oublie_la_marque_du_jour():
@@ -162,13 +167,13 @@ async def test_regler_l_heure_oublie_la_marque_du_jour():
     """
     bot = await _bot()
     await _groupe(bot, _publication())
-    await _magasin(bot).set("publication:bonjour:derniere", "2026-08-19")
+    await _magasin(bot).set("publication:essai:derniere", "2026-08-19")
 
-    await _commande(bot, "bonjour heure").callback(
+    await _commande(bot, "essai heure").callback(
         InteractionFactice(), heure="21:30"
     )
 
-    assert await _magasin(bot).get("publication:bonjour:derniere") is None
+    assert await _magasin(bot).get("publication:essai:derniere") is None
 
 
 async def test_heure_ecrit_ou_la_publication_le_demande():
@@ -191,10 +196,10 @@ async def test_heure_ecrit_ou_la_publication_le_demande():
     )
     interaction = InteractionFactice()
 
-    await _commande(bot, "bonjour heure").callback(interaction, heure="21:30")
+    await _commande(bot, "essai heure").callback(interaction, heure="21:30")
 
     assert ecrites == ["21:30"]
-    assert await _magasin(bot).get("publication:bonjour:heure") is None
+    assert await _magasin(bot).get("publication:essai:heure") is None
 
 
 # --- salon ------------------------------------------------------------------
@@ -206,10 +211,10 @@ async def test_salon_ajouter_range_le_salon_et_confirme():
     interaction = InteractionFactice()
     salon = SalonFactice(4242)
 
-    await _commande(bot, "bonjour salon ajouter").callback(interaction, salon=salon)
+    await _commande(bot, "essai salon ajouter").callback(interaction, salon=salon)
 
     assert "4242" in " ".join(interaction.textes)
-    assert await _magasin(bot).get("publication:bonjour:salons") == ["4242"]
+    assert await _magasin(bot).get("publication:essai:salons") == ["4242"]
 
 
 async def test_salon_deja_ajoute_le_dit_sans_le_doubler():
@@ -218,13 +223,13 @@ async def test_salon_deja_ajoute_le_dit_sans_le_doubler():
     await _groupe(bot, _publication())
     salon = SalonFactice(4242)
 
-    await _commande(bot, "bonjour salon ajouter").callback(
+    await _commande(bot, "essai salon ajouter").callback(
         InteractionFactice(), salon=salon
     )
     interaction = InteractionFactice()
-    await _commande(bot, "bonjour salon ajouter").callback(interaction, salon=salon)
+    await _commande(bot, "essai salon ajouter").callback(interaction, salon=salon)
 
-    assert await _magasin(bot).get("publication:bonjour:salons") == ["4242"]
+    assert await _magasin(bot).get("publication:essai:salons") == ["4242"]
     assert "déjà" in " ".join(interaction.textes)
 
 
@@ -234,26 +239,26 @@ async def test_un_salon_ou_le_bot_ne_peut_pas_ecrire_est_refuse():
     await _groupe(bot, _publication())
     interaction = InteractionFactice()
 
-    await _commande(bot, "bonjour salon ajouter").callback(
+    await _commande(bot, "essai salon ajouter").callback(
         interaction, salon=SalonFactice(4242, peut_ecrire=False)
     )
 
     assert "❌" in " ".join(interaction.textes)
-    assert await _magasin(bot).get("publication:bonjour:salons") is None
+    assert await _magasin(bot).get("publication:essai:salons") is None
 
 
 async def test_salon_retirer_enleve_et_confirme():
     bot = await _bot()
     await _groupe(bot, _publication())
     salon = SalonFactice(4242)
-    await _commande(bot, "bonjour salon ajouter").callback(
+    await _commande(bot, "essai salon ajouter").callback(
         InteractionFactice(), salon=salon
     )
 
     interaction = InteractionFactice()
-    await _commande(bot, "bonjour salon retirer").callback(interaction, salon=salon)
+    await _commande(bot, "essai salon retirer").callback(interaction, salon=salon)
 
-    assert await _magasin(bot).get("publication:bonjour:salons") == []
+    assert await _magasin(bot).get("publication:essai:salons") == []
     assert "4242" in " ".join(interaction.textes)
 
 
@@ -262,7 +267,7 @@ async def test_retirer_un_salon_absent_le_dit():
     await _groupe(bot, _publication())
     interaction = InteractionFactice()
 
-    await _commande(bot, "bonjour salon retirer").callback(
+    await _commande(bot, "essai salon retirer").callback(
         interaction, salon=SalonFactice(4242)
     )
 
@@ -279,10 +284,10 @@ async def test_apercu_montre_le_contenu_sans_rien_publier():
     await _groupe(bot, _publication(_tournee("matin")))
     interaction = InteractionFactice()
 
-    await _commande(bot, "bonjour apercu").callback(interaction)
+    await _commande(bot, "essai apercu").callback(interaction)
 
     assert "contenu de matin" in " ".join(interaction.textes)
-    assert await _magasin(bot).get("publication:bonjour:derniere") is None
+    assert await _magasin(bot).get("publication:essai:derniere") is None
 
 
 async def test_l_apercu_reste_prive():
@@ -291,7 +296,7 @@ async def test_l_apercu_reste_prive():
     await _groupe(bot, _publication(_tournee("matin")))
     interaction = InteractionFactice()
 
-    await _commande(bot, "bonjour apercu").callback(interaction)
+    await _commande(bot, "essai apercu").callback(interaction)
 
     envois = [*interaction.response.messages, *interaction.followup.messages]
     assert envois
@@ -304,7 +309,7 @@ async def test_l_apercu_nomme_chaque_envoi():
     await _groupe(bot, _publication(_tournee("matin", "midi")))
     interaction = InteractionFactice()
 
-    await _commande(bot, "bonjour apercu").callback(interaction)
+    await _commande(bot, "essai apercu").callback(interaction)
 
     texte = " ".join(interaction.textes)
     assert "matin" in texte and "midi" in texte
@@ -330,7 +335,7 @@ async def test_l_apercu_nomme_ce_qui_ne_partira_pas():
     )
     interaction = InteractionFactice()
 
-    await _commande(bot, "bonjour apercu").callback(interaction)
+    await _commande(bot, "essai apercu").callback(interaction)
 
     texte = " ".join(interaction.textes)
     assert "orpheline" in texte and "aucun salon" in texte
@@ -352,7 +357,7 @@ async def test_ce_qui_est_ecarte_se_voit_meme_quand_rien_ne_part():
     )
     interaction = InteractionFactice()
 
-    await _commande(bot, "bonjour apercu").callback(interaction)
+    await _commande(bot, "essai apercu").callback(interaction)
 
     texte = " ".join(interaction.textes)
     assert "orpheline" in texte
@@ -365,7 +370,7 @@ async def test_un_apercu_sans_rien_a_dire_explique_pourquoi():
     await _groupe(bot, _publication(Tournee(raison="aucun salon configuré")))
     interaction = InteractionFactice()
 
-    await _commande(bot, "bonjour apercu").callback(interaction)
+    await _commande(bot, "essai apercu").callback(interaction)
 
     assert "aucun salon configuré" in " ".join(interaction.textes)
 
@@ -404,7 +409,7 @@ async def test_publier_envoie_tout_de_suite():
     await _groupe(bot, _publication(_tournee("matin")))
     interaction = InteractionFactice()
 
-    await _commande(bot, "bonjour publier").callback(interaction)
+    await _commande(bot, "essai publier").callback(interaction)
 
     assert envoyes == ["contenu de matin"]
 
@@ -421,12 +426,12 @@ async def test_publier_previent_qu_il_remplace_le_post_du_jour():
     await _groupe(bot, _publication(_tournee("matin")))
     interaction = InteractionFactice()
 
-    await _commande(bot, "bonjour publier").callback(interaction)
+    await _commande(bot, "essai publier").callback(interaction)
 
     texte = " ".join(interaction.textes).lower()
     assert "remplace" in texte or "ne repassera" in texte
     assert (
-        await _magasin(bot).get("publication:bonjour:derniere")
+        await _magasin(bot).get("publication:essai:derniere")
         == await _aujourdhui(bot)
     )
 
@@ -439,8 +444,8 @@ async def test_publier_rend_le_compte_rendu_du_moteur():
     await _groupe(bot, _publication(_tournee("matin")))
     interaction = InteractionFactice()
 
-    await _commande(bot, "bonjour publier").callback(interaction)
+    await _commande(bot, "essai publier").callback(interaction)
 
     texte = " ".join(interaction.textes)
-    assert "le bonjour" in texte
+    assert "l'essai" in texte
     assert "1/1" in texte
