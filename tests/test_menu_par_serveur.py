@@ -21,8 +21,23 @@ import discord
 from tests.test_commandes_fourchettes import _bot, _commande
 from tests.test_commandes_par_serveur import EMPIRE, VOISIN, _interaction
 
-#: Le menu complet, celui que voit un serveur qui n'a rien éteint.
-MENU_COMPLET = {"convertir", "frais", "promos", "fourchette", "filiales", "reglages"}
+#: Le menu complet, celui que voit un serveur qui n'a rien éteint. `bonjour` et
+#: `bonsoir` viennent du module d'épreuve `src/modules/politesse.py`, jetable :
+#: ils s'en vont avec lui.
+MENU_COMPLET = {
+    "convertir",
+    "frais",
+    "promos",
+    "fourchette",
+    "filiales",
+    "reglages",
+    "bonjour",
+    "bonsoir",
+}
+
+#: Les modules du dossier, dans l'ordre de leur rang. Nommés ici pour que l'ajout
+#: d'un cinquième casse ce fichier plutôt que de passer inaperçu.
+TOUS_LES_MODULES = ("conversion", "promos", "filiales", "politesse")
 
 
 def _noms(commandes) -> set[str]:
@@ -76,6 +91,7 @@ async def test_chaque_module_est_associe_a_ses_commandes():
         "conversion": ("convertir", "frais"),
         "promos": ("promos", "fourchette"),
         "filiales": ("filiales",),
+        "politesse": ("bonjour", "bonsoir"),
     }
 
 
@@ -121,7 +137,7 @@ async def test_reglages_reste_dans_le_menu_quoi_quil_arrive():
     la base peut arriver là — un module retiré du dépôt, un tiroir repris."""
     bot = await _bot()
 
-    menu = _noms(bot.commandes_du_menu(["conversion", "promos", "filiales"]))
+    menu = _noms(bot.commandes_du_menu(TOUS_LES_MODULES))
 
     assert menu == {"reglages"}
 
@@ -290,7 +306,7 @@ async def test_reglages_passe_meme_si_tout_est_eteint():
     rien ne pourrait rallumer quoi que ce soit."""
     bot = await _bot()
     magasin = bot.store.pour(EMPIRE)
-    for nom in ("conversion", "promos", "filiales"):
+    for nom in TOUS_LES_MODULES:
         await magasin.eteindre_module(nom)
 
     passe = await bot.tree.interaction_check(

@@ -1,9 +1,12 @@
 """La forme du menu : ce que voit quelqu'un qui tape « / » dans Discord.
 
 Chaque commande est éprouvée là où elle vit. Ce qui se vérifie ici n'appartient à
-aucune d'elles : c'est le rangement. Six entrées à la racine, et **tout ce qui
+aucune d'elles : c'est le rangement. Peu d'entrées à la racine, et **tout ce qui
 règle le bot** sous `/reglages` — sans quoi le prochain module posera son propre
 groupe de réglages à côté, et le menu repartira de travers comme la première fois.
+
+`/bonjour` et `/bonsoir` viennent du module d'épreuve `src/modules/politesse.py`,
+jetable : ils s'en vont avec lui.
 """
 
 from src.bot import EmpireBot
@@ -21,11 +24,12 @@ async def _bot() -> EmpireBot:
     return EmpireBot(store, SourceFactice())
 
 
-async def test_la_racine_ne_montre_que_les_six_entrees_du_menu():
-    """Trois calculatrices, deux domaines, un tiroir à réglages.
+async def test_la_racine_ne_montre_que_les_entrees_du_menu():
+    """Trois calculatrices, deux domaines, un tiroir à réglages — et l'épreuve.
 
     L'égalité est stricte à dessein : un groupe oublié à la racine ne se
-    remarquerait jamais dans une assertion « contient ».
+    remarquerait jamais dans une assertion « contient ». C'est aussi ce qui fait
+    que le module d'épreuve casse ce test au lieu de s'y glisser sans bruit.
     """
     bot = await _bot()
 
@@ -38,6 +42,9 @@ async def test_la_racine_ne_montre_que_les_six_entrees_du_menu():
         "fourchette",
         "filiales",
         "reglages",
+        # Le module jetable, et ses deux publications dans un seul fichier.
+        "bonjour",
+        "bonsoir",
     }
 
 
