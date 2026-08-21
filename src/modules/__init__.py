@@ -314,8 +314,18 @@ def decouvrir(paquet: str = PAQUET) -> tuple[list[Module], dict[str, str]]:
     return charger(noms_de_modules(paquet), importlib.import_module, paquet)
 
 
-def greffer(bot: Any, modules: list[Module]) -> dict[str, str]:
-    """Ajoute les commandes de chaque module à l'arbre. Rend ceux qui ont échoué.
+def greffer(
+    bot: Any, modules: list[Module]
+) -> tuple[dict[str, str], dict[str, tuple[str, ...]]]:
+    """Ajoute les commandes de chaque module à l'arbre.
+
+    Rend deux choses : les modules qui ont échoué avec leur raison, et **ce que
+    chaque module a posé à la racine** de l'arbre.
+
+    Ce second relevé est pris ici parce que c'est le seul moment où l'on sait à
+    qui attribuer une commande : le module vient de s'enregistrer, et ce qui est
+    apparu est à lui. Une liste écrite à la main oublierait le module suivant, et
+    ses commandes ne quitteraient jamais le menu d'un serveur qui l'éteint.
 
     Même garde que `charger`, et pour la même raison : ce qui est exécuté ici est
     du code de module, qui peut échouer tout autant — un nom de commande en
@@ -327,10 +337,12 @@ def greffer(bot: Any, modules: list[Module]) -> dict[str, str]:
     retrouve dans le menu Discord.
     """
     refuses: dict[str, str] = {}
+    commandes: dict[str, tuple[str, ...]] = {}
     for module in modules:
         if module.enregistrer is None:
             # Un module qui ne fait que publier est un cas ordinaire.
             continue
+        avant = _noms_a_la_racine(bot)
         try:
             module.enregistrer(bot)
         except Exception as erreur:
@@ -340,4 +352,22 @@ def greffer(bot: Any, modules: list[Module]) -> dict[str, str]:
                 exc_info=True,
             )
             refuses[module.nom] = f"{type(erreur).__name__} : {erreur}"
-    return refuses
+        # Relevé même après un échec : un module qui a lâché à mi-chemin a pu
+        # poser sa première commande, et non attribuée elle resterait dans le
+        # menu de tous les serveurs sans que rien ne puisse l'en retirer — son
+        # module est refusé, donc absent de la liste, et pourtant elle est là.
+        posees = tuple(
+            nom for nom in _noms_a_la_racine(bot) if nom not in avant
+        )
+        if posees:
+            commandes[module.nom] = posees
+    return refuses, commandes
+
+
+def _noms_a_la_racine(bot: Any) -> tuple[str, ...]:
+    """Les commandes de premier niveau de l'arbre, dans leur ordre d'ajout.
+
+    L'ordre compte : c'est celui du menu Discord, donc celui qu'on a sous les
+    yeux quand on cherche à quel module appartient une commande.
+    """
+    return tuple(commande.name for commande in bot.tree.get_commands())

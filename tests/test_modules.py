@@ -297,6 +297,30 @@ def test_des_paires_completes_passent(paires):
 # --- La greffe des commandes -----------------------------------------------
 
 
+class ArbreFactice:
+    """Juste assez d'arbre pour que la greffe voie ce qu'on y pose.
+
+    Elle relève les commandes de premier niveau avant et après chaque module :
+    c'est ainsi qu'elle sait à qui attribuer ce qui vient d'apparaître.
+    """
+
+    def __init__(self):
+        self.commandes: list[SimpleNamespace] = []
+
+    def get_commands(self):
+        return list(self.commandes)
+
+
+def _bot_factice() -> SimpleNamespace:
+    return SimpleNamespace(tree=ArbreFactice())
+
+
+def _pose(bot, *noms: str) -> None:
+    """Ce que fait un vrai `enregistrer` : ajouter ses commandes à l'arbre."""
+    for nom in noms:
+        bot.tree.commandes.append(SimpleNamespace(name=nom))
+
+
 def test_greffer_appelle_chaque_module_dans_l_ordre():
     """L'ordre du menu Discord vient de là : il ne doit pas dépendre du hasard."""
     appels: list[str] = []
@@ -305,13 +329,43 @@ def test_greffer_appelle_chaque_module_dans_l_ordre():
         _module("promos", enregistrer=lambda bot: appels.append("promos")),
     ]
 
-    assert greffer(object(), modules) == {}
+    refuses, _ = greffer(_bot_factice(), modules)
+
+    assert refuses == {}
     assert appels == ["conversion", "promos"]
+
+
+def test_greffer_attribue_a_chaque_module_ce_qu_il_a_pose():
+    """Le relevé sans lequel un module éteint ne pourrait pas quitter le menu.
+
+    Il est pris ici parce que c'est le seul moment où l'on sait à qui appartient
+    une commande : le module vient de s'enregistrer, ce qui est apparu est à lui.
+    Une liste écrite à la main oublierait le module suivant.
+    """
+    modules = [
+        _module("conversion", enregistrer=lambda bot: _pose(bot, "convertir", "frais")),
+        _module("filiales", enregistrer=lambda bot: _pose(bot, "filiales")),
+    ]
+
+    _, commandes = greffer(_bot_factice(), modules)
+
+    assert commandes == {
+        "conversion": ("convertir", "frais"),
+        "filiales": ("filiales",),
+    }
 
 
 def test_un_module_sans_commande_est_ignore_sans_bruit():
     """Un module qui ne fait que publier est un cas ordinaire, pas une anomalie."""
-    assert greffer(object(), [_module("bonjour")]) == {}
+    assert greffer(_bot_factice(), [_module("bonjour")]) == ({}, {})
+
+
+def test_un_module_qui_ne_pose_rien_nentre_pas_dans_le_releve():
+    """Un `enregistrer` qui n'ajoute rien à la racine — tout dans un sous-groupe
+    déjà là — n'a rien à éteindre : une entrée vide ferait croire au contraire."""
+    _, commandes = greffer(_bot_factice(), [_module("vide", enregistrer=lambda bot: None)])
+
+    assert commandes == {}
 
 
 def test_une_greffe_qui_echoue_n_empeche_pas_les_suivantes():
@@ -332,13 +386,31 @@ def test_une_greffe_qui_echoue_n_empeche_pas_les_suivantes():
         _module("promos", enregistrer=lambda bot: passes.append("promos")),
     ]
 
-    refuses = greffer(object(), modules)
+    refuses, _ = greffer(_bot_factice(), modules)
 
     assert passes == ["promos"]
     # La raison est retenue pour être dite dans le salon de logs : « casse n'a
     # pas chargé » sans le pourquoi obligerait à aller lire les journaux Render.
     assert "casse" in refuses
     assert "nom de commande deja pris" in refuses["casse"]
+
+
+def test_une_commande_posee_avant_lechec_est_quand_meme_attribuee():
+    """Un module peut échouer à mi-chemin, la première commande déjà posée.
+
+    Non attribuée, elle resterait dans le menu de tous les serveurs sans que
+    `desactiver` puisse jamais l'en retirer : son module est refusé, donc absent
+    de la liste, et pourtant sa commande est là.
+    """
+
+    def moitie(bot):
+        _pose(bot, "convertir")
+        raise RuntimeError("nom de commande deja pris")
+
+    refuses, commandes = greffer(_bot_factice(), [_module("conversion", enregistrer=moitie)])
+
+    assert "conversion" in refuses
+    assert commandes == {"conversion": ("convertir",)}
 
 
 # --- Le balayage du dossier ------------------------------------------------

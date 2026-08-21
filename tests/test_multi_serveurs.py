@@ -63,14 +63,23 @@ def test_virgule_seule_ne_cree_pas_de_serveur_vide(monkeypatch):
 
 
 class ArbreFactice:
-    """Compte les synchronisations, par serveur."""
+    """Compte les menus construits et les synchronisations, par serveur."""
 
     def __init__(self):
-        self.copies: list[int | None] = []
+        #: Les serveurs dont le menu a été vidé avant d'être rebâti. Un serveur
+        #: qui n'y figure pas a reçu la synchronisation d'un menu qui n'est pas
+        #: le sien.
+        self.menus: list[int] = []
         self.syncs: list[int | None] = []
 
-    def copy_global_to(self, guild):
-        self.copies.append(guild.id)
+    def get_commands(self, guild=None):
+        return []
+
+    def clear_commands(self, *, guild, type=None):
+        self.menus.append(guild.id)
+
+    def add_command(self, commande, guild=None):
+        pass
 
     async def sync(self, guild=None):
         self.syncs.append(guild.id if guild is not None else None)
@@ -79,11 +88,19 @@ class ArbreFactice:
 async def _bot_avec_arbre(monkeypatch, guild_ids: list[str]):
     from src.bot import EmpireBot
     from src import bot as module_bot
+    from src.db import Store
 
     monkeypatch.setattr(module_bot.settings, "GUILD_IDS", guild_ids)
 
+    store = Store(dsn="")
+    await store.connect()
+
     bot = object.__new__(EmpireBot)
     bot.tree = ArbreFactice()
+    # Le menu d'un serveur se construit en lisant ses modules éteints : sans
+    # magasin, `setup_hook` n'irait pas jusqu'à la synchronisation.
+    bot.store = store
+    bot.module_des_commandes = {}
     return bot
 
 
@@ -94,7 +111,7 @@ async def test_synchronise_sur_chaque_serveur(monkeypatch):
     await bot.setup_hook()
 
     assert bot.tree.syncs == [111, 222]
-    assert bot.tree.copies == [111, 222]
+    assert bot.tree.menus == [111, 222]
 
 
 async def test_liste_vide_synchronise_globalement(monkeypatch):
@@ -103,7 +120,7 @@ async def test_liste_vide_synchronise_globalement(monkeypatch):
     await bot.setup_hook()
 
     assert bot.tree.syncs == [None]
-    assert bot.tree.copies == []
+    assert bot.tree.menus == []
 
 
 async def test_id_non_numerique_est_ignore(monkeypatch):
@@ -115,7 +132,7 @@ async def test_id_non_numerique_est_ignore(monkeypatch):
     await bot.setup_hook()
 
     assert bot.tree.syncs == [111]
-    assert bot.tree.copies == [111]
+    assert bot.tree.menus == [111]
 
 
 async def test_aucun_id_valide_ne_synchronise_rien(monkeypatch):
@@ -127,7 +144,7 @@ async def test_aucun_id_valide_ne_synchronise_rien(monkeypatch):
     await bot.setup_hook()
 
     assert bot.tree.syncs == []
-    assert bot.tree.copies == []
+    assert bot.tree.menus == []
 
 
 # --- Publication : chaque salon mentionne le rôle de son serveur ------------

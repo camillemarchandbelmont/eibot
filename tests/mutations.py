@@ -15,7 +15,8 @@ Le nom d'une mutation dit où elle mord, donc quel lot la rejoue : `tournee-` la
 mécanique d'envoi commune, `surface-` le vocabulaire des commandes, `bot-` les
 commandes elles-mêmes et leurs modules, `cloisonnement-` la séparation des
 serveurs, `reglages-` le noyau `src/reglages.py`, `activation-` l'allumage des
-modules par serveur, le reste le fichier de calcul visé.
+modules par serveur, `menu-` la liste des commandes propre à chaque serveur, le
+reste le fichier de calcul visé.
 
 Déplacer du code oblige à repointer les motifs qui le visaient. Un motif dont le
 fichier a changé n'échoue pas : le script l'annonce introuvable et le compte
@@ -1293,6 +1294,220 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
         "        return _choix(bot.modules, saisie, lambda module: module.nom in eteints)",
         "les propositions viendraient d'un autre serveur : on se verrait offrir "
         "de rallumer ce que le voisin a éteint",
+    ),
+    # --- src/modules/__init__.py, src/bot.py : le menu de chaque serveur -----
+    #
+    # Un module éteint doit quitter le menu de son serveur. Deux verrous, et il
+    # en faut deux : Discord garde la liste des commandes en cache chez le
+    # client, et sans GUILD_IDS la synchronisation est globale — il n'y a alors
+    # pas de menu par serveur du tout.
+    #
+    # Tout repose sur le relevé pris à la greffe, qui dit quelle commande
+    # appartient à quel module. Faux, il retire du menu les commandes d'un
+    # module qu'on n'a pas éteint.
+    (
+        "menu-greffe-attribution-inversee",
+        "src/modules/__init__.py",
+        "            nom for nom in _noms_a_la_racine(bot) if nom not in avant",
+        "            nom for nom in _noms_a_la_racine(bot) if nom in avant",
+        "chaque module se verrait attribuer les commandes des précédents : "
+        "éteindre `filiales` retirerait `/convertir` du menu",
+    ),
+    (
+        "menu-greffe-releve-sans-avant",
+        "src/modules/__init__.py",
+        "        avant = _noms_a_la_racine(bot)",
+        "        avant = ()",
+        "un module hériterait des commandes de tous ceux greffés avant lui : "
+        "l'éteindre en retirerait bien plus que les siennes",
+    ),
+    (
+        "menu-greffe-oublie-la-commande-de-lechec",
+        "src/modules/__init__.py",
+        '            refuses[module.nom] = f"{type(erreur).__name__} : {erreur}"',
+        '            refuses[module.nom] = f"{type(erreur).__name__} : {erreur}"\n'
+        "            continue",
+        "la commande posée avant l'échec resterait dans le menu de tous les "
+        "serveurs sans que rien ne puisse l'en retirer",
+    ),
+    (
+        "menu-greffe-releve-un-module-sans-commande",
+        "src/modules/__init__.py",
+        "        if posees:\n            commandes[module.nom] = posees",
+        "        commandes[module.nom] = posees",
+        "un module qui ne pose rien à la racine entrerait dans le relevé les "
+        "mains vides, comme s'il avait une commande à éteindre",
+    ),
+    (
+        "menu-filtre-inverse",
+        "src/bot.py",
+        '            if getattr(self.module_des_commandes.get(commande.name), "nom", None)\n'
+        "            not in exclus",
+        '            if getattr(self.module_des_commandes.get(commande.name), "nom", None)\n'
+        "            in exclus",
+        "le menu ne montrerait **que** les modules éteints",
+    ),
+    (
+        "menu-rien-nest-exclu",
+        "src/bot.py",
+        "        arriver, un module retiré du dépôt ou un tiroir repris à la main.\n"
+        '        """\n'
+        "        exclus = set(eteints)",
+        "        arriver, un module retiré du dépôt ou un tiroir repris à la main.\n"
+        '        """\n'
+        "        exclus = set()",
+        "`desactiver` semblerait sans effet : la commande resterait dans le menu",
+    ),
+    (
+        "menu-eteints-du-commun",
+        "src/bot.py",
+        "        eteints = await self.store.pour(serveur_id).modules_eteints()",
+        "        eteints = await self.store.modules_eteints()",
+        "chaque serveur recevrait le même menu : ce qu'un serveur éteint "
+        "resterait dans son menu, et l'extinction du voisin l'en priverait",
+    ),
+    (
+        "menu-vide-larbre-global",
+        "src/bot.py",
+        "        self.tree.clear_commands(guild=guild)",
+        "        self.tree.clear_commands(guild=None)",
+        "le menu d'un serveur est une copie : vider l'arbre global ferait "
+        "disparaître la commande de **tous** les serveurs",
+    ),
+    (
+        "menu-complete-au-lieu-de-reconstruire",
+        "src/bot.py",
+        "        self.tree.clear_commands(guild=guild)",
+        "        pass  # sans vider d'abord",
+        "le menu serait complété et non rebâti : la commande d'un module qu'on "
+        "vient d'éteindre y resterait, et Discord refuserait le doublon",
+    ),
+    (
+        "menu-construit-mais-non-pousse",
+        "src/bot.py",
+        "            await self.tree.sync(guild=guild)",
+        "            pass  # sans pousser",
+        "le menu serait bâti et jamais envoyé : rien ne changerait dans Discord",
+    ),
+    (
+        "menu-echec-de-poussee-tu",
+        "src/bot.py",
+        "                exc_info=True,\n            )\n            return False\n        return True",
+        "                exc_info=True,\n            )\n            return True\n        return True",
+        "un menu resté en arrière serait annoncé comme rafraîchi",
+    ),
+    (
+        "menu-echec-de-poussee-fatal",
+        "src/bot.py",
+        "        except Exception:\n            log.warning(\n"
+        '                "Menu du serveur %s construit mais non synchronisé.",',
+        "        except ValueError:\n            log.warning(\n"
+        '                "Menu du serveur %s construit mais non synchronisé.",',
+        "une synchronisation refusée par Discord — la limite de débit — ferait "
+        "échouer la commande alors que le réglage est déjà écrit",
+    ),
+    (
+        "menu-un-seul-serveur-synchronise",
+        "src/bot.py",
+        "        for serveur_id in serveurs_ids:\n"
+        "            await self.synchroniser_le_menu(serveur_id)",
+        "        for serveur_id in list(serveurs_ids)[:1]:\n"
+        "            await self.synchroniser_le_menu(serveur_id)",
+        "seul le premier serveur recevrait son menu ; les autres garderaient "
+        "celui du démarrage précédent",
+    ),
+    # Le second verrou, dans `ArbreProtege` : ce que le menu ne peut pas faire.
+    (
+        "menu-verrou-sous-commande-non-rattachee",
+        "src/bot.py",
+        '        racine = getattr(commande, "root_parent", None) or commande',
+        "        racine = commande",
+        "`/filiales liste` passerait alors que `/filiales` est éteint : c'est la "
+        "racine qui appartient au module, pas la sous-commande",
+    ),
+    (
+        "menu-verrou-commande-racine-ignoree",
+        "src/bot.py",
+        '        racine = getattr(commande, "root_parent", None) or commande',
+        '        racine = getattr(commande, "root_parent", None)',
+        "`/frais`, qui n'est dans aucun groupe, ferait lever le gardien : la "
+        "commande échouerait au lieu d'être refusée ou acceptée",
+    ),
+    (
+        "menu-verrou-refuse-reglages",
+        "src/bot.py",
+        "        module = self.client.module_des_commandes.get(racine.name)\n"
+        "        if module is None:\n            return True",
+        "        module = self.client.module_des_commandes.get(racine.name)\n"
+        "        if module is None:\n            return False",
+        "`/reglages` serait refusé : la seule porte de sortie fermée, plus rien "
+        "ne pourrait rallumer un module",
+    ),
+    (
+        "menu-verrou-refuse-en-message-prive",
+        "src/bot.py",
+        "        if serveur is None or commande is None:\n            return True",
+        "        if serveur is None or commande is None:\n            return False",
+        "hors d'un serveur — un message privé — toute commande serait refusée",
+    ),
+    (
+        "menu-verrou-etat-du-commun",
+        "src/bot.py",
+        "        if await self.store.pour(serveur.id).module_actif(module.nom):",
+        "        if await self.store.module_actif(module.nom):",
+        "le refus viendrait de la configuration commune : un module éteint dans "
+        "un serveur y resterait utilisable",
+    ),
+    (
+        "menu-verrou-jamais-consulte",
+        "src/bot.py",
+        "        if not await self.autorisation(interaction):\n"
+        "            return False\n"
+        "        return await self.module_allume(interaction)",
+        "        if not await self.autorisation(interaction):\n"
+        "            return False\n"
+        "        return True",
+        "le second verrou serait mort : la commande d'un module éteint resterait "
+        "utilisable, cache de Discord ou synchronisation globale",
+    ),
+    (
+        "menu-verrou-remplace-lacces",
+        "src/bot.py",
+        "        if not await self.autorisation(interaction):\n"
+        "            return False\n"
+        "        return await self.module_allume(interaction)",
+        "        return await self.module_allume(interaction)",
+        "contrôler les modules aurait remplacé le contrôle de la liste d'accès : "
+        "n'importe qui commanderait le bot",
+    ),
+    # Le rafraîchissement immédiat : sans lui, l'extinction n'a l'air de rien.
+    (
+        "menu-activer-ne-rafraichit-pas",
+        "src/reglages.py",
+        '            message += "\\n-# Ses publications repartiront à leur heure."\n'
+        "        message += await rafraichir_le_menu(interaction, trouve)",
+        '            message += "\\n-# Ses publications repartiront à leur heure."',
+        "le module rallumé ne reviendrait dans le menu qu'au prochain "
+        "déploiement",
+    ),
+    (
+        "menu-desactiver-ne-rafraichit-pas",
+        "src/reglages.py",
+        '        message += "\\n-# `/reglages modules activer` le rallume."\n'
+        "        message += await rafraichir_le_menu(interaction, trouve)",
+        '        message += "\\n-# `/reglages modules activer` le rallume."',
+        "la commande éteinte resterait dans le menu, et `desactiver` se lirait "
+        "comme un réglage sans effet",
+    ),
+    (
+        "menu-echec-de-rafraichissement-tu",
+        "src/reglages.py",
+        "        if await bot.synchroniser_le_menu(interaction.guild.id):\n"
+        '            return ""',
+        "        await bot.synchroniser_le_menu(interaction.guild.id)\n"
+        '        return ""',
+        "un menu resté en arrière ne serait pas avoué : on retaperait la "
+        "commande, alors que le réglage est déjà pris",
     ),
     # --- src/importation.py, src/reglages.py : reprendre l'ancienne config ---
     #

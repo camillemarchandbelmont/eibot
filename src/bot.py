@@ -97,8 +97,49 @@ class ArbreProtege(app_commands.CommandTree):
         )
         return False
 
+    async def module_allume(self, interaction: discord.Interaction) -> bool:
+        """Vrai si ce qu'on vient de taper relève d'un module allumé ici.
+
+        Second verrou, derrière le menu par serveur. Il en faut deux : Discord
+        garde la liste des commandes en cache chez le client, et sans
+        `GUILD_IDS` la synchronisation est globale — il n'y a alors pas de menu
+        par serveur du tout. Sans ce refus, `desactiver` laisserait la commande
+        parfaitement utilisable.
+
+        Ce qui n'a pas de module passe toujours : c'est `/reglages`, la seule
+        porte de sortie d'un serveur qui a tout éteint. Hors serveur — un message
+        privé — il n'y a pas de liste d'éteints à lire, et lever ici ferait
+        échouer la commande au lieu de la laisser répondre.
+        """
+        serveur = getattr(interaction, "guild", None)
+        commande = getattr(interaction, "command", None)
+        if serveur is None or commande is None:
+            return True
+
+        # La racine, et non la sous-commande : c'est elle qui appartient au
+        # module. `/filiales liste` s'éteint avec `/filiales`.
+        racine = getattr(commande, "root_parent", None) or commande
+        module = self.client.module_des_commandes.get(racine.name)
+        if module is None:
+            return True
+
+        if await self.store.pour(serveur.id).module_actif(module.nom):
+            return True
+
+        await interaction.response.send_message(
+            f"❌ Le module **{module.titre}** est éteint dans ce serveur.\n"
+            f"-# `/reglages modules activer` avec `{module.nom}` le rallume.",
+            ephemeral=True,
+        )
+        return False
+
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
-        return await self.autorisation(interaction)
+        # Les deux contrôles, dans cet ordre : à qui n'a pas accès on ne dit
+        # rien de la configuration du serveur, pas même quels modules y sont
+        # éteints.
+        if not await self.autorisation(interaction):
+            return False
+        return await self.module_allume(interaction)
 
 
 class EmpireBot(discord.Client):
@@ -119,7 +160,18 @@ class EmpireBot(discord.Client):
         # n'est pas là » est un seul fait, qu'il ait échoué à se déclarer ou à
         # greffer ses commandes. Aucune clé ne se recouvre, un module refusé au
         # chargement n'atteignant jamais la greffe.
-        self.modules_refuses.update(greffer(self, self.modules))
+        refuses, self.commandes_des_modules = greffer(self, self.modules)
+        self.modules_refuses.update(refuses)
+        #: De quel module relève une commande de premier niveau. Le sens inverse
+        #: du relevé de la greffe, celui dont on a besoin à chaque interaction :
+        #: la question posée est « ce `/filiales` qu'on vient de taper, est-il
+        #: allumé ici ? ». `/reglages` n'y figure pas — il n'a pas de module,
+        #: donc rien ne l'éteint.
+        self.module_des_commandes = {
+            nom: module
+            for module in self.modules
+            for nom in self.commandes_des_modules.get(module.nom, ())
+        }
         # Après les modules, mais sans dépendre d'eux : `/reglages` est le noyau,
         # et doit répondre même si aucun module ne s'est chargé.
         enregistrer_les_reglages(self)
@@ -166,10 +218,9 @@ class EmpireBot(discord.Client):
                     )
 
             if serveurs_valides:
-                for guild_id in serveurs_valides:
-                    guild = discord.Object(id=guild_id)
-                    self.tree.copy_global_to(guild=guild)
-                    await self.tree.sync(guild=guild)
+                # Un menu par serveur, et non la même copie partout : c'est ici
+                # que les modules éteints quittent la liste des commandes.
+                await self.synchroniser_les_menus(serveurs_valides)
                 log.info(
                     "Commandes synchronisées sur %d serveur(s) : %s",
                     len(serveurs_valides),
@@ -182,8 +233,71 @@ class EmpireBot(discord.Client):
                     settings.GUILD_IDS,
                 )
         else:
+            # Sans liste de serveurs, la synchronisation est globale : le même
+            # menu partout, modules éteints compris. C'est `ArbreProtege` qui
+            # refuse alors la commande à l'exécution.
             await self.tree.sync()
             log.info("Commandes synchronisées globalement.")
+
+    # --- Le menu de chaque serveur -----------------------------------------
+
+    def commandes_du_menu(self, eteints: Iterable[str] = ()) -> list:
+        """Les commandes de premier niveau à montrer dans un serveur.
+
+        `/reglages` en fait toujours partie : il n'appartient à aucun module,
+        donc rien ne l'éteint. C'est la seule porte de sortie d'un serveur qui a
+        tout éteint — la commande refuse d'en arriver là, mais la base peut y
+        arriver, un module retiré du dépôt ou un tiroir repris à la main.
+        """
+        exclus = set(eteints)
+        return [
+            commande
+            for commande in self.tree.get_commands()
+            if getattr(self.module_des_commandes.get(commande.name), "nom", None)
+            not in exclus
+        ]
+
+    async def synchroniser_le_menu(self, serveur_id) -> bool:
+        """Installe le menu de ce serveur et le pousse à Discord.
+
+        Reconstruit et non complété : ajouter sans vider d'abord laisserait la
+        commande d'un module qu'on vient d'éteindre dans le menu, et
+        `desactiver` semblerait sans effet.
+
+        L'arbre global, lui, garde tout : le menu d'un serveur est une copie. Le
+        vider ferait disparaître la commande de **tous** les serveurs à la
+        synchronisation suivante.
+
+        Faux si la poussée a échoué — Discord limite le débit des
+        synchronisations. Le réglage est déjà écrit en base : le perdre pour une
+        requête refusée serait pire que le menu en retard, qui se rattrape au
+        prochain démarrage.
+        """
+        guild = discord.Object(id=int(serveur_id))
+        eteints = await self.store.pour(serveur_id).modules_eteints()
+        self.tree.clear_commands(guild=guild)
+        for commande in self.commandes_du_menu(eteints):
+            self.tree.add_command(commande, guild=guild)
+        try:
+            await self.tree.sync(guild=guild)
+        except Exception:
+            log.warning(
+                "Menu du serveur %s construit mais non synchronisé.",
+                serveur_id,
+                exc_info=True,
+            )
+            return False
+        return True
+
+    async def synchroniser_les_menus(self, serveurs_ids: Iterable) -> None:
+        """Le menu de chaque serveur, un par un.
+
+        Un serveur dont la poussée échoue n'empêche pas les suivants : c'est la
+        même règle que partout ailleurs ici, une panne chez l'un ne fait pas
+        taire les autres.
+        """
+        for serveur_id in serveurs_ids:
+            await self.synchroniser_le_menu(serveur_id)
 
     # --- Cœur partagé par /promos, l'aperçu et la publication --------------
 

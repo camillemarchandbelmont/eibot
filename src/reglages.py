@@ -422,6 +422,26 @@ def enregistrer_les_reglages(bot: EmpireBot) -> None:
             ephemeral=True,
         )
 
+    async def rafraichir_le_menu(
+        interaction: discord.Interaction, module
+    ) -> str:
+        """Reconstruit le menu de ce serveur. Rend ce qu'il reste à en dire.
+
+        L'activation est immédiate et ne demande aucun redémarrage : sans ce
+        rappel, la commande resterait dans le menu jusqu'au prochain
+        déploiement, et l'extinction se lirait comme un réglage sans effet.
+
+        Le réglage est déjà écrit quand on arrive ici. Une poussée refusée —
+        Discord limite le débit des synchronisations — est donc dite, pas
+        rattrapée : la taire ferait retaper la commande.
+        """
+        if await bot.synchroniser_le_menu(interaction.guild.id):
+            return ""
+        return (
+            "\n⚠️ Le menu de ce serveur n'a pas pu être rafraîchi tout de "
+            "suite ; il le sera au prochain démarrage du bot."
+        )
+
     async def completer_allume(
         interaction: discord.Interaction, saisie: str
     ) -> list[app_commands.Choice[str]]:
@@ -511,6 +531,7 @@ def enregistrer_les_reglages(bot: EmpireBot) -> None:
         message = f"✅ Module **{trouve.titre}** (`{trouve.nom}`) allumé ici."
         if trouve.publications:
             message += "\n-# Ses publications repartiront à leur heure."
+        message += await rafraichir_le_menu(interaction, trouve)
         await interaction.response.send_message(message, ephemeral=True)
 
     @modules_groupe.command(
@@ -553,6 +574,7 @@ def enregistrer_les_reglages(bot: EmpireBot) -> None:
         if trouve.publications:
             message += "\n-# Ses publications quotidiennes ne sortiront plus ici."
         message += "\n-# `/reglages modules activer` le rallume."
+        message += await rafraichir_le_menu(interaction, trouve)
         await interaction.response.send_message(message, ephemeral=True)
 
     # --- /reglages acces ----------------------------------------------------
