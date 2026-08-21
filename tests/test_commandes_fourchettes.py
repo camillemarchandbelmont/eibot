@@ -1,4 +1,4 @@
-"""Tests du groupe `/fourchette`, exécutés sans se connecter à Discord.
+"""Tests des fourchettes sous `/promos`, sans se connecter à Discord.
 
 Ce qui se vérifie ici n'est pas le stockage (couvert par
 `tests/test_fourchettes.py`) mais **ce que voit l'utilisateur** : le message de
@@ -136,7 +136,80 @@ def _magasin(bot: EmpireBot):
     return bot.store.pour(SERVEUR)
 
 
-# --- /fourchette ajouter ----------------------------------------------------
+# --- Un seul mot pour les promotions ----------------------------------------
+
+
+async def test_tout_ce_qui_touche_aux_promotions_est_sous_un_seul_mot():
+    """`/fourchette` ne vit plus à côté de `/promos`.
+
+    Une fourchette n'existe que pour découper les promotions : deux mots à la
+    racine laissaient croire à deux sujets, et rien ne disait lequel réglait
+    lequel. La recherche immédiate descend donc en `/promos chercher`, et tout le
+    reste la rejoint.
+
+    L'égalité est stricte : une sous-commande oubliée en route ne se remarquerait
+    pas dans un « contient ».
+    """
+    bot = await _bot()
+
+    racine = {commande.name for commande in bot.tree.get_commands()}
+    sous_promos = {
+        commande.qualified_name.removeprefix("promos ")
+        for commande in _commande(bot, "promos").walk_commands()
+    }
+
+    assert "fourchette" not in racine
+    assert sous_promos == {
+        # La recherche, seule réponse publique du groupe.
+        "chercher",
+        # Les fourchettes elles-mêmes.
+        "liste",
+        "ajouter",
+        "supprimer",
+        "prix",
+        "tolerance",
+        "salon",
+        "salon ajouter",
+        "salon retirer",
+        # Le vocabulaire commun à toutes les publications.
+        "heure",
+        "apercu",
+        "publier",
+    }
+
+
+async def test_chercher_dit_de_quoi_il_est_question():
+    """Sous `/promos`, un mot nu ne dirait plus ce qu'il cherche.
+
+    `/promos chercher` sans sa description se lirait « chercher quoi ? » — les
+    fourchettes, les promotions, un salon. Elle doit nommer les fourchettes,
+    puisque ce sont elles qui bornent la recherche quand on ne donne rien.
+    """
+    bot = await _bot()
+
+    description = _commande(bot, "promos chercher").description
+
+    assert "fourchette" in description.casefold()
+
+
+async def test_les_commandes_de_fourchette_nomment_leur_cible():
+    """Le paramètre s'appelle `fourchette` et non `nom`.
+
+    Discord n'accepte que trois niveaux : `/promos fourchette salon ajouter` est
+    impossible, donc les commandes restent à plat sous `/promos`. C'est alors le
+    paramètre qui doit dire sur quoi on agit — `nom:grosses` sous `/promos` ne
+    disait plus le nom de quoi.
+    """
+    bot = await _bot()
+
+    for nom in ("ajouter", "supprimer", "prix", "tolerance", "salon ajouter",
+                "salon retirer"):
+        parametres = _commande(bot, f"promos {nom}")._params
+        assert "fourchette" in parametres, nom
+        assert "nom" not in parametres, nom
+
+
+# --- /promos ajouter --------------------------------------------------------
 
 
 async def test_ajouter_confirme_avec_les_bornes_formatees():
@@ -148,8 +221,8 @@ async def test_ajouter_confirme_avec_les_bornes_formatees():
     bot = await _bot()
     interaction = InteractionFactice()
 
-    await _commande(bot, "fourchette ajouter").callback(
-        interaction, nom="grosses", min="100T", max="6P"
+    await _commande(bot, "promos ajouter").callback(
+        interaction, fourchette="grosses", min="100T", max="6P"
     )
 
     texte = " ".join(interaction.textes)
@@ -162,8 +235,8 @@ async def test_ajouter_montant_illisible_refuse_sans_rien_creer():
     bot = await _bot()
     interaction = InteractionFactice()
 
-    await _commande(bot, "fourchette ajouter").callback(
-        interaction, nom="grosses", min="beaucoup", max="6P"
+    await _commande(bot, "promos ajouter").callback(
+        interaction, fourchette="grosses", min="beaucoup", max="6P"
     )
 
     assert "❌" in " ".join(interaction.textes)
@@ -176,8 +249,8 @@ async def test_ajouter_nom_duplique_refuse_explicitement():
     await _magasin(bot).ajouter_fourchette("grosses", Decimal("1e14"), Decimal("6e15"))
     interaction = InteractionFactice()
 
-    await _commande(bot, "fourchette ajouter").callback(
-        interaction, nom="grosses", min="0", max="1T"
+    await _commande(bot, "promos ajouter").callback(
+        interaction, fourchette="grosses", min="0", max="1T"
     )
 
     texte = " ".join(interaction.textes)
@@ -189,15 +262,15 @@ async def test_ajouter_nom_vide_refuse():
     bot = await _bot()
     interaction = InteractionFactice()
 
-    await _commande(bot, "fourchette ajouter").callback(
-        interaction, nom="   ", min="0", max="1T"
+    await _commande(bot, "promos ajouter").callback(
+        interaction, fourchette="   ", min="0", max="1T"
     )
 
     assert "❌" in " ".join(interaction.textes)
     assert await _magasin(bot).fourchettes() == []
 
 
-# --- /fourchette supprimer --------------------------------------------------
+# --- /promos supprimer ------------------------------------------------------
 
 
 async def test_supprimer_confirme():
@@ -205,7 +278,7 @@ async def test_supprimer_confirme():
     await _magasin(bot).ajouter_fourchette("grosses", Decimal("1e14"), Decimal("6e15"))
     interaction = InteractionFactice()
 
-    await _commande(bot, "fourchette supprimer").callback(interaction, nom="grosses")
+    await _commande(bot, "promos supprimer").callback(interaction, fourchette="grosses")
 
     assert "✅" in " ".join(interaction.textes)
     assert await _magasin(bot).fourchettes() == []
@@ -217,14 +290,14 @@ async def test_supprimer_inconnue_refuse_et_liste_les_noms():
     await _magasin(bot).ajouter_fourchette("grosses", Decimal("1e14"), Decimal("6e15"))
     interaction = InteractionFactice()
 
-    await _commande(bot, "fourchette supprimer").callback(interaction, nom="fantome")
+    await _commande(bot, "promos supprimer").callback(interaction, fourchette="fantome")
 
     texte = " ".join(interaction.textes)
     assert "❌" in texte
     assert "grosses" in texte
 
 
-# --- /fourchette prix -------------------------------------------------------
+# --- /promos prix -----------------------------------------------------------
 
 
 async def test_prix_modifie_les_bornes():
@@ -232,8 +305,8 @@ async def test_prix_modifie_les_bornes():
     await _magasin(bot).ajouter_fourchette("grosses", Decimal("1e14"), Decimal("6e15"))
     interaction = InteractionFactice()
 
-    await _commande(bot, "fourchette prix").callback(
-        interaction, nom="grosses", min="0", max="1T"
+    await _commande(bot, "promos prix").callback(
+        interaction, fourchette="grosses", min="0", max="1T"
     )
 
     assert "✅" in " ".join(interaction.textes)
@@ -245,14 +318,14 @@ async def test_prix_sur_fourchette_inconnue_refuse():
     bot = await _bot()
     interaction = InteractionFactice()
 
-    await _commande(bot, "fourchette prix").callback(
-        interaction, nom="fantome", min="0", max="1T"
+    await _commande(bot, "promos prix").callback(
+        interaction, fourchette="fantome", min="0", max="1T"
     )
 
     assert "❌" in " ".join(interaction.textes)
 
 
-# --- /fourchette salon ------------------------------------------------------
+# --- /promos salon ----------------------------------------------------------
 
 
 async def test_salon_ajouter_confirme_et_attache():
@@ -260,8 +333,8 @@ async def test_salon_ajouter_confirme_et_attache():
     await _magasin(bot).ajouter_fourchette("grosses", Decimal("1e14"), Decimal("6e15"))
     interaction = InteractionFactice()
 
-    await _commande(bot, "fourchette salon ajouter").callback(
-        interaction, nom="grosses", salon=SalonFactice(111)
+    await _commande(bot, "promos salon ajouter").callback(
+        interaction, fourchette="grosses", salon=SalonFactice(111)
     )
 
     assert "✅" in " ".join(interaction.textes)
@@ -275,8 +348,8 @@ async def test_salon_ajouter_deux_fois_le_dit():
     await _magasin(bot).ajouter_salon_fourchette("grosses", "111")
     interaction = InteractionFactice()
 
-    await _commande(bot, "fourchette salon ajouter").callback(
-        interaction, nom="grosses", salon=SalonFactice(111)
+    await _commande(bot, "promos salon ajouter").callback(
+        interaction, fourchette="grosses", salon=SalonFactice(111)
     )
 
     texte = " ".join(interaction.textes)
@@ -288,8 +361,8 @@ async def test_salon_ajouter_sur_fourchette_inconnue_refuse():
     bot = await _bot()
     interaction = InteractionFactice()
 
-    await _commande(bot, "fourchette salon ajouter").callback(
-        interaction, nom="fantome", salon=SalonFactice(111)
+    await _commande(bot, "promos salon ajouter").callback(
+        interaction, fourchette="fantome", salon=SalonFactice(111)
     )
 
     assert "❌" in " ".join(interaction.textes)
@@ -301,9 +374,9 @@ async def test_salon_ajouter_refuse_sans_permission_decrire():
     await _magasin(bot).ajouter_fourchette("grosses", Decimal("1e14"), Decimal("6e15"))
     interaction = InteractionFactice()
 
-    await _commande(bot, "fourchette salon ajouter").callback(
+    await _commande(bot, "promos salon ajouter").callback(
         interaction,
-        nom="grosses",
+        fourchette="grosses",
         salon=SalonFactice(111, peut_ecrire=False, peut_integrer=True),
     )
 
@@ -321,9 +394,9 @@ async def test_salon_ajouter_refuse_sans_permission_dintegrer():
     await _magasin(bot).ajouter_fourchette("grosses", Decimal("1e14"), Decimal("6e15"))
     interaction = InteractionFactice()
 
-    await _commande(bot, "fourchette salon ajouter").callback(
+    await _commande(bot, "promos salon ajouter").callback(
         interaction,
-        nom="grosses",
+        fourchette="grosses",
         salon=SalonFactice(111, peut_ecrire=True, peut_integrer=False),
     )
 
@@ -337,8 +410,8 @@ async def test_salon_retirer_detache():
     await _magasin(bot).ajouter_salon_fourchette("grosses", "111")
     interaction = InteractionFactice()
 
-    await _commande(bot, "fourchette salon retirer").callback(
-        interaction, nom="grosses", salon=SalonFactice(111)
+    await _commande(bot, "promos salon retirer").callback(
+        interaction, fourchette="grosses", salon=SalonFactice(111)
     )
 
     assert "✅" in " ".join(interaction.textes)
@@ -350,14 +423,14 @@ async def test_salon_retirer_absent_le_dit():
     await _magasin(bot).ajouter_fourchette("grosses", Decimal("1e14"), Decimal("6e15"))
     interaction = InteractionFactice()
 
-    await _commande(bot, "fourchette salon retirer").callback(
-        interaction, nom="grosses", salon=SalonFactice(111)
+    await _commande(bot, "promos salon retirer").callback(
+        interaction, fourchette="grosses", salon=SalonFactice(111)
     )
 
     assert "❌" in " ".join(interaction.textes)
 
 
-# --- /fourchette liste ------------------------------------------------------
+# --- /promos liste ----------------------------------------------------------
 
 
 async def test_liste_montre_bornes_et_salons():
@@ -366,7 +439,7 @@ async def test_liste_montre_bornes_et_salons():
     await _magasin(bot).ajouter_salon_fourchette("grosses", "111")
     interaction = InteractionFactice()
 
-    await _commande(bot, "fourchette liste").callback(interaction)
+    await _commande(bot, "promos liste").callback(interaction)
 
     embed = interaction.embeds[0]
     rendu = embed.description or "".join(c.value for c in embed.fields)
@@ -381,7 +454,7 @@ async def test_liste_signale_une_fourchette_sans_salon():
     await _magasin(bot).ajouter_fourchette("orpheline", Decimal("0"), Decimal("6e15"))
     interaction = InteractionFactice()
 
-    await _commande(bot, "fourchette liste").callback(interaction)
+    await _commande(bot, "promos liste").callback(interaction)
 
     embed = interaction.embeds[0]
     rendu = embed.description or "".join(c.value for c in embed.fields)
@@ -392,11 +465,11 @@ async def test_liste_vide_explique_quoi_faire():
     bot = await _bot()
     interaction = InteractionFactice()
 
-    await _commande(bot, "fourchette liste").callback(interaction)
+    await _commande(bot, "promos liste").callback(interaction)
 
     embed = interaction.embeds[0]
     rendu = embed.description or ""
-    assert "/fourchette ajouter" in rendu
+    assert "/promos ajouter" in rendu
 
 
 # --- Autocomplétion ---------------------------------------------------------
@@ -410,8 +483,8 @@ async def test_autocompletion_propose_les_fourchettes_existantes():
     )
     await _magasin(bot).ajouter_fourchette("petits-prix", Decimal("0"), Decimal("1e12"))
 
-    commande = _commande(bot, "fourchette prix")
-    choix = await commande._params["nom"].autocomplete(InteractionFactice(), "")
+    commande = _commande(bot, "promos prix")
+    choix = await commande._params["fourchette"].autocomplete(InteractionFactice(), "")
 
     assert {c.value for c in choix} == {"grosses-affaires", "petits-prix"}
 
@@ -423,17 +496,17 @@ async def test_autocompletion_filtre_sur_la_saisie():
     )
     await _magasin(bot).ajouter_fourchette("petits-prix", Decimal("0"), Decimal("1e12"))
 
-    commande = _commande(bot, "fourchette prix")
-    choix = await commande._params["nom"].autocomplete(InteractionFactice(), "pet")
+    commande = _commande(bot, "promos prix")
+    choix = await commande._params["fourchette"].autocomplete(InteractionFactice(), "pet")
 
     assert [c.value for c in choix] == ["petits-prix"]
 
 
-# --- Le vocabulaire commun greffé sur /fourchette ---------------------------
+# --- Le vocabulaire commun greffé sur /promos -------------------------------
 
 
 async def test_fourchette_recoit_les_mots_communs_aux_publications():
-    """Les mêmes qu'ailleurs : `/filiales heure` et `/fourchette heure` s'écrivent
+    """Les mêmes qu'ailleurs : `/filiales heure` et `/promos heure` s'écrivent
     pareil, et le module qui ajoutera une troisième publication héritera de ces
     mots sans en inventer.
 
@@ -444,31 +517,32 @@ async def test_fourchette_recoit_les_mots_communs_aux_publications():
     bot = await _bot()
     noms = {commande.qualified_name for commande in bot.tree.walk_commands()}
 
-    assert "fourchette heure" in noms
-    assert "fourchette apercu" in noms
-    assert "fourchette publier" in noms
+    assert "promos heure" in noms
+    assert "promos apercu" in noms
+    assert "promos publier" in noms
 
 
 async def test_les_salons_d_une_fourchette_restent_ceux_de_la_fourchette():
-    """Le `salon ajouter` générique ne doit pas s'installer sur `/fourchette`.
+    """Le `salon ajouter` générique ne doit pas s'installer sur `/promos`.
 
     Les salons des promotions appartiennent à une fourchette **nommée**, pas à la
     publication : greffé ici, le générique porterait le même nom en écrivant dans
     une autre liste, et la fourchette ne partirait nulle part malgré son « ✅ ».
-    Le nom est donc obligatoire — c'est ce qui distingue les deux commandes.
+    Le nom de la fourchette est donc obligatoire — c'est ce qui distingue les
+    deux commandes.
     """
     bot = await _bot()
 
-    parametres = _commande(bot, "fourchette salon ajouter")._params
-    assert "nom" in parametres
-    assert parametres["nom"].required
+    parametres = _commande(bot, "promos salon ajouter")._params
+    assert "fourchette" in parametres
+    assert parametres["fourchette"].required
 
 
 # --- Les anciennes commandes ont disparu ------------------------------------
 
 
 async def test_apercu_n_est_plus_une_commande_a_part():
-    """Prévisualiser les promotions se dit maintenant `/fourchette apercu`.
+    """Prévisualiser les promotions se dit maintenant `/promos apercu`.
 
     Un `/apercu` nu ne pourrait plus dire de quelle publication il parle, alors
     que le bot en a deux et pourra en avoir plus.

@@ -8,7 +8,7 @@ Deux risques propres à la persistance, que ces tests couvrent :
 
 - une zone **plus étroite** que la fourchette rétrécirait silencieusement le
   budget au lieu de l'élargir ;
-- `/fourchette prix` peut élargir les bornes idéales *après* coup, et laisser
+- `/promos prix` peut élargir les bornes idéales *après* coup, et laisser
   une zone incohérente que la boucle de publication traverserait sans rien dire.
 """
 
@@ -170,7 +170,7 @@ async def test_effacer_sur_fourchette_inconnue_renvoie_faux(store):
 
 @pytest.mark.asyncio
 async def test_prix_elargis_repoussent_la_tolerance(store):
-    """`/fourchette prix` peut dépasser la zone réglée avant lui.
+    """`/promos prix` peut dépasser la zone réglée avant lui.
 
     Laisser `tolere_max` sous `prix_max` produirait une zone qui *exclut* une
     partie de la fourchette : la passe tolérée ne trouverait rien là où la passe
@@ -268,7 +268,7 @@ async def test_tolerance_illisible_ignoree_plutot_que_de_couper_la_publication(s
 # --- Publication ------------------------------------------------------------
 #
 # Le `Store` peut stocker la zone sans que la boucle du matin la lise : la
-# tolérance serait alors réglable, visible dans `/fourchette liste`, et sans
+# tolérance serait alors réglable, visible dans `/promos liste`, et sans
 # aucun effet sur ce qui est publié. Ces tests passent par la publication réelle.
 
 CSV_TOLERANCE = """# nom: Empire Immo - M8

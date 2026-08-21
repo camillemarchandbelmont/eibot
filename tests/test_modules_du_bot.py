@@ -136,7 +136,7 @@ async def test_les_promotions_lisent_leur_heure_dans_la_config():
 
 
 async def test_les_promotions_ecrivent_leur_heure_dans_la_config():
-    """Écrite là où elle est lue, sinon `/fourchette heure` confirmerait pour rien."""
+    """Écrite là où elle est lue, sinon `/promos heure` confirmerait pour rien."""
     publication = _publication(module_promos.MODULE, "promos")
     magasin = await _magasin()
 

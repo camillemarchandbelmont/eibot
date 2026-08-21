@@ -7,7 +7,7 @@ pourrait plus rien régler — ni rendre la main.
 
 Le rangement suit une règle simple : **une commande qui configure le bot vit ici,
 une commande qui s'en sert vit dans son module.** C'est ce qui distingue
-`/reglages source tester` (est-ce que l'export arrive ?) de `/fourchette apercu`
+`/reglages source tester` (est-ce que l'export arrive ?) de `/promos apercu`
 (qu'est-ce qui partirait ce soir ?), alors que les deux touchent aux mêmes
 données.
 
@@ -116,8 +116,8 @@ def enregistrer_les_reglages(bot: EmpireBot) -> None:
                 "⚠️ **Rien n'est réglé dans ce serveur** : il ne publiera nulle "
                 "part.\n"
                 "-# `/reglages importer` reprend la configuration d'avant, en ne "
-                "gardant que les salons de ce serveur. Sinon `/fourchette ajouter` "
-                "puis `/fourchette salon ajouter`."
+                "gardant que les salons de ce serveur. Sinon `/promos ajouter` "
+                "puis `/promos salon ajouter`."
             )
             if await magasin.vierge()
             else None,
@@ -158,7 +158,7 @@ def enregistrer_les_reglages(bot: EmpireBot) -> None:
     async def reglages_fuseau(interaction: discord.Interaction, fuseau: str):
         """Le seul réglage d'horloge commun aux publications.
 
-        L'heure de chacune se règle chez elle (`/fourchette heure`, `/filiales
+        L'heure de chacune se règle chez elle (`/promos heure`, `/filiales
         heure`). Le fuseau, lui, est partagé : le régler depuis l'une déplacerait
         l'autre, surprise qui ne se découvrirait que le lendemain. D'où sa propre
         commande, à l'endroit des réglages communs.
@@ -332,8 +332,8 @@ def enregistrer_les_reglages(bot: EmpireBot) -> None:
             await interaction.response.send_message(
                 "ℹ️ Il n'y avait **rien à reprendre** : aucune configuration "
                 "commune n'est enregistrée.\n"
-                "-# Règle ce serveur directement : `/fourchette ajouter`, "
-                "`/fourchette salon ajouter`, `/fourchette heure`.",
+                "-# Règle ce serveur directement : `/promos ajouter`, "
+                "`/promos salon ajouter`, `/promos heure`.",
                 ephemeral=True,
             )
             return
@@ -375,13 +375,13 @@ def enregistrer_les_reglages(bot: EmpireBot) -> None:
                 ),
                 inline=False,
             )
-        embed.set_footer(text="À vérifier avec /reglages voir et /fourchette liste.")
+        embed.set_footer(text="À vérifier avec /reglages voir et /promos liste.")
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     # Rien qui ressemble à l'ancien `/config retester` : elle effaçait la marque
     # du jour des promotions seules, sous un nom qui ne nommait aucune
     # publication — illisible sur un bot qui en a deux et pourra en avoir plus.
-    # Pour republier tout de suite, `/fourchette publier` et `/filiales publier`
+    # Pour republier tout de suite, `/promos publier` et `/filiales publier`
     # le font sans détour, et préviennent que le post de l'heure prévue ne
     # repassera pas. Pour éprouver la source, `/reglages source tester`.
 
@@ -720,7 +720,7 @@ def enregistrer_les_reglages(bot: EmpireBot) -> None:
                 embed.add_field(name="Promotions trouvées", value=noms, inline=False)
             embed.set_footer(
                 text="Teste la source, pas la fourchette : "
-                "/fourchette apercu pour le post du jour."
+                "/promos apercu pour le post du jour."
             )
         else:
             embed = discord.Embed(

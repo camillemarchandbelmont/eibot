@@ -100,7 +100,7 @@ def lister_fourchettes(bot: Any, fourchettes: list[dict]) -> str:
     if not fourchettes:
         return (
             "*Aucune fourchette configurée.* Le post quotidien ne sortira pas.\n"
-            "-# `/fourchette ajouter nom:… min:… max:…`"
+            "-# `/promos ajouter fourchette:… min:… max:…`"
         )
 
     lignes = []
@@ -149,7 +149,7 @@ async def bornes_demandees(
         if not fourchettes:
             raise AucuneFourchette(
                 "❌ Aucune fourchette configurée : précise `min:` et `max:`, ou "
-                "crée-en une avec `/fourchette ajouter`."
+                "crée-en une avec `/promos ajouter`."
             )
 
         # Une seule borne fournie : l'autre vient de l'union. Refuser une saisie
@@ -246,7 +246,7 @@ def ajouter_les_commandes_de_publication(
     première étant `src.tournee`, qui porte la mécanique d'envoi.
 
     `salons=False` pour une publication dont les salons ne lui appartiennent pas :
-    les promotions attachent les leurs à une fourchette, et un `/fourchette salon
+    les promotions attachent les leurs à une fourchette, et un `/promos salon
     ajouter` générique cohabiterait avec le vrai sous le même nom en écrivant
     ailleurs.
     """

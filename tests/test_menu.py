@@ -27,6 +27,10 @@ async def _bot() -> EmpireBot:
 async def test_la_racine_ne_montre_que_les_entrees_du_menu():
     """Un tiroir de calculatrices, deux domaines, un de réglages — et l'épreuve.
 
+    Les fourchettes n'ont plus leur mot à la racine : elles n'existent que pour
+    découper les promotions, et `/fourchette` à côté de `/promos` laissait deviner
+    deux sujets là où il n'y en a qu'un.
+
     L'égalité est stricte à dessein : un groupe oublié à la racine ne se
     remarquerait jamais dans une assertion « contient ». C'est aussi ce qui fait
     que le module d'épreuve casse ce test au lieu de s'y glisser sans bruit.
@@ -40,7 +44,6 @@ async def test_la_racine_ne_montre_que_les_entrees_du_menu():
         # tableau des frais, pas celui d'un calcul.
         "convertir",
         "promos",
-        "fourchette",
         "filiales",
         "reglages",
         # Le module jetable, et ses deux publications dans un seul fichier.

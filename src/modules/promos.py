@@ -48,7 +48,7 @@ async def _preparer(bot: Any, magasin: Any, maintenant: Any) -> Tournee:
     """
     fourchettes = await magasin.fourchettes()
     if not fourchettes:
-        return Tournee(raison="aucune fourchette configurée (/fourchette ajouter)")
+        return Tournee(raison="aucune fourchette configurée (/promos ajouter)")
 
     servies = [f for f in fourchettes if f["salons"]]
     # Nommées et non comptées : l'aperçu doit dire *lesquelles* ne partiront pas,
@@ -57,7 +57,7 @@ async def _preparer(bot: Any, magasin: Any, maintenant: Any) -> Tournee:
     if not servies:
         # Le message parle de salon et non de fourchette : celles-ci existent.
         return Tournee(
-            raison="aucun salon configuré (/fourchette salon ajouter)",
+            raison="aucun salon configuré (/promos salon ajouter)",
             ecartes=tuple(ecartes),
         )
 
@@ -167,7 +167,7 @@ async def _marquer(magasin: Any, date: str | None) -> None:
 
 # Pas d'accès aux salons : ceux des promotions appartiennent à une **fourchette**,
 # pas à la publication. Les commandes génériques `salon` ne sont donc pas greffées
-# sur `/fourchette` — elles y cohabiteraient avec les vraies sous le même nom, en
+# sur `/promos` — elles y cohabiteraient avec les vraies sous le même nom, en
 # écrivant ailleurs.
 PUBLICATION = Publication(
     cle="promos",
@@ -180,28 +180,37 @@ PUBLICATION = Publication(
 )
 
 def enregistrer(bot: Any) -> None:
-    """Greffe `/promos` et le groupe `/fourchette` sur l'arbre du bot.
+    """Greffe le groupe `/promos` sur l'arbre du bot.
 
     Les fourchettes sont les données de ce module : ce sont elles qui découpent la
     publication, et personne d'autre ne les lit. Les commandes qui y touchent
     vivent donc ici.
 
-    `/promos` reste une commande à part et non un `/fourchette promos` : elle
-    n'interroge aucune fourchette en particulier — elle couvre leur union, ou les
-    bornes qu'on lui donne — et sa réponse est publique, alors que tout le groupe
-    `/fourchette` est de la configuration.
-    """
-    # --- /promos ------------------------------------------------------------
+    **Un seul mot à la racine.** `/fourchette` vivait à côté de `/promos`, et rien
+    ne disait que l'un réglait l'autre : une fourchette n'existe que pour découper
+    les promotions. La recherche immédiate est donc devenue `/promos chercher` —
+    seule réponse publique du groupe, tout le reste étant de la configuration.
 
-    @bot.tree.command(
+    Les fourchettes restent **à plat** sous `/promos`, et non dans un sous-groupe
+    `fourchette` : Discord n'accepte que trois niveaux, et `/promos fourchette
+    salon ajouter` en ferait quatre. C'est le paramètre qui nomme la cible.
+    """
+    groupe = app_commands.Group(
         name="promos",
+        description="Promotions du jeu, fourchettes de prix et leurs salons",
+    )
+
+    # --- /promos chercher ---------------------------------------------------
+
+    @groupe.command(
+        name="chercher",
         description="Meilleures promotions dans une fourchette de prix",
     )
     @app_commands.describe(
         min="Prix minimum (ex: 100T). Par défaut : la fourchette configurée.",
         max="Prix maximum (ex: 6P).",
     )
-    async def promos(
+    async def promos_chercher(
         interaction: discord.Interaction,
         min: str | None = None,
         max: str | None = None,
@@ -235,18 +244,14 @@ def enregistrer(bot: Any) -> None:
             return
         await envoyer(interaction.followup, embeds, contenu)
 
-    # --- /fourchette --------------------------------------------------------
+    # --- Les fourchettes ----------------------------------------------------
     #
-    # Remplace `/config prix` et `/config salon` : ceux-ci ne pouvaient plus rien
+    # Remplacent `/config prix` et `/config salon` : ceux-ci ne pouvaient plus rien
     # signifier sans dire *de quelle* fourchette il s'agit. Une commande qui agit
     # sur une cible implicite est exactement ce qui fait publier au mauvais
     # endroit.
 
-    groupe = app_commands.Group(
-        name="fourchette", description="Fourchettes de prix et leurs salons"
-    )
-
-    async def completer_nom(
+    async def completer_fourchette(
         interaction: discord.Interaction, saisie: str
     ) -> list[app_commands.Choice[str]]:
         """Propose les fourchettes existantes.
@@ -265,7 +270,9 @@ def enregistrer(bot: Any) -> None:
             if debut in f["nom"].casefold()
         ][:25]  # limite Discord
 
-    async def refuser_nom_inconnu(interaction: discord.Interaction, nom: str) -> None:
+    async def refuser_fourchette_inconnue(
+        interaction: discord.Interaction, fourchette: str
+    ) -> None:
         """Refuse en listant les noms valides.
 
         Sans la liste, impossible de savoir si c'est une faute de frappe ou une
@@ -276,18 +283,18 @@ def enregistrer(bot: Any) -> None:
         noms = [f["nom"] for f in connues]
         connues = ", ".join(f"`{n}`" for n in noms) if noms else "*aucune*"
         await interaction.response.send_message(
-            f"❌ Aucune fourchette nommée « {nom} ». Fourchettes : {connues}.",
+            f"❌ Aucune fourchette nommée « {fourchette} ». Fourchettes : {connues}.",
             ephemeral=True,
         )
 
     @groupe.command(name="ajouter", description="Crée une fourchette de prix")
     @app_commands.describe(
-        nom="Nom court, ex: grosses-affaires",
+        fourchette="Nom court, ex: grosses-affaires",
         min="Prix minimum (ex: 100T)",
         max="Prix maximum (ex: 6P)",
     )
     async def fourchette_ajouter(
-        interaction: discord.Interaction, nom: str, min: str, max: str
+        interaction: discord.Interaction, fourchette: str, min: str, max: str
     ) -> None:
         try:
             prix_min, prix_max = parse_money(min), parse_money(max)
@@ -299,39 +306,41 @@ def enregistrer(bot: Any) -> None:
 
         magasin = pour_ce_serveur(bot, interaction)
         try:
-            fourchette = await magasin.ajouter_fourchette(nom, prix_min, prix_max)
+            creee = await magasin.ajouter_fourchette(fourchette, prix_min, prix_max)
         except ValueError as erreur:
             await interaction.response.send_message(f"❌ {erreur}", ephemeral=True)
             return
 
         await interaction.response.send_message(
-            f"✅ Fourchette **{fourchette['nom']}** : "
-            f"**{format_money(Decimal(fourchette['prix_min']))}** → "
-            f"**{format_money(Decimal(fourchette['prix_max']))}**.\n"
+            f"✅ Fourchette **{creee['nom']}** : "
+            f"**{format_money(Decimal(creee['prix_min']))}** → "
+            f"**{format_money(Decimal(creee['prix_max']))}**.\n"
             f"-# Reste à lui donner un salon : "
-            f"`/fourchette salon ajouter nom:{fourchette['nom']}`",
+            f"`/promos salon ajouter fourchette:{creee['nom']}`",
             ephemeral=True,
         )
 
     @groupe.command(name="supprimer", description="Supprime une fourchette")
-    @app_commands.autocomplete(nom=completer_nom)
-    async def fourchette_supprimer(interaction: discord.Interaction, nom: str) -> None:
+    @app_commands.autocomplete(fourchette=completer_fourchette)
+    async def fourchette_supprimer(
+        interaction: discord.Interaction, fourchette: str
+    ) -> None:
         magasin = pour_ce_serveur(bot, interaction)
-        if not await magasin.supprimer_fourchette(nom):
-            await refuser_nom_inconnu(interaction, nom)
+        if not await magasin.supprimer_fourchette(fourchette):
+            await refuser_fourchette_inconnue(interaction, fourchette)
             return
 
         restantes = await magasin.fourchettes()
-        message = f"✅ Fourchette **{nom.strip()}** supprimée."
+        message = f"✅ Fourchette **{fourchette.strip()}** supprimée."
         if not restantes:
             message += "\n⚠️ Plus aucune fourchette : le post quotidien ne sortira plus."
         await interaction.response.send_message(message, ephemeral=True)
 
     @groupe.command(name="prix", description="Modifie les bornes d'une fourchette")
     @app_commands.describe(min="Prix minimum (ex: 100T)", max="Prix maximum (ex: 6P)")
-    @app_commands.autocomplete(nom=completer_nom)
+    @app_commands.autocomplete(fourchette=completer_fourchette)
     async def fourchette_prix(
-        interaction: discord.Interaction, nom: str, min: str, max: str
+        interaction: discord.Interaction, fourchette: str, min: str, max: str
     ) -> None:
         try:
             prix_min, prix_max = parse_money(min), parse_money(max)
@@ -343,26 +352,26 @@ def enregistrer(bot: Any) -> None:
 
         magasin = pour_ce_serveur(bot, interaction)
         avant = await magasin.fourchettes()
-        index_avant = magasin._index(avant, nom)
+        index_avant = magasin._index(avant, fourchette)
         zone_avant = (
             bornes_tolerees(avant[index_avant]) if index_avant >= 0 else (None, None)
         )
 
-        if not await magasin.majprix_fourchette(nom, prix_min, prix_max):
-            await refuser_nom_inconnu(interaction, nom)
+        if not await magasin.majprix_fourchette(fourchette, prix_min, prix_max):
+            await refuser_fourchette_inconnue(interaction, fourchette)
             return
 
         if prix_min > prix_max:
             prix_min, prix_max = prix_max, prix_min
         message = (
-            f"✅ **{nom.strip()}** : **{format_money(prix_min)}** → "
+            f"✅ **{fourchette.strip()}** : **{format_money(prix_min)}** → "
             f"**{format_money(prix_max)}**"
         )
 
         # Les nouvelles bornes ont pu repousser la zone de tolérance. Le taire
         # laisserait croire qu'elle est restée là où on l'avait réglée.
         apres = await magasin.fourchettes()
-        zone_apres = bornes_tolerees(apres[magasin._index(apres, nom)])
+        zone_apres = bornes_tolerees(apres[magasin._index(apres, fourchette)])
         if zone_apres != zone_avant and zone_apres[0] is not None:
             message += (
                 f"\n-# Zone de tolérance élargie d'autant : "
@@ -379,10 +388,10 @@ def enregistrer(bot: Any) -> None:
         min="Prix minimum toléré (ex: 50T) ; laisser vide pour effacer la zone",
         max="Prix maximum toléré (ex: 8P) ; laisser vide pour effacer la zone",
     )
-    @app_commands.autocomplete(nom=completer_nom)
+    @app_commands.autocomplete(fourchette=completer_fourchette)
     async def fourchette_tolerance(
         interaction: discord.Interaction,
-        nom: str,
+        fourchette: str,
         min: str | None = None,
         max: str | None = None,
     ) -> None:
@@ -396,25 +405,26 @@ def enregistrer(bot: Any) -> None:
         if (min is None) != (max is None):
             await interaction.response.send_message(
                 "❌ Donne les **deux** bornes, ou aucune pour effacer la zone.\n"
-                "-# `/fourchette tolerance nom:… min:50T max:8P`",
+                "-# `/promos tolerance fourchette:… min:50T max:8P`",
                 ephemeral=True,
             )
             return
 
         if min is None:
-            if not await magasin.effacer_tolerance_fourchette(nom):
+            if not await magasin.effacer_tolerance_fourchette(fourchette):
                 fourchettes = await magasin.fourchettes()
-                if magasin._index(fourchettes, nom) < 0:
-                    await refuser_nom_inconnu(interaction, nom)
+                if magasin._index(fourchettes, fourchette) < 0:
+                    await refuser_fourchette_inconnue(interaction, fourchette)
                 else:
                     await interaction.response.send_message(
-                        f"ℹ️ **{nom.strip()}** n'avait pas de zone de tolérance.",
+                        f"ℹ️ **{fourchette.strip()}** n'avait pas de zone "
+                        "de tolérance.",
                         ephemeral=True,
                     )
                 return
 
             await interaction.response.send_message(
-                f"✅ Zone de tolérance de **{nom.strip()}** effacée.\n"
+                f"✅ Zone de tolérance de **{fourchette.strip()}** effacée.\n"
                 "-# Le repêchage reprend au plus proche, dans les deux sens.",
                 ephemeral=True,
             )
@@ -429,19 +439,21 @@ def enregistrer(bot: Any) -> None:
             return
 
         try:
-            regle = await magasin.majtolerance_fourchette(nom, tolere_min, tolere_max)
+            regle = await magasin.majtolerance_fourchette(
+                fourchette, tolere_min, tolere_max
+            )
         except ValueError as erreur:
             await interaction.response.send_message(f"❌ {erreur}", ephemeral=True)
             return
 
         if not regle:
-            await refuser_nom_inconnu(interaction, nom)
+            await refuser_fourchette_inconnue(interaction, fourchette)
             return
 
         if tolere_min > tolere_max:
             tolere_min, tolere_max = tolere_max, tolere_min
         await interaction.response.send_message(
-            f"✅ **{nom.strip()}** tolère **{format_money(tolere_min)}** → "
+            f"✅ **{fourchette.strip()}** tolère **{format_money(tolere_min)}** → "
             f"**{format_money(tolere_max)}**.\n"
             "-# Cherché là en priorité quand la fourchette n'a pas assez de promos.",
             ephemeral=True,
@@ -459,7 +471,7 @@ def enregistrer(bot: Any) -> None:
 
     # Les salons appartiennent à une fourchette **nommée**, pas à la publication :
     # c'est pourquoi ce sous-groupe est écrit ici plutôt qu'hérité du vocabulaire
-    # commun, et pourquoi chacune de ses commandes exige un `nom`.
+    # commun, et pourquoi chacune de ses commandes exige une `fourchette`.
     salon_groupe = app_commands.Group(
         name="salon",
         description="Salons d'une fourchette",
@@ -469,9 +481,9 @@ def enregistrer(bot: Any) -> None:
     @salon_groupe.command(
         name="ajouter", description="Publie cette fourchette dans un salon"
     )
-    @app_commands.autocomplete(nom=completer_nom)
+    @app_commands.autocomplete(fourchette=completer_fourchette)
     async def fourchette_salon_ajouter(
-        interaction: discord.Interaction, nom: str, salon: discord.TextChannel
+        interaction: discord.Interaction, fourchette: str, salon: discord.TextChannel
     ) -> None:
         # Vérifié tout de suite : sinon l'erreur n'apparaîtrait qu'à l'heure du
         # post, le lendemain.
@@ -485,13 +497,14 @@ def enregistrer(bot: Any) -> None:
             return
 
         magasin = pour_ce_serveur(bot, interaction)
-        if magasin._index(await magasin.fourchettes(), nom) < 0:
-            await refuser_nom_inconnu(interaction, nom)
+        if magasin._index(await magasin.fourchettes(), fourchette) < 0:
+            await refuser_fourchette_inconnue(interaction, fourchette)
             return
 
-        if not await magasin.ajouter_salon_fourchette(nom, str(salon.id)):
+        if not await magasin.ajouter_salon_fourchette(fourchette, str(salon.id)):
             await interaction.response.send_message(
-                f"ℹ️ {salon.mention} reçoit déjà **{nom.strip()}**.", ephemeral=True
+                f"ℹ️ {salon.mention} reçoit déjà **{fourchette.strip()}**.",
+                ephemeral=True,
             )
             return
 
@@ -503,24 +516,25 @@ def enregistrer(bot: Any) -> None:
         )
 
         await interaction.response.send_message(
-            f"✅ **{nom.strip()}** sera publiée dans {salon.mention}.", ephemeral=True
+            f"✅ **{fourchette.strip()}** sera publiée dans {salon.mention}.",
+            ephemeral=True,
         )
 
     @salon_groupe.command(
         name="retirer", description="Ne plus publier cette fourchette dans un salon"
     )
-    @app_commands.autocomplete(nom=completer_nom)
+    @app_commands.autocomplete(fourchette=completer_fourchette)
     async def fourchette_salon_retirer(
-        interaction: discord.Interaction, nom: str, salon: discord.TextChannel
+        interaction: discord.Interaction, fourchette: str, salon: discord.TextChannel
     ) -> None:
         magasin = pour_ce_serveur(bot, interaction)
-        if magasin._index(await magasin.fourchettes(), nom) < 0:
-            await refuser_nom_inconnu(interaction, nom)
+        if magasin._index(await magasin.fourchettes(), fourchette) < 0:
+            await refuser_fourchette_inconnue(interaction, fourchette)
             return
 
-        if not await magasin.retirer_salon_fourchette(nom, str(salon.id)):
+        if not await magasin.retirer_salon_fourchette(fourchette, str(salon.id)):
             await interaction.response.send_message(
-                f"❌ **{nom.strip()}** n'était pas publiée dans {salon.mention}.",
+                f"❌ **{fourchette.strip()}** n'était pas publiée dans {salon.mention}.",
                 ephemeral=True,
             )
             return
@@ -530,7 +544,7 @@ def enregistrer(bot: Any) -> None:
         await magasin.oublier_salons_orphelins()
 
         await interaction.response.send_message(
-            f"✅ **{nom.strip()}** ne sera plus publiée dans {salon.mention}.",
+            f"✅ **{fourchette.strip()}** ne sera plus publiée dans {salon.mention}.",
             ephemeral=True,
         )
 

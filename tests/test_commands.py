@@ -268,7 +268,7 @@ async def test_apercu_affiche_lerreur_de_source():
     await magasin.ajouter_salon_fourchette("grosses", "111")
     interaction = InteractionFactice()
 
-    await _commande(bot, "fourchette apercu").callback(interaction)
+    await _commande(bot, "promos apercu").callback(interaction)
 
     assert "API injoignable" in interaction.textes[0]
 
@@ -276,7 +276,7 @@ async def test_apercu_affiche_lerreur_de_source():
 # --- Salons : voir `tests/test_commandes_fourchettes.py` --------------------
 #
 # `/reglages salon ajouter|retirer|liste` n'existe plus : un salon s'attache
-# désormais à une fourchette nommée (`/fourchette salon ajouter`). Les tests
+# désormais à une fourchette nommée (`/promos salon ajouter`). Les tests
 # d'attachement, de permissions et de listage ont suivi la commande.
 
 class SalonDiscordFactice:
@@ -389,7 +389,7 @@ async def test_reglages_voir_sans_fourchette(tmp_path):
 # --- /reglages fuseau ---------------------------------------------------------
 #
 # Le fuseau ne peut pas voyager avec l'heure d'une publication : il est commun
-# aux deux, si bien que le régler depuis `/fourchette heure` déplacerait aussi le
+# aux deux, si bien que le régler depuis `/promos heure` déplacerait aussi le
 # tableau des frais. Il lui faut donc sa propre commande.
 
 async def test_reglages_fuseau_change_le_fuseau_sans_deplacer_les_heures(tmp_path):

@@ -29,7 +29,6 @@ from tests.test_commandes_par_serveur import EMPIRE, VOISIN, _interaction
 MENU_COMPLET = {
     "convertir",
     "promos",
-    "fourchette",
     "filiales",
     "reglages",
     "bonjour",
@@ -138,7 +137,7 @@ async def test_chaque_module_est_associe_a_ses_commandes():
 
     assert bot.commandes_des_modules == {
         "conversion": ("convertir",),
-        "promos": ("promos", "fourchette"),
+        "promos": ("promos",),
         "filiales": ("filiales",),
         "politesse": ("bonjour", "bonsoir"),
     }
@@ -347,7 +346,7 @@ async def test_une_commande_dun_module_allume_passe():
     bot = await _bot()
     await bot.store.pour(EMPIRE).eteindre_module("filiales")
 
-    assert await bot.tree.interaction_check(_tape(bot, "promos", EMPIRE)) is True
+    assert await bot.tree.interaction_check(_tape(bot, "promos chercher", EMPIRE)) is True
 
 
 async def test_une_commande_eteinte_ailleurs_passe_ici():
@@ -387,7 +386,7 @@ async def test_le_gardien_verifie_toujours_lacces():
     """Les deux contrôles se composent : ajouter celui des modules ne doit pas
     avoir remplacé celui de la liste d'accès."""
     bot = await _bot()
-    interaction = _tape(bot, "promos", EMPIRE)
+    interaction = _tape(bot, "promos chercher", EMPIRE)
     interaction.user.guild_permissions.administrator = False
 
     assert await bot.tree.interaction_check(interaction) is False

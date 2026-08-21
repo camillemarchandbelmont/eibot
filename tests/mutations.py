@@ -876,7 +876,7 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
         "src/modules/promos.py",
         "    ajouter_les_commandes_de_publication(groupe, bot, PUBLICATION, salons=False)",
         "    ajouter_les_commandes_de_publication(groupe, bot, PUBLICATION)",
-        "un `/fourchette salon ajouter` générique porterait le même nom que le "
+        "un `/promos salon ajouter` générique porterait le même nom que le "
         "vrai en écrivant ailleurs — un « ✅ » pour un post qui ne partirait "
         "nulle part",
     ),
@@ -1771,8 +1771,16 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
         "src/modules/promos.py",
         "            prix_min, prix_max = await bornes_demandees(magasin, min, max)",
         "            prix_min, prix_max = await bornes_demandees(bot.store, min, max)",
-        "`/promos` sans argument dirait « aucune fourchette configurée » à un "
-        "serveur qui en a",
+        "`/promos chercher` sans argument dirait « aucune fourchette configurée » "
+        "à un serveur qui en a",
+    ),
+    (
+        "bot-promos-fourchettes-a-la-racine",
+        "src/modules/promos.py",
+        '        name="promos",',
+        '        name="fourchette",',
+        "les fourchettes reviendraient à la racine, à côté des promotions qu'elles "
+        "sont seules à découper",
     ),
 
     # --- Les modules lisent la configuration de leur serveur ---------------
@@ -1784,8 +1792,8 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
     (
         "bot-promos-fourchette-creee-dans-le-commun",
         "src/modules/promos.py",
-        "            fourchette = await magasin.ajouter_fourchette(nom, prix_min, prix_max)",
-        "            fourchette = await bot.store.ajouter_fourchette(nom, prix_min, prix_max)",
+        "            creee = await magasin.ajouter_fourchette(fourchette, prix_min, prix_max)",
+        "            creee = await bot.store.ajouter_fourchette(fourchette, prix_min, prix_max)",
         "la fourchette ne publierait rien et apparaîtrait chez tous les voisins",
     ),
     (
@@ -1800,36 +1808,36 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
     (
         "bot-promos-suppression-dans-le-commun",
         "src/modules/promos.py",
-        "        if not await magasin.supprimer_fourchette(nom):",
-        "        if not await bot.store.supprimer_fourchette(nom):",
+        "        if not await magasin.supprimer_fourchette(fourchette):",
+        "        if not await bot.store.supprimer_fourchette(fourchette):",
         "la fourchette resterait, et le post continuerait de sortir",
     ),
     (
         "bot-promos-prix-regle-dans-le-commun",
         "src/modules/promos.py",
-        "        if not await magasin.majprix_fourchette(nom, prix_min, prix_max):",
-        "        if not await bot.store.majprix_fourchette(nom, prix_min, prix_max):",
+        "        if not await magasin.majprix_fourchette(fourchette, prix_min, prix_max):",
+        "        if not await bot.store.majprix_fourchette(fourchette, prix_min, prix_max):",
         "les bornes annoncées ne seraient pas celles qui servent à chercher",
     ),
     (
         "bot-promos-tolerance-du-commun",
         "src/modules/promos.py",
-        "            regle = await magasin.majtolerance_fourchette(nom, tolere_min, tolere_max)",
-        "            regle = await bot.store.majtolerance_fourchette(nom, tolere_min, tolere_max)",
+        "            regle = await magasin.majtolerance_fourchette(",
+        "            regle = await bot.store.majtolerance_fourchette(",
         "la zone est invisible dans Discord : réglée ailleurs, rien ne le dirait",
     ),
     (
         "bot-promos-salon-attache-dans-le-commun",
         "src/modules/promos.py",
-        "        if not await magasin.ajouter_salon_fourchette(nom, str(salon.id)):",
-        "        if not await bot.store.ajouter_salon_fourchette(nom, str(salon.id)):",
+        "        if not await magasin.ajouter_salon_fourchette(fourchette, str(salon.id)):",
+        "        if not await bot.store.ajouter_salon_fourchette(fourchette, str(salon.id)):",
         "le salon ne recevrait rien malgré le « ✅ »",
     ),
     (
         "bot-promos-salon-retire-du-commun",
         "src/modules/promos.py",
-        "        if not await magasin.retirer_salon_fourchette(nom, str(salon.id)):",
-        "        if not await bot.store.retirer_salon_fourchette(nom, str(salon.id)):",
+        "        if not await magasin.retirer_salon_fourchette(fourchette, str(salon.id)):",
+        "        if not await bot.store.retirer_salon_fourchette(fourchette, str(salon.id)):",
         "le salon continuerait de recevoir la fourchette qu'on vient d'en retirer",
     ),
     (

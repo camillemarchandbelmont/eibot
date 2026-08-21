@@ -8,8 +8,8 @@ passe une fois par serveur (`tests/test_publication_par_serveur.py`) et
 Tant qu'elles lisent la configuration commune, le cloisonnement est pire que
 l'ancien état. Régler l'heure dans une entreprise la changerait pour toutes — ce
 qu'on vient de défaire — **et** ne servirait à rien : la tournée ne lit plus cette
-heure-là. `/fourchette liste` montrerait des fourchettes qui ne publient nulle
-part, et `/fourchette salon ajouter` un salon dont le post ne sortira jamais.
+heure-là. `/promos liste` montrerait des fourchettes qui ne publient nulle
+part, et `/promos salon ajouter` un salon dont le post ne sortira jamais.
 
 Deux serveurs, et la même assertion partout : ce qui est réglé ici n'apparaît ni
 chez le voisin, ni dans la configuration commune — celle que le site de contrôle
@@ -230,7 +230,7 @@ async def test_publier_maintenant_publie_la_configuration_du_serveur():
     assert "remplace" in " ".join(interaction.textes).lower()
 
 
-# --- /fourchette : les fourchettes appartiennent à leur serveur --------------
+# --- /promos : les fourchettes appartiennent à leur serveur ------------------
 
 
 async def test_une_fourchette_est_creee_dans_le_serveur_ou_on_la_cree():
@@ -238,8 +238,8 @@ async def test_une_fourchette_est_creee_dans_le_serveur_ou_on_la_cree():
     lit pas cette liste-là — et apparaîtrait pourtant chez tous les voisins."""
     bot = await _bot()
 
-    await _commande(bot, "fourchette ajouter").callback(
-        _interaction(EMPIRE), nom="grosses", min="100T", max="6P"
+    await _commande(bot, "promos ajouter").callback(
+        _interaction(EMPIRE), fourchette="grosses", min="100T", max="6P"
     )
 
     assert [f["nom"] for f in await bot.store.pour(EMPIRE).fourchettes()] == ["grosses"]
@@ -259,7 +259,7 @@ async def test_la_liste_ne_montre_que_les_fourchettes_du_serveur():
     )
     interaction = _interaction(EMPIRE)
 
-    await _commande(bot, "fourchette liste").callback(interaction)
+    await _commande(bot, "promos liste").callback(interaction)
 
     description = interaction.embeds[0].description
     assert "chez-nous" in description
@@ -275,8 +275,8 @@ async def test_supprimer_une_fourchette_laisse_celle_du_voisin():
             "grosses", Decimal("1e14"), Decimal("6e15")
         )
 
-    await _commande(bot, "fourchette supprimer").callback(
-        _interaction(EMPIRE), nom="grosses"
+    await _commande(bot, "promos supprimer").callback(
+        _interaction(EMPIRE), fourchette="grosses"
     )
 
     assert await bot.store.pour(EMPIRE).fourchettes() == []
@@ -289,8 +289,8 @@ async def test_les_bornes_se_reglent_sur_la_fourchette_du_serveur():
         "grosses", Decimal("1e14"), Decimal("6e15")
     )
 
-    await _commande(bot, "fourchette prix").callback(
-        _interaction(EMPIRE), nom="grosses", min="1M", max="2M"
+    await _commande(bot, "promos prix").callback(
+        _interaction(EMPIRE), fourchette="grosses", min="1M", max="2M"
     )
 
     fourchette = (await bot.store.pour(EMPIRE).fourchettes())[0]
@@ -309,8 +309,8 @@ async def test_regler_une_fourchette_du_commun_est_refuse():
     await bot.store.ajouter_fourchette("grosses", Decimal("1e14"), Decimal("6e15"))
     interaction = _interaction(EMPIRE)
 
-    await _commande(bot, "fourchette prix").callback(
-        interaction, nom="grosses", min="1M", max="2M"
+    await _commande(bot, "promos prix").callback(
+        interaction, fourchette="grosses", min="1M", max="2M"
     )
 
     texte = " ".join(interaction.textes)
@@ -327,8 +327,8 @@ async def test_la_tolerance_se_regle_sur_la_fourchette_du_serveur():
 
     # Plus large que la fourchette : le magasin refuse une zone plus étroite,
     # qui n'ajouterait aucun candidat.
-    await _commande(bot, "fourchette tolerance").callback(
-        _interaction(EMPIRE), nom="grosses", min="50T", max="8P"
+    await _commande(bot, "promos tolerance").callback(
+        _interaction(EMPIRE), fourchette="grosses", min="50T", max="8P"
     )
 
     fourchette = (await bot.store.pour(EMPIRE).fourchettes())[0]
@@ -344,8 +344,8 @@ async def test_un_salon_est_attache_a_la_fourchette_de_ce_serveur():
             "grosses", Decimal("1e14"), Decimal("6e15")
         )
 
-    await _commande(bot, "fourchette salon ajouter").callback(
-        _interaction(EMPIRE), nom="grosses", salon=SalonFactice(4242)
+    await _commande(bot, "promos salon ajouter").callback(
+        _interaction(EMPIRE), fourchette="grosses", salon=SalonFactice(4242)
     )
 
     assert (await bot.store.pour(EMPIRE).fourchettes())[0]["salons"] == ["4242"]
@@ -358,8 +358,8 @@ async def test_un_salon_se_retire_de_la_fourchette_de_ce_serveur():
     await magasin.ajouter_fourchette("grosses", Decimal("1e14"), Decimal("6e15"))
     await magasin.ajouter_salon_fourchette("grosses", "4242")
 
-    await _commande(bot, "fourchette salon retirer").callback(
-        _interaction(EMPIRE), nom="grosses", salon=SalonFactice(4242)
+    await _commande(bot, "promos salon retirer").callback(
+        _interaction(EMPIRE), fourchette="grosses", salon=SalonFactice(4242)
     )
 
     assert (await magasin.fourchettes())[0]["salons"] == []
@@ -375,7 +375,7 @@ async def test_lautocompletion_ne_propose_que_les_fourchettes_du_serveur():
     await bot.store.pour(VOISIN).ajouter_fourchette(
         "chez-le-voisin", Decimal("1e5"), Decimal("1e6")
     )
-    completer = _propositions(_commande(bot, "fourchette supprimer"), "nom")
+    completer = _propositions(_commande(bot, "promos supprimer"), "fourchette")
 
     choix = await completer(_interaction(EMPIRE), "")
 

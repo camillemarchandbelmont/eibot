@@ -98,7 +98,7 @@ def _montant(brut: Any, champ: str) -> Decimal:
     """Lit un montant saisi sur le site, avec la grammaire de Discord.
 
     Une seule grammaire pour les deux façades : `100T`, `50 6P` ou `2.71 PØ`
-    recopié depuis un post fonctionnent ici comme dans `/fourchette prix`.
+    recopié depuis un post fonctionnent ici comme dans `/promos prix`.
     """
     try:
         return parse_money(str(brut))
@@ -180,7 +180,7 @@ async def _fourchette(bot, requete: web.Request, charge: dict | None = None):
     if not fourchettes:
         raise RequeteInvalide(
             "Aucune fourchette configurée : indique un minimum et un maximum, "
-            "ou crée une fourchette avec `/fourchette ajouter` dans Discord."
+            "ou crée une fourchette avec `/promos ajouter` dans Discord."
         )
 
     # Une seule borne saisie : l'autre vient de l'union. Refuser une saisie dont
@@ -294,7 +294,7 @@ def enregistrer_routes(app: web.Application, bot) -> None:
             await bot.store.maj_config(**champs)
 
         if "heure" in champs:
-            # Comme `/fourchette heure` : changer l'heure exprime l'intention de
+            # Comme `/promos heure` : changer l'heure exprime l'intention de
             # publier à la nouvelle, donc on oublie la marque du jour.
             await bot.store.oublier_publication()
 

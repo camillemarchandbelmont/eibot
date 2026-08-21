@@ -297,7 +297,7 @@ class Store:
         Toute écriture part de là et non de `config()` : partir de la vue
         fusionnée recopierait les défauts en base, et `prix_min`/`prix_max`/
         `salons` y sont justement la signature d'une config plate à migrer. Un
-        `/fourchette heure` sur un bot neuf lui inventerait donc une fourchette
+        `/promos heure` sur un bot neuf lui inventerait donc une fourchette
         `principale`, aux bornes d'usine et dans le salon de `SALON_ID` — le bot
         se mettrait à publier de lui-même.
         """

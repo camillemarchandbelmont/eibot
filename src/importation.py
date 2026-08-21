@@ -174,7 +174,7 @@ def _cloisonner(cle: str, valeur: Any, trier) -> Any:
         if isinstance(fourchettes, list):
             # La fourchette reste même sans salon : ses bornes sont un réglage,
             # et les reperdre obligerait à les ressaisir alors qu'il n'y a qu'un
-            # salon à corriger. `/fourchette liste` la montrera sans salon.
+            # salon à corriger. `/promos liste` la montrera sans salon.
             config["fourchettes"] = [
                 {**f, "salons": trier(f.get("salons"))} if isinstance(f, dict) else f
                 for f in fourchettes

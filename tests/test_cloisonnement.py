@@ -51,7 +51,7 @@ async def test_deux_serveurs_ont_des_fourchettes_separees():
 
 
 async def test_chaque_serveur_a_son_heure_de_publication():
-    """`/fourchette heure` dans un serveur ne déplace pas le post de l'autre."""
+    """`/promos heure` dans un serveur ne déplace pas le post de l'autre."""
     commun = await _store()
     a = commun.pour("111")
     b = commun.pour("222")

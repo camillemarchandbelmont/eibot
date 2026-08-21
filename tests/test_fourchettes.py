@@ -159,7 +159,7 @@ async def test_ajouter_migre_avant_d_ecrire(store):
     """Ajouter sur une config plate ne doit pas effacer l'existant.
 
     Sans migration au moment de l'écriture, la fourchette de la prod
-    disparaîtrait au premier `/fourchette ajouter`.
+    disparaîtrait au premier `/promos ajouter`.
     """
     await store.set("config", {"prix_min": "1e14", "prix_max": "6e15", "salons": ["111"]})
 

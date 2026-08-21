@@ -195,7 +195,7 @@ async def test_aucune_fourchette_avec_salon_ne_publie_rien():
 
     resultat = await bot.publier_si_lheure(forcer=True)
 
-    assert "/fourchette salon ajouter" in resultat
+    assert "/promos salon ajouter" in resultat
     assert "échec" not in resultat
 
 

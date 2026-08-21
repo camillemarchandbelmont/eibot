@@ -99,7 +99,7 @@ async def test_une_publication_recoit_le_vocabulaire_complet():
 async def test_une_publication_peut_se_passer_des_commandes_de_salon():
     """Les promotions attachent leurs salons à une fourchette, pas à la publication.
 
-    Leur `/fourchette salon ajouter` prend un nom de fourchette : la version
+    Leur `/promos salon ajouter` prend un nom de fourchette : la version
     générique cohabiterait avec elle sous le même nom, en écrivant ailleurs.
     """
     bot = await _bot()
@@ -179,7 +179,7 @@ async def test_regler_l_heure_oublie_la_marque_du_jour():
 async def test_heure_ecrit_ou_la_publication_le_demande():
     """Les publications historiques rangent leur heure ailleurs qu'au tiroir générique.
 
-    Sans cette dérivation, `/fourchette heure` écrirait dans un tiroir que la
+    Sans cette dérivation, `/promos heure` écrirait dans un tiroir que la
     publication ne lit pas : la commande confirmerait, et l'heure ne changerait pas.
     """
     bot = await _bot()

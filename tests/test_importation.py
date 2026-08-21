@@ -141,7 +141,7 @@ def test_les_salons_dune_fourchette_sont_filtres():
 
 
 def test_une_fourchette_qui_perd_tous_ses_salons_reste():
-    """Elle ne publiera nulle part, et `/fourchette liste` le montrera — mieux
+    """Elle ne publiera nulle part, et `/promos liste` le montrera — mieux
     qu'une fourchette disparue sans que rien ne le dise."""
     base = _base(config={"fourchettes": [{"nom": "grosses", "salons": ["2"]}]})
 

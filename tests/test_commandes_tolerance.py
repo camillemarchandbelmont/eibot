@@ -1,8 +1,8 @@
-"""Tests de `/fourchette tolerance`, sans se connecter à Discord.
+"""Tests de `/promos tolerance`, sans se connecter à Discord.
 
 Ce qui se joue ici est le **message** : la zone est invisible dans Discord une
 fois réglée (les posts ne la mentionnent pas), donc la confirmation de la
-commande et `/fourchette liste` sont les deux seuls endroits où l'utilisateur
+commande et `/promos liste` sont les deux seuls endroits où l'utilisateur
 peut vérifier ce qu'il a saisi. Une commande qui écrit bien mais confirme mal
 serait indétectable jusqu'au matin où un bâtiment inattendu apparaîtrait.
 """
@@ -27,8 +27,8 @@ async def test_regler_confirme_avec_les_bornes_formatees():
     await _magasin(bot).ajouter_fourchette("grosses", Decimal("1e14"), Decimal("6e15"))
     interaction = InteractionFactice()
 
-    await _commande(bot, "fourchette tolerance").callback(
-        interaction, nom="grosses", min="50T", max="8P"
+    await _commande(bot, "promos tolerance").callback(
+        interaction, fourchette="grosses", min="50T", max="8P"
     )
 
     texte = " ".join(interaction.textes)
@@ -45,8 +45,8 @@ async def test_regler_montant_illisible_refuse_sans_rien_ecrire():
     await _magasin(bot).ajouter_fourchette("grosses", Decimal("1e14"), Decimal("6e15"))
     interaction = InteractionFactice()
 
-    await _commande(bot, "fourchette tolerance").callback(
-        interaction, nom="grosses", min="beaucoup", max="8P"
+    await _commande(bot, "promos tolerance").callback(
+        interaction, fourchette="grosses", min="beaucoup", max="8P"
     )
 
     assert "❌" in " ".join(interaction.textes)
@@ -57,8 +57,8 @@ async def test_regler_sur_fourchette_inconnue_refuse_explicitement():
     bot = await _bot()
     interaction = InteractionFactice()
 
-    await _commande(bot, "fourchette tolerance").callback(
-        interaction, nom="fantome", min="50T", max="8P"
+    await _commande(bot, "promos tolerance").callback(
+        interaction, fourchette="fantome", min="50T", max="8P"
     )
 
     assert "❌" in " ".join(interaction.textes)
@@ -74,8 +74,8 @@ async def test_zone_plus_etroite_refusee_avec_la_raison():
     await _magasin(bot).ajouter_fourchette("grosses", Decimal("1e14"), Decimal("6e15"))
     interaction = InteractionFactice()
 
-    await _commande(bot, "fourchette tolerance").callback(
-        interaction, nom="grosses", min="200T", max="1P"
+    await _commande(bot, "promos tolerance").callback(
+        interaction, fourchette="grosses", min="200T", max="1P"
     )
 
     texte = " ".join(interaction.textes)
@@ -87,7 +87,7 @@ async def test_zone_plus_etroite_refusee_avec_la_raison():
 
 
 async def test_sans_bornes_efface_la_zone():
-    """La forme nue de la commande : `/fourchette tolerance nom:grosses`."""
+    """La forme nue de la commande : `/promos tolerance fourchette:grosses`."""
     bot = await _bot()
     await _magasin(bot).ajouter_fourchette("grosses", Decimal("1e14"), Decimal("6e15"))
     await _magasin(bot).majtolerance_fourchette(
@@ -95,7 +95,7 @@ async def test_sans_bornes_efface_la_zone():
     )
     interaction = InteractionFactice()
 
-    await _commande(bot, "fourchette tolerance").callback(interaction, nom="grosses")
+    await _commande(bot, "promos tolerance").callback(interaction, fourchette="grosses")
 
     assert "✅" in " ".join(interaction.textes)
     assert (await _magasin(bot).fourchettes())[0]["tolere_min"] == ""
@@ -107,7 +107,7 @@ async def test_effacer_une_zone_absente_le_dit():
     await _magasin(bot).ajouter_fourchette("grosses", Decimal("1e14"), Decimal("6e15"))
     interaction = InteractionFactice()
 
-    await _commande(bot, "fourchette tolerance").callback(interaction, nom="grosses")
+    await _commande(bot, "promos tolerance").callback(interaction, fourchette="grosses")
 
     assert "ℹ️" in " ".join(interaction.textes)
 
@@ -119,8 +119,8 @@ async def test_une_seule_borne_refusee():
     await _magasin(bot).ajouter_fourchette("grosses", Decimal("1e14"), Decimal("6e15"))
     interaction = InteractionFactice()
 
-    await _commande(bot, "fourchette tolerance").callback(
-        interaction, nom="grosses", min="50T"
+    await _commande(bot, "promos tolerance").callback(
+        interaction, fourchette="grosses", min="50T"
     )
 
     texte = " ".join(interaction.textes)
@@ -140,7 +140,7 @@ async def test_la_liste_montre_la_zone():
     )
     interaction = InteractionFactice()
 
-    await _commande(bot, "fourchette liste").callback(interaction)
+    await _commande(bot, "promos liste").callback(interaction)
 
     description = interaction.embeds[0].description
     assert "50.00" in description and "8.00" in description
@@ -153,7 +153,7 @@ async def test_la_liste_reste_sobre_sans_zone():
     await _magasin(bot).ajouter_fourchette("grosses", Decimal("1e14"), Decimal("6e15"))
     interaction = InteractionFactice()
 
-    await _commande(bot, "fourchette liste").callback(interaction)
+    await _commande(bot, "promos liste").callback(interaction)
 
     assert "tolérance" not in interaction.embeds[0].description.lower()
 
@@ -168,8 +168,8 @@ async def test_prix_signale_la_zone_repoussee():
     )
     interaction = InteractionFactice()
 
-    await _commande(bot, "fourchette prix").callback(
-        interaction, nom="grosses", min="10T", max="9P"
+    await _commande(bot, "promos prix").callback(
+        interaction, fourchette="grosses", min="10T", max="9P"
     )
 
     texte = " ".join(interaction.textes)
@@ -184,8 +184,8 @@ async def test_prix_ne_parle_pas_de_zone_quand_elle_ne_bouge_pas():
     )
     interaction = InteractionFactice()
 
-    await _commande(bot, "fourchette prix").callback(
-        interaction, nom="grosses", min="200T", max="5P"
+    await _commande(bot, "promos prix").callback(
+        interaction, fourchette="grosses", min="200T", max="5P"
     )
 
     assert "tolérance" not in " ".join(interaction.textes).lower()

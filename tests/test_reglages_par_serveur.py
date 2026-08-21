@@ -404,7 +404,7 @@ async def test_promos_repond_avec_le_template_de_son_serveur():
     await magasin.set_template({"embeds": [{"title": "Chez Empire — {nom}"}]})
     interaction = _interaction(EMPIRE)
 
-    await _commande(bot, "promos").callback(interaction)
+    await _commande(bot, "promos chercher").callback(interaction)
 
     titres = [embed.title for embed in _embeds_envoyes(interaction)]
     assert titres and titres[0].startswith("Chez Empire")
