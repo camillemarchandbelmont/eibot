@@ -724,8 +724,8 @@ class Store:
         return [str(membre) for membre in config.get("autorises") or [] if membre]
 
     async def _ecrire_autorises(self, liste: list[str]) -> None:
-        """`maj_config` ignore les valeurs vides : une liste vidée ne serait
-        jamais enregistrée, et un membre retiré reviendrait au redémarrage."""
+        """Écrit la liste telle quelle, vidée comprise : sauter une liste vide
+        ferait revenir au redémarrage le membre qu'on vient de retirer."""
         config = await self._enregistree()
         config["autorises"] = liste
         await self.set("config", config)
@@ -744,6 +744,43 @@ class Store:
         if str(membre_id) not in liste:
             return False
         await self._ecrire_autorises([m for m in liste if m != str(membre_id)])
+        return True
+
+    # --- Modules allumés dans ce serveur -----------------------------------
+    #
+    # Ce sont les **éteints** qui sont retenus, et non les allumés. Tout est
+    # allumé par défaut, donc un serveur neuf n'a rien à écrire ; et un module
+    # posé par un déploiement est allumé partout d'office, alors que la liste des
+    # allumés obligerait à passer dans chaque serveur pour l'y ajouter — sans que
+    # rien ne dise qu'il faut le faire.
+
+    async def modules_eteints(self) -> list[str]:
+        """Noms des modules éteints dans ce serveur, triés."""
+        config = await self.config()
+        return sorted({str(nom) for nom in config.get("modules_eteints") or [] if nom})
+
+    async def module_actif(self, nom: str) -> bool:
+        return nom not in await self.modules_eteints()
+
+    async def eteindre_module(self, nom: str) -> bool:
+        """Éteint un module. Renvoie False s'il l'était déjà."""
+        eteints = await self.modules_eteints()
+        if nom in eteints:
+            return False
+        await self.maj_config(modules_eteints=sorted([*eteints, nom]))
+        return True
+
+    async def rallumer_module(self, nom: str) -> bool:
+        """Rallume un module. Renvoie False s'il était déjà allumé.
+
+        La liste vidée est écrite telle quelle — `maj_config` n'écarte que `None`.
+        Sauter une liste vide rallumerait le module jusqu'au redémarrage, et il
+        s'éteindrait tout seul là où personne ne regarde.
+        """
+        eteints = await self.modules_eteints()
+        if nom not in eteints:
+            return False
+        await self.maj_config(modules_eteints=[n for n in eteints if n != nom])
         return True
 
     async def maj_config(self, **champs: Any) -> dict:

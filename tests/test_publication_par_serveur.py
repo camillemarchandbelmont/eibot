@@ -119,11 +119,17 @@ async def _fourchette_dans(magasin, *salons: str) -> None:
         await magasin.ajouter_salon_fourchette("a", salon)
 
 
-def _module_dessai(cles: tuple[str, ...], salons=("1",), casse: str | None = None):
+def _module_dessai(
+    cles: tuple[str, ...],
+    salons=("1",),
+    casse: str | None = None,
+    nom: str = "essai",
+):
     """Un module jetable : une publication par clé, chacune dans `salons`.
 
     `casse` est l'id du serveur dont la préparation lève, pour éprouver qu'une
-    panne chez l'un n'empêche pas les autres.
+    panne chez l'un n'empêche pas les autres. `nom` sert à en monter deux dans le
+    même bot, ce que l'activation par serveur demande.
     """
     envoyes: list[tuple[str, str]] = []
 
@@ -142,7 +148,7 @@ def _module_dessai(cles: tuple[str, ...], salons=("1",), casse: str | None = Non
         return Publication(cle=cle, titre=cle, preparer=preparer)
 
     module = Module(
-        nom="essai",
+        nom=nom,
         titre="Essai",
         description="Publications jetables",
         publications=tuple(publication(cle) for cle in cles),

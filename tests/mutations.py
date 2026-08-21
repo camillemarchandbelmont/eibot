@@ -14,8 +14,8 @@ si l'on interrompt le script (Ctrl-C).
 Le nom d'une mutation dit où elle mord, donc quel lot la rejoue : `tournee-` la
 mécanique d'envoi commune, `surface-` le vocabulaire des commandes, `bot-` les
 commandes elles-mêmes et leurs modules, `cloisonnement-` la séparation des
-serveurs, `reglages-` le noyau `src/reglages.py`, le reste le fichier de calcul
-visé.
+serveurs, `reglages-` le noyau `src/reglages.py`, `activation-` l'allumage des
+modules par serveur, le reste le fichier de calcul visé.
 
 Déplacer du code oblige à repointer les motifs qui le visaient. Un motif dont le
 fichier a changé n'échoue pas : le script l'annonce introuvable et le compte
@@ -680,20 +680,18 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
     (
         "cloisonnement-publications-ecrites-en-dur",
         "src/bot.py",
-        "        publications = self.publications()",
-        "        publications = [module_promos.PUBLICATION, module_filiales.PUBLICATION]",
+        "            publications = self.publications(await magasin.modules_eteints())",
+        "            publications = [module_promos.PUBLICATION, module_filiales.PUBLICATION]",
         "un module déclarant une troisième publication ne publierait rien, sans "
         "que rien ne le signale",
     ),
     (
         "cloisonnement-une-seule-publication-par-module",
         "src/bot.py",
-        "            publication\n"
-        "            for module in self.modules\n"
-        "            for publication in module.publications",
-        "            publication\n"
-        "            for module in self.modules\n"
-        "            for publication in module.publications[:1]",
+        "            for publication in module.publications\n"
+        "        ]",
+        "            for publication in module.publications[:1]\n"
+        "        ]",
         "un module qui déclare deux posts n'en sortirait qu'un : le plafond que "
         "le contrat de module est censé avoir levé",
     ),
@@ -1092,6 +1090,77 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
         "        autorises = await bot.store.autorises()",
         "la liste affichée ne serait pas celle que le gardien applique : on "
         "chercherait pourquoi les membres cités sont refusés",
+    ),
+
+    # --- src/db.py, src/bot.py : allumer les modules par serveur -------------
+    #
+    # La base retient les **éteints**, pour que tout soit allumé par défaut et
+    # qu'un module arrivé par un déploiement le soit partout. Chaque mutation
+    # ci-dessous inverse ou perd cette liste : le symptôme est soit un serveur
+    # muet sans raison, soit un post qu'on croyait avoir éteint et qui retombe
+    # chaque jour.
+    (
+        "activation-tout-eteint-par-defaut",
+        "src/db.py",
+        "        return nom not in await self.modules_eteints()",
+        "        return nom in await self.modules_eteints()",
+        "un serveur neuf n'aurait aucun module : muet au démarrage, et sans que "
+        "rien ne dise quoi rallumer",
+    ),
+    (
+        "activation-extinction-non-enregistree",
+        "src/db.py",
+        "        await self.maj_config(modules_eteints=sorted([*eteints, nom]))\n"
+        "        return True",
+        "        return True",
+        "`desactiver` répondrait « ✅ » et le module publierait le soir même",
+    ),
+    (
+        "activation-deja-eteint-non-signale",
+        "src/db.py",
+        "        eteints = await self.modules_eteints()\n"
+        "        if nom in eteints:\n"
+        "            return False",
+        "        eteints = await self.modules_eteints()\n"
+        "        if False:\n"
+        "            return False",
+        "« ✅ éteint » sur un module qui l'était déjà ferait croire qu'on vient "
+        "de changer quelque chose",
+    ),
+    (
+        "activation-rallumer-nefface-rien",
+        "src/db.py",
+        "        await self.maj_config(modules_eteints=[n for n in eteints if n != nom])",
+        "        await self.maj_config(modules_eteints=eteints)",
+        "`activer` répondrait « ✅ » sur un module qui resterait éteint",
+    ),
+    (
+        "activation-liste-videe-non-enregistree",
+        "src/db.py",
+        "        await self.maj_config(modules_eteints=[n for n in eteints if n != nom])\n"
+        "        return True",
+        "        await self.maj_config(\n"
+        "            modules_eteints=[n for n in eteints if n != nom] or None\n"
+        "        )\n"
+        "        return True",
+        "l'économie qui se fait toute seule en relisant le code : le dernier "
+        "module rallumé le resterait jusqu'au redémarrage, puis s'éteindrait",
+    ),
+    (
+        "activation-eteint-mais-publie-encore",
+        "src/bot.py",
+        "            publications = self.publications(await magasin.modules_eteints())",
+        "            publications = self.publications()",
+        "`desactiver` ne retirerait que les commandes du menu, et le post "
+        "continuerait de tomber chaque jour",
+    ),
+    (
+        "activation-filtre-inverse",
+        "src/bot.py",
+        "            if module.nom not in exclus",
+        "            if module.nom in exclus",
+        "seuls les modules éteints publieraient : un serveur qui n'a rien éteint "
+        "deviendrait muet",
     ),
     # --- src/importation.py, src/reglages.py : reprendre l'ancienne config ---
     #

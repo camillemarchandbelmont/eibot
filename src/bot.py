@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Iterable
 from decimal import Decimal
 
 import discord
@@ -300,17 +301,24 @@ class EmpireBot(discord.Client):
             publication, self, magasin, maintenant, forcer=forcer
         )
 
-    def publications(self) -> list:
-        """Toutes les publications déclarées par les modules chargés.
+    def publications(self, eteints: Iterable[str] = ()) -> list:
+        """Les publications déclarées par les modules allumés.
 
         Lues dans les modules et non écrites en dur : c'est exactement ce qui fait
         qu'un module déclarant une troisième publication la voit partir sans
         qu'on touche à la boucle. L'ordre est celui des modules, donc celui du
         menu.
+
+        `eteints` sont les modules éteints dans le serveur dont on fait la
+        tournée : les siennes ne partent plus. Sans ce filtre, `desactiver` ne
+        retirerait qu'une commande du menu et le post continuerait de tomber
+        chaque jour.
         """
+        exclus = set(eteints)
         return [
             publication
             for module in self.modules
+            if module.nom not in exclus
             for publication in module.publications
         ]
 
@@ -333,10 +341,12 @@ class EmpireBot(discord.Client):
             # au cron, qui passe toutes les cinq minutes.
             return "aucun serveur"
 
-        publications = self.publications()
         comptes = []
         for serveur in self.guilds:
             magasin = self.store.pour(serveur.id)
+            # Relu à chaque serveur : c'est là que se lit quels modules sont
+            # allumés chez lui.
+            publications = self.publications(await magasin.modules_eteints())
             rendus = []
             for publication in publications:
                 try:
