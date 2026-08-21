@@ -178,7 +178,7 @@ def enregistrer(bot: Any) -> None:
         """Calcule les frais, enregistre le relevé et rend compte — en privé.
 
         Les deux cases sont obligatoires : un relevé sans montant, ou sans nom,
-        n'est pas un relevé. C'est ce que l'ancienne case facultative de `/frais`
+        n'est pas un relevé. C'est ce que l'ancienne case facultative de `/convertir frais`
         ne pouvait pas exprimer — on ne savait pas, en tapant, si on allait
         écrire en base.
 

@@ -1,14 +1,21 @@
-"""Deux calculatrices : convertir un montant, et en prendre 7 %.
+"""Deux calculatrices sous un seul mot : `/convertir montant` et `/convertir frais`.
 
 Aucune publication, aucune donnée : ce module ne lit ni n'écrit rien. C'est le
 cas le plus simple du contrat, et à ce titre le meilleur exemple de ce qu'un
-module peut être — un fichier, deux commandes, rien à ranger.
+module peut être — un fichier, un groupe, rien à ranger.
 
-`/frais` ne s'occupe **que** du calcul. Elle a longtemps enregistré aussi, selon
-qu'une case facultative était remplie : rien dans son nom ne prévenait celui qui
-la tapait, et la moitié qui écrivait en base était invisible jusqu'au tableau du
-soir. La saisie d'un relevé est désormais `/filiales releve`, chez le module qui
-tient le tableau — c'est-à-dire chez celui qui possède les données.
+Un groupe et non deux commandes à la racine, parce que les deux font la même
+chose : rendre un montant à partir d'un autre. Et parce que « frais » à la racine
+est le nom du **tableau** des frais, qui est un sujet entier. Deux entrées du même
+nom pour deux choses sans rapport, c'est exactement le désordre que le nouveau
+menu défait.
+
+`/convertir frais` ne s'occupe **que** du calcul. Elle a longtemps enregistré
+aussi, selon qu'une case facultative était remplie : rien dans son nom ne
+prévenait celui qui la tapait, et la moitié qui écrivait en base était invisible
+jusqu'au tableau du soir. La saisie d'un relevé est désormais `/filiales releve`,
+chez le module qui tient le tableau — c'est-à-dire chez celui qui possède les
+données.
 """
 
 from __future__ import annotations
@@ -32,16 +39,18 @@ from src.money import (
 
 
 def enregistrer(bot: Any) -> None:
-    """Greffe `/convertir` et `/frais` sur l'arbre du bot.
+    """Greffe le groupe `/convertir` et ses deux sous-commandes.
 
-    Deux commandes à la racine et non un groupe : elles ne partagent ni données
-    ni réglages, et `/conversion frais` ferait taper deux mots pour un calcul de
-    trois secondes.
+    Un seul mot à la racine : les deux rendent un montant à partir d'un autre,
+    et le nom `frais` est celui du tableau des frais, qui est un sujet entier.
     """
-    tree = bot.tree
-
-    @tree.command(
+    groupe = app_commands.Group(
         name="convertir",
+        description="Calculatrices : conversion de palier et frais de gestion",
+    )
+
+    @groupe.command(
+        name="montant",
         description="Exprime un montant dans un autre palier (P → T, Z → M…)",
     )
     @app_commands.describe(
@@ -74,7 +83,7 @@ def enregistrer(bot: Any) -> None:
             ephemeral=True,
         )
 
-    @tree.command(
+    @groupe.command(
         name="frais",
         description="Frais de gestion sur un montant (7 %, sans décimales)",
     )
@@ -106,6 +115,8 @@ def enregistrer(bot: Any) -> None:
             f"-# {format_money_long(frais)}",
             ephemeral=True,
         )
+
+    bot.tree.add_command(groupe)
 
 
 MODULE = Module(

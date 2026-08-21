@@ -1,12 +1,12 @@
 """Le groupe `/filiales` : le tableau des frais, sa saisie et son entretien.
 
-La saisie d'un relevé est `/filiales releve`, et `/frais` n'est plus qu'une
-calculatrice. C'était une seule commande, qui écrivait en base ou pas selon
-qu'une case facultative était remplie : rien dans son nom ne prévenait celui qui
-la tapait, et les deux moitiés étaient invisibles l'une à l'autre jusqu'au
-tableau du soir. Les premiers tests d'ici verrouillent donc les deux moitiés
-**séparées** : `/frais` ne doit plus rien laisser derrière lui, et un relevé doit
-avoir sa propre commande pour être saisi.
+La saisie d'un relevé est `/filiales releve`, et `/convertir frais` n'est plus
+qu'une calculatrice. C'était une seule commande, qui écrivait en base ou pas
+selon qu'une case facultative était remplie : rien dans son nom ne prévenait
+celui qui la tapait, et les deux moitiés étaient invisibles l'une à l'autre
+jusqu'au tableau du soir. Les premiers tests d'ici verrouillent donc les deux
+moitiés **séparées** : la calculatrice ne doit plus rien laisser derrière elle,
+et un relevé doit avoir sa propre commande pour être saisi.
 
 Le reste du groupe porte l'entretien du tableau (liste, retirer, vider, export)
 et, par le vocabulaire commun des publications, ses réglages (heure, salons,
@@ -51,34 +51,34 @@ def _texte(interaction: InteractionFactice) -> str:
     return " ".join(parties).replace("\xa0", " ")
 
 
-# --- /frais ne touche plus au tableau ---------------------------------------
+# --- La calculatrice ne touche plus au tableau ------------------------------
 
 
-async def test_frais_calcule_sans_rien_enregistrer():
+async def test_la_calculatrice_calcule_sans_rien_enregistrer():
     """C'est une calculatrice : elle ne doit rien laisser derrière elle."""
     bot = await _bot()
     interaction = InteractionFactice()
 
-    await _commande(bot, "frais").callback(interaction, montant="2,71P")
+    await _commande(bot, "convertir frais").callback(interaction, montant="2,71P")
 
     assert "189.70 TØ" in _texte(interaction)
     assert await _magasin(bot).filiales() == []
 
 
-async def test_frais_n_offre_plus_de_case_filiale():
+async def test_la_calculatrice_n_offre_plus_de_case_filiale():
     """Éprouvé sur les paramètres Discord et pas seulement sur l'effet : tant que
     la case existe, elle est proposée dans le menu, et celui qui la remplit
     attend un enregistrement qui n'aura pas lieu."""
     bot = await _bot()
 
-    assert [p.name for p in _commande(bot, "frais").parameters] == ["montant"]
+    assert [p.name for p in _commande(bot, "convertir frais").parameters] == ["montant"]
 
 
-async def test_frais_reste_prive():
+async def test_la_calculatrice_reste_privee():
     bot = await _bot()
     interaction = InteractionFactice()
 
-    await _commande(bot, "frais").callback(interaction, montant="1P")
+    await _commande(bot, "convertir frais").callback(interaction, montant="1P")
 
     assert all(m.get("ephemeral") for m in interaction.response.messages)
 
@@ -239,7 +239,7 @@ async def test_releve_reste_prive():
 async def test_releve_demande_les_deux_cases():
     """Un relevé sans montant, ou sans nom, n'est pas un relevé : les deux sont
     obligatoires. C'est précisément ce que l'ancienne case facultative de
-    `/frais` ne pouvait pas exprimer."""
+    `/convertir frais` ne peut pas exprimer."""
     bot = await _bot()
 
     parametres = _commande(bot, "filiales releve").parameters

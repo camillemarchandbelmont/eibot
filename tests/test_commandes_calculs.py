@@ -1,9 +1,14 @@
-"""Tests de `/convertir` et `/frais`, sans se connecter à Discord.
+"""Tests des deux calculatrices, `/convertir montant` et `/convertir frais`.
 
-Ces deux commandes n'écrivent rien : leur seule sortie est le message. Ce qui
-peut donc mal tourner, c'est le message lui-même — un montant mal formaté, un
-symbole refusé sans dire lesquels sont valides, ou une réponse publique là où
-elle devrait rester privée.
+Rassemblées sous un seul mot, et non deux commandes à la racine : elles font la
+même chose — rendre un montant à partir d'un autre — et le nom `/frais` va au
+tableau des frais, qui est un sujet et non un calcul. Deux « frais » à la racine
+pour deux choses différentes, c'est le désordre qu'on vient de défaire.
+
+Ces commandes n'écrivent rien : leur seule sortie est le message. Ce qui peut
+donc mal tourner, c'est le message lui-même — un montant mal formaté, un symbole
+refusé sans dire lesquels sont valides, ou une réponse publique là où elle
+devrait rester privée.
 
 Le calcul lui-même est couvert par `tests/test_money.py` ; on vérifie ici que la
 commande appelle bien ce calcul et rend son résultat lisible.
@@ -15,14 +20,36 @@ from src.money import ECHELLE
 from tests.test_commandes_fourchettes import InteractionFactice, _bot, _commande
 
 
-# --- /convertir -------------------------------------------------------------
+# --- Les deux sous un seul mot ----------------------------------------------
+
+
+async def test_les_deux_calculatrices_sont_sous_un_seul_mot():
+    """La racine ne garde plus « frais » pour un calcul.
+
+    Le mot est celui du tableau des frais, qui est un sujet entier. Le laisser
+    aussi à une calculatrice, c'est reproduire dans le nouveau menu ce qu'on
+    reprochait à l'ancien : deux entrées identiques pour deux choses qui n'ont
+    rien à voir.
+    """
+    bot = await _bot()
+
+    racine = {commande.name for commande in bot.tree.get_commands()}
+    sous_convertir = {
+        commande.name for commande in _commande(bot, "convertir").walk_commands()
+    }
+
+    assert "frais" not in racine
+    assert sous_convertir == {"montant", "frais"}
+
+
+# --- /convertir montant -----------------------------------------------------
 
 
 async def test_convertir_affiche_le_montant_dans_le_palier_demande():
     bot = await _bot()
     interaction = InteractionFactice()
 
-    await _commande(bot, "convertir").callback(interaction, montant="1P", vers="T")
+    await _commande(bot, "convertir montant").callback(interaction, montant="1P", vers="T")
 
     texte = " ".join(interaction.textes)
     assert "1 000.00" in texte.replace(" ", " ")
@@ -35,7 +62,7 @@ async def test_convertir_rappelle_le_montant_de_depart():
     bot = await _bot()
     interaction = InteractionFactice()
 
-    await _commande(bot, "convertir").callback(interaction, montant="50 6P", vers="T")
+    await _commande(bot, "convertir montant").callback(interaction, montant="50 6P", vers="T")
 
     texte = " ".join(interaction.textes).replace(" ", " ")
     assert "506.00 PØ" in texte
@@ -46,7 +73,7 @@ async def test_convertir_montant_illisible_refuse_avec_l_aide():
     bot = await _bot()
     interaction = InteractionFactice()
 
-    await _commande(bot, "convertir").callback(interaction, montant="beaucoup", vers="T")
+    await _commande(bot, "convertir montant").callback(interaction, montant="beaucoup", vers="T")
 
     texte = " ".join(interaction.textes)
     assert "❌" in texte
@@ -58,7 +85,7 @@ async def test_convertir_symbole_inconnu_liste_les_valides():
     bot = await _bot()
     interaction = InteractionFactice()
 
-    await _commande(bot, "convertir").callback(interaction, montant="1P", vers="B")
+    await _commande(bot, "convertir montant").callback(interaction, montant="1P", vers="B")
 
     texte = " ".join(interaction.textes)
     assert "❌" in texte
@@ -70,7 +97,7 @@ async def test_convertir_reste_prive():
     bot = await _bot()
     interaction = InteractionFactice()
 
-    await _commande(bot, "convertir").callback(interaction, montant="1P", vers="T")
+    await _commande(bot, "convertir montant").callback(interaction, montant="1P", vers="T")
 
     assert all(
         message.get("ephemeral") for message in interaction.response.messages
@@ -86,7 +113,7 @@ async def test_convertir_propose_tous_les_paliers_en_menu():
     """
     bot = await _bot()
     parametre = next(
-        p for p in _commande(bot, "convertir").parameters if p.name == "vers"
+        p for p in _commande(bot, "convertir montant").parameters if p.name == "vers"
     )
 
     valeurs = [choix.value for choix in parametre.choices]
@@ -95,14 +122,14 @@ async def test_convertir_propose_tous_les_paliers_en_menu():
     assert any("milliard" in choix.name for choix in parametre.choices)
 
 
-# --- /frais -----------------------------------------------------------------
+# --- /convertir frais -------------------------------------------------------
 
 
 async def test_frais_affiche_le_montant_sans_decimales():
     bot = await _bot()
     interaction = InteractionFactice()
 
-    await _commande(bot, "frais").callback(interaction, montant="2,71P")
+    await _commande(bot, "convertir frais").callback(interaction, montant="2,71P")
 
     texte = " ".join(interaction.textes).replace(" ", " ")
     # 7 % de 2 710 000 000 000 000 = 189 700 000 000 000
@@ -115,7 +142,7 @@ async def test_frais_donne_tous_les_chiffres():
     bot = await _bot()
     interaction = InteractionFactice()
 
-    await _commande(bot, "frais").callback(interaction, montant="2 710 572 934 559 948")
+    await _commande(bot, "convertir frais").callback(interaction, montant="2 710 572 934 559 948")
 
     texte = " ".join(interaction.textes).replace(" ", " ")
     assert "189 740 105 419 196" in texte
@@ -131,7 +158,7 @@ async def test_frais_rappelle_le_taux():
     bot = await _bot()
     interaction = InteractionFactice()
 
-    await _commande(bot, "frais").callback(interaction, montant="1000")
+    await _commande(bot, "convertir frais").callback(interaction, montant="1000")
 
     assert "7 %" in " ".join(interaction.textes)
 
@@ -140,7 +167,7 @@ async def test_frais_rappelle_le_montant_de_depart():
     bot = await _bot()
     interaction = InteractionFactice()
 
-    await _commande(bot, "frais").callback(interaction, montant="1P")
+    await _commande(bot, "convertir frais").callback(interaction, montant="1P")
 
     texte = " ".join(interaction.textes).replace(" ", " ")
     assert "1.00 PØ" in texte
@@ -150,7 +177,7 @@ async def test_frais_montant_illisible_refuse_avec_l_aide():
     bot = await _bot()
     interaction = InteractionFactice()
 
-    await _commande(bot, "frais").callback(interaction, montant="beaucoup")
+    await _commande(bot, "convertir frais").callback(interaction, montant="beaucoup")
 
     texte = " ".join(interaction.textes)
     assert "❌" in texte
@@ -161,7 +188,7 @@ async def test_frais_reste_prive():
     bot = await _bot()
     interaction = InteractionFactice()
 
-    await _commande(bot, "frais").callback(interaction, montant="1P")
+    await _commande(bot, "convertir frais").callback(interaction, montant="1P")
 
     assert all(
         message.get("ephemeral") for message in interaction.response.messages

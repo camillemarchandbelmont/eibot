@@ -67,7 +67,7 @@ def calculer(nom: str, benefices: Decimal, date: str) -> Filiale:
 
     montant = Decimal(benefices)
     # `frais_de_gestion` est appelée et non recopiée : le taux affiché par
-    # `/frais` et celui appliqué ici ne peuvent donc pas divergier.
+    # `/convertir frais` et celui appliqué ici ne peuvent donc pas divergier.
     frais = frais_de_gestion(montant) if montant > 0 else Decimal(0)
     return Filiale(nom=propre, benefices=montant, frais=frais, date=str(date))
 

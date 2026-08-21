@@ -25,7 +25,7 @@ async def _bot() -> EmpireBot:
 
 
 async def test_la_racine_ne_montre_que_les_entrees_du_menu():
-    """Trois calculatrices, deux domaines, un tiroir à réglages — et l'épreuve.
+    """Un tiroir de calculatrices, deux domaines, un de réglages — et l'épreuve.
 
     L'égalité est stricte à dessein : un groupe oublié à la racine ne se
     remarquerait jamais dans une assertion « contient ». C'est aussi ce qui fait
@@ -36,8 +36,9 @@ async def test_la_racine_ne_montre_que_les_entrees_du_menu():
     racine = {commande.name for commande in bot.tree.get_commands()}
 
     assert racine == {
+        # Les deux calculatrices sont dedans : « frais » à la racine est le nom du
+        # tableau des frais, pas celui d'un calcul.
         "convertir",
-        "frais",
         "promos",
         "fourchette",
         "filiales",

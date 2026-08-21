@@ -18,6 +18,8 @@ la seule porte de sortie d'un serveur qui a tout éteint.
 
 import discord
 
+from src.modules import Module, decouvrir
+
 from tests.test_commandes_fourchettes import _bot, _commande
 from tests.test_commandes_par_serveur import EMPIRE, VOISIN, _interaction
 
@@ -26,7 +28,6 @@ from tests.test_commandes_par_serveur import EMPIRE, VOISIN, _interaction
 #: ils s'en vont avec lui.
 MENU_COMPLET = {
     "convertir",
-    "frais",
     "promos",
     "fourchette",
     "filiales",
@@ -38,6 +39,54 @@ MENU_COMPLET = {
 #: Les modules du dossier, dans l'ordre de leur rang. Nommés ici pour que l'ajout
 #: d'un cinquième casse ce fichier plutôt que de passer inaperçu.
 TOUS_LES_MODULES = ("conversion", "promos", "filiales", "politesse")
+
+
+#: Les deux commandes nues que le module d'essai pose à la racine.
+ESSAIS = ("essai-un", "essai-deux")
+
+
+def _module_dessai() -> Module:
+    """Un module qui pose deux commandes **nues** à la racine.
+
+    Plus aucun module livré ne le fait : tout ce que le dossier apporte est un
+    groupe, depuis que les calculatrices sont rangées sous `/convertir`. Le
+    contrat l'autorise pourtant, et deux mécanismes en dépendent — l'attribution
+    prise à la greffe, qui doit retenir *toutes* les commandes d'un module, et le
+    gardien, qui remonte d'une sous-commande à sa racine ou prend la commande
+    elle-même quand il n'y a pas de groupe.
+
+    Éprouvés seulement sur les modules du dossier, ces deux mécanismes ne le
+    seraient plus que sur des groupes, et la panne n'apparaîtrait qu'au module
+    qui reviendrait à une commande nue.
+    """
+
+    def enregistrer(bot) -> None:
+        for nom in ESSAIS:
+            @bot.tree.command(name=nom, description="Commande d'essai à la racine")
+            async def commande_dessai(interaction) -> None:
+                await interaction.response.send_message("essai", ephemeral=True)
+
+    return Module(
+        nom="essai",
+        titre="Module d'essai",
+        description="Deux commandes nues à la racine, pour éprouver le cas général.",
+        # Après tous les autres : l'ordre décide de la place dans le menu, et ce
+        # module n'a pas à déplacer ceux du dossier.
+        ordre=999,
+        enregistrer=enregistrer,
+    )
+
+
+async def _bot_avec_essai(monkeypatch):
+    """Le vrai bot, plus le module d'essai, greffé comme les autres.
+
+    Le balayage est détourné plutôt que le relevé écrit à la main : ce qui doit
+    être éprouvé est justement ce que la greffe retient, et le lui souffler
+    rendrait le test vrai quoi que fasse la greffe.
+    """
+    vrais, _ = decouvrir()
+    monkeypatch.setattr("src.bot.decouvrir", lambda: ([*vrais, _module_dessai()], {}))
+    return await _bot()
 
 
 def _noms(commandes) -> set[str]:
@@ -88,7 +137,7 @@ async def test_chaque_module_est_associe_a_ses_commandes():
     bot = await _bot()
 
     assert bot.commandes_des_modules == {
-        "conversion": ("convertir", "frais"),
+        "conversion": ("convertir",),
         "promos": ("promos", "fourchette"),
         "filiales": ("filiales",),
         "politesse": ("bonjour", "bonsoir"),
@@ -122,14 +171,18 @@ async def test_un_module_eteint_quitte_le_menu():
     assert menu == MENU_COMPLET - {"filiales"}
 
 
-async def test_eteindre_un_module_retire_toutes_ses_commandes():
-    """Un module peut poser plusieurs commandes à la racine : les oublier
-    laisserait `/frais` dans le menu d'un serveur sans calculatrices."""
-    bot = await _bot()
+async def test_eteindre_un_module_retire_toutes_ses_commandes(monkeypatch):
+    """Un module peut poser plusieurs commandes à la racine.
 
-    menu = _noms(bot.commandes_du_menu(["conversion"]))
+    Oublier la seconde laisserait dans le menu d'un serveur une commande dont le
+    module est éteint, et que plus rien ne pourrait en retirer.
+    """
+    bot = await _bot_avec_essai(monkeypatch)
 
-    assert menu == MENU_COMPLET - {"convertir", "frais"}
+    menu = _noms(bot.commandes_du_menu(["essai"]))
+
+    assert menu == MENU_COMPLET
+    assert not set(ESSAIS) & menu
 
 
 async def test_reglages_reste_dans_le_menu_quoi_quil_arrive():
@@ -277,13 +330,17 @@ async def test_une_commande_dun_module_eteint_est_refusee():
     assert "/reglages modules activer" in texte
 
 
-async def test_une_commande_racine_dun_module_eteint_est_refusee():
-    """`/frais` n'est pas dans un groupe : sans remonter au module, le gardien la
-    laisserait passer alors que sa calculatrice est éteinte."""
-    bot = await _bot()
-    await bot.store.pour(EMPIRE).eteindre_module("conversion")
+async def test_une_commande_racine_dun_module_eteint_est_refusee(monkeypatch):
+    """Une commande nue n'a pas de groupe au-dessus d'elle.
 
-    assert await bot.tree.interaction_check(_tape(bot, "frais", EMPIRE)) is False
+    Le gardien remonte d'une sous-commande à sa racine ; sans le cas où il n'y a
+    rien à remonter, il chercherait le module d'un `None` et lèverait — la
+    commande échouerait au lieu d'être refusée ou acceptée.
+    """
+    bot = await _bot_avec_essai(monkeypatch)
+    await bot.store.pour(EMPIRE).eteindre_module("essai")
+
+    assert await bot.tree.interaction_check(_tape(bot, "essai-un", EMPIRE)) is False
 
 
 async def test_une_commande_dun_module_allume_passe():
@@ -320,7 +377,7 @@ async def test_hors_dun_serveur_le_gardien_ne_regarde_pas_les_modules():
     """En message privé il n'y a pas de serveur, donc pas de liste d'éteints :
     lever ici ferait échouer la commande au lieu de la laisser répondre."""
     bot = await _bot()
-    interaction = _tape(bot, "frais", EMPIRE)
+    interaction = _tape(bot, "convertir frais", EMPIRE)
     interaction.guild = None
 
     assert await bot.tree.interaction_check(interaction) is True

@@ -2114,11 +2114,18 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
         "le message afficherait 7 % et le calcul en appliquerait un autre",
     ),
     (
+        "bot-calculatrices-eparpillees",
+        "src/modules/conversion.py",
+        "        name=\"convertir\",",
+        "        name=\"calculs\",",
+        "le mot du menu ne serait plus celui que tous les textes citent",
+    ),
+    (
         "bot-convertir-ignore-le-palier",
         "src/modules/conversion.py",
         "            rendu = convertir(valeur, vers)",
         "            rendu = format_money(valeur)",
-        "/convertir rendrait le palier que le bot choisit, pas celui demandé",
+        "/convertir montant rendrait le palier du bot, pas celui demandé",
     ),
     (
         "bot-convertir-ne-rappelle-pas-la-saisie",
