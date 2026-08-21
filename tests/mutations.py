@@ -782,6 +782,42 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
         "    total = len({s for e in tournee.envois for s in e.salons})",
         "le compte rendu annoncerait moins d'envois qu'il n'en est parti",
     ),
+    # --- Le tiroir générique : l'aiguillage des six accès -------------------
+    #
+    # Chaque accès redirige vers ce que le module a déclaré, ou retombe sur
+    # `publication:<clé>:…`. Les deux branches comptent, et pour des raisons
+    # opposées : ignorer l'accès déclaré déplacerait les données des deux
+    # publications historiques, ignorer le tiroir priverait toute publication
+    # écrite ensuite de ses réglages.
+    (
+        "tournee-tiroir-ignore-l-heure-declaree",
+        "src/tournee.py",
+        "    if publication.lire_heure is not None:",
+        "    if False:",
+        "l'heure des promotions serait lue dans un tiroir vide, donc 09:00",
+    ),
+    (
+        "tournee-tiroir-oublie-l-heure-rangee",
+        "src/tournee.py",
+        "    return await magasin.get(cle_heure(publication.cle))"
+        " or publication.heure_par_defaut",
+        "    return publication.heure_par_defaut",
+        "`heure` confirmerait un réglage que la publication ne relirait jamais",
+    ),
+    (
+        "tournee-tiroir-ignore-les-salons-declares",
+        "src/tournee.py",
+        "    if publication.lire_salons is not None:",
+        "    if False:",
+        "le tableau du soir partirait dans le vide, ses salons étant réglés ailleurs",
+    ),
+    (
+        "tournee-tiroir-ignore-la-trace-declaree",
+        "src/tournee.py",
+        "    if publication.marquer is not None:",
+        "    if False:",
+        "la trace du tableau irait au tiroir, et le post repartirait à chaque cron",
+    ),
     # --- src/modules/promos.py : ce qui n'appartient qu'aux promotions ------
     (
         "bot-publie-une-seule-fourchette",
@@ -2646,6 +2682,13 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
         "        await marquer_le_jour(publication, magasin, None)",
         "        pass",
         "le nouvel horaire serait bloqué jusqu'au lendemain",
+    ),
+    (
+        "surface-heure-tait-l-absence-de-salon",
+        "src/commandes.py",
+        "        if salons and not await salons_de(publication, magasin):",
+        "        if False:",
+        "on attendrait un post à l'heure réglée alors qu'aucun salon ne le reçoit",
     ),
     (
         "surface-heure-invalide-acceptee",

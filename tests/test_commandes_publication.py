@@ -202,6 +202,64 @@ async def test_heure_ecrit_ou_la_publication_le_demande():
     assert await _magasin(bot).get("publication:essai:heure") is None
 
 
+async def test_heure_previent_quand_aucun_salon_ne_recoit_le_post():
+    """Régler l'heure d'un post qui ne part nulle part n'a aucun effet visible.
+
+    Sans l'avertissement, on attendrait le post à l'heure dite, puis on
+    chercherait la panne du côté du bot — alors qu'il manque un `salon ajouter`.
+    """
+    bot = await _bot()
+    await _groupe(bot, _publication())
+    interaction = InteractionFactice()
+
+    await _commande(bot, "essai heure").callback(interaction, heure="21:30")
+
+    texte = " ".join(interaction.textes)
+    assert "✅" in texte
+    assert "Aucun salon" in texte, texte
+
+
+async def test_heure_ne_previent_pas_quand_les_salons_sont_declares_ailleurs():
+    """Le tableau des frais garde ses salons dans son ancienne liste.
+
+    Cherchés dans le tiroir générique, ils seraient introuvables et `/filiales
+    heure` annoncerait que rien ne sortira — alors que le post part chaque soir.
+    C'est le mensonge le plus coûteux possible : il ferait défaire un réglage
+    qui marche.
+    """
+    bot = await _bot()
+    ailleurs = ["4242"]
+
+    async def lire_salons(magasin):
+        return list(ailleurs)
+
+    async def ajouter_salon(magasin, salon_id):
+        ailleurs.append(str(salon_id))
+        return True
+
+    async def retirer_salon(magasin, salon_id):
+        ailleurs.remove(str(salon_id))
+        return True
+
+    # Les trois accès et pas seulement la lecture : le contrat refuse une
+    # publication qui lirait ses salons ailleurs qu'elle ne les écrit.
+    await _groupe(
+        bot,
+        _publication(
+            lire_salons=lire_salons,
+            ajouter_salon=ajouter_salon,
+            retirer_salon=retirer_salon,
+        ),
+    )
+    interaction = InteractionFactice()
+
+    await _commande(bot, "essai heure").callback(interaction, heure="21:30")
+
+    texte = " ".join(interaction.textes)
+    assert "✅" in texte
+    assert "Aucun salon" not in texte, texte
+
+
 # --- salon ------------------------------------------------------------------
 
 
