@@ -13,7 +13,7 @@ import pytest
 
 from src.bot import EmpireBot
 from src.db import Store
-from src.modules import filiales as module_filiales
+from src.modules import frais as module_frais
 from src.modules import promos as module_promos
 from src.schedule import maintenant_local
 from src.source import SourceError
@@ -141,7 +141,7 @@ async def _bot(salons: dict[int, SalonFactice], source=None) -> BotDeTest:
     bot._serveurs = [SERVEUR]
     # Le tour complet lit les publications des modules chargés : rien n'est écrit
     # en dur dans la boucle, donc rien à écrire en dur ici non plus.
-    bot.modules = [module_promos.MODULE, module_filiales.MODULE]
+    bot.modules = [module_promos.MODULE, module_frais.MODULE]
     return bot
 
 

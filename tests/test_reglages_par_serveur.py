@@ -27,7 +27,7 @@ from src.db import Store
 from src.promos import parse_csv
 from src.schedule import maintenant_local
 
-from tests.test_commandes_filiales import _fichiers, _octets
+from tests.test_commandes_frais import _fichiers, _octets
 from tests.test_commandes_fourchettes import (
     SalonFactice,
     ServeurFactice,

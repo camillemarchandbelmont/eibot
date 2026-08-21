@@ -20,7 +20,7 @@ from zoneinfo import ZoneInfo
 from src.bot import EmpireBot
 from src.db import Store
 from src.modules import Module, decouvrir
-from src.modules import filiales as module_filiales
+from src.modules import frais as module_frais
 from src.modules import promos as module_promos
 
 from tests.test_commandes_fourchettes import SourceFactice
@@ -55,10 +55,10 @@ def test_les_publications_du_bot_sont_declarees_par_des_modules():
     charges, refuses = decouvrir()
 
     assert refuses == {}
-    assert {module.nom for module in charges} >= {"promos", "filiales"}
+    assert {module.nom for module in charges} >= {"promos", "frais"}
     assert [p.cle for module in charges for p in module.publications] == [
         "promos",
-        "filiales",
+        "frais",
         # Les deux du module d'épreuve, jetable : elles s'en vont avec lui. Leur
         # présence ici est justement ce qu'il faut voir — une publication déclarée
         # par un fichier neuf entre dans le tour sans qu'on ait touché au bot.
@@ -78,7 +78,7 @@ def test_le_bot_balaie_le_dossier_a_son_demarrage():
     """
     bot = EmpireBot(Store(dsn=""), SourceFactice())
 
-    assert {module.nom for module in bot.modules} >= {"promos", "filiales"}
+    assert {module.nom for module in bot.modules} >= {"promos", "frais"}
     assert bot.modules_refuses == {}
 
 
@@ -186,7 +186,7 @@ async def test_une_fourchette_sans_salon_ne_donne_rien_a_envoyer():
 
 async def test_le_tableau_lit_son_heure_a_lui():
     """Distincte de celle des promotions : les deux posts ne sortent pas ensemble."""
-    publication = _publication(module_filiales.MODULE, "filiales")
+    publication = _publication(module_frais.MODULE, "frais")
     magasin = await _magasin()
     await magasin.maj_config(filiales_heure="21:15")
 
@@ -197,7 +197,7 @@ async def test_le_tableau_lit_son_heure_a_lui():
 async def test_le_tableau_ecrit_son_heure_sans_toucher_a_celle_des_promotions():
     """Deux posts, deux horaires : régler l'un en déplaçant l'autre serait une
     surprise découverte le lendemain."""
-    publication = _publication(module_filiales.MODULE, "filiales")
+    publication = _publication(module_frais.MODULE, "frais")
     magasin = await _magasin()
     avant = (await magasin.config())["heure"]
 
@@ -211,9 +211,9 @@ async def test_le_tableau_range_ses_salons_dans_son_ancienne_liste():
     """Les salons déjà réglés doivent rester ceux que la publication utilise.
 
     Rangés dans le tiroir générique, le tableau du soir partirait dans le vide
-    alors que `/filiales salon ajouter` aurait répondu « ✅ ».
+    alors que `/frais salon ajouter` aurait répondu « ✅ ».
     """
-    publication = _publication(module_filiales.MODULE, "filiales")
+    publication = _publication(module_frais.MODULE, "frais")
     magasin = await _magasin()
 
     assert await publication.ajouter_salon(magasin, "4242") is True
@@ -227,7 +227,7 @@ async def test_le_tableau_range_ses_salons_dans_son_ancienne_liste():
 
 
 async def test_le_tableau_relit_et_marque_son_ancienne_trace():
-    publication = _publication(module_filiales.MODULE, "filiales")
+    publication = _publication(module_frais.MODULE, "frais")
     magasin = await _magasin()
 
     await publication.marquer(magasin, "2026-08-19")
@@ -240,7 +240,7 @@ async def test_le_tableau_relit_et_marque_son_ancienne_trace():
 
 
 async def test_sans_salon_le_tableau_dit_lequel_ajouter():
-    publication = _publication(module_filiales.MODULE, "filiales")
+    publication = _publication(module_frais.MODULE, "frais")
     magasin = await _magasin()
 
     tournee = await publication.preparer(None, magasin, None)
@@ -255,7 +255,7 @@ async def test_le_tableau_part_meme_sans_aucune_filiale():
     L'embed vide, lui, dit comment le remplir. C'est ce qui distingue cette
     publication des promotions, qui ne partent pas sans fourchette.
     """
-    publication = _publication(module_filiales.MODULE, "filiales")
+    publication = _publication(module_frais.MODULE, "frais")
     magasin = await _magasin()
     await magasin.ajouter_salon_filiales("1")
     maintenant = _instant()

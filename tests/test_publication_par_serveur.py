@@ -22,7 +22,7 @@ from src.bot import EmpireBot
 from src.db import Store
 from src.journal import Journal
 from src.modules import Envoi, Module, Publication, Tournee
-from src.modules import filiales as module_filiales
+from src.modules import frais as module_frais
 from src.modules import promos as module_promos
 from src.schedule import maintenant_local
 
@@ -108,7 +108,7 @@ async def _bot(
     bot._serveurs = serveurs
     bot.modules = (
         modules if modules is not None
-        else [module_promos.MODULE, module_filiales.MODULE]
+        else [module_promos.MODULE, module_frais.MODULE]
     )
     return bot
 

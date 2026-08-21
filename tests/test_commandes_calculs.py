@@ -24,22 +24,26 @@ from tests.test_commandes_fourchettes import InteractionFactice, _bot, _commande
 
 
 async def test_les_deux_calculatrices_sont_sous_un_seul_mot():
-    """La racine ne garde plus « frais » pour un calcul.
+    """À la racine, « frais » est le tableau et non un calcul.
 
-    Le mot est celui du tableau des frais, qui est un sujet entier. Le laisser
-    aussi à une calculatrice, c'est reproduire dans le nouveau menu ce qu'on
-    reprochait à l'ancien : deux entrées identiques pour deux choses qui n'ont
-    rien à voir.
+    Les deux calculatrices rendent un montant à partir d'un autre : un seul mot
+    suffit pour les deux. C'est ce qui libère `frais` pour le tableau, qui est un
+    sujet entier — et deux `frais` à la racine, l'un calculant, l'autre listant,
+    reproduiraient dans le nouveau menu ce qu'on reprochait à l'ancien.
     """
     bot = await _bot()
 
-    racine = {commande.name for commande in bot.tree.get_commands()}
     sous_convertir = {
         commande.name for commande in _commande(bot, "convertir").walk_commands()
     }
 
-    assert "frais" not in racine
     assert sous_convertir == {"montant", "frais"}
+    # Le `frais` de la racine est un groupe, celui du tableau : une calculatrice
+    # nue y répondrait au même mot sans rien lister.
+    assert _commande(bot, "frais").name == "frais"
+    assert "frais liste" in {
+        commande.qualified_name for commande in bot.tree.walk_commands()
+    }
 
 
 # --- /convertir montant -----------------------------------------------------

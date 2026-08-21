@@ -22,7 +22,7 @@ from tests.test_commandes_par_serveur import EMPIRE, VOISIN, _interaction, _prop
 #: pour que l'ajout d'un module casse ce fichier plutôt que de laisser une
 #: assertion muette sur ce qui compte. `politesse` est le module d'épreuve,
 #: jetable : il s'en va avec son fichier.
-LES_MODULES = ("conversion", "promos", "filiales", "politesse")
+LES_MODULES = ("conversion", "promos", "frais", "politesse")
 
 
 def _lignes(embed) -> str:
@@ -57,13 +57,13 @@ async def test_la_liste_dit_lequel_est_eteint_dans_ce_serveur():
     """Sans l'état, la liste ne répondrait pas à la seule question qu'on lui
     pose : est-ce que le tableau du soir va sortir ce soir ?"""
     bot = await _bot()
-    await bot.store.pour(EMPIRE).eteindre_module("filiales")
+    await bot.store.pour(EMPIRE).eteindre_module("frais")
     interaction = _interaction(EMPIRE)
 
     await _commande(bot, "reglages modules liste").callback(interaction)
 
     lignes = _lignes(interaction.embeds[0]).splitlines()
-    eteinte = next(ligne for ligne in lignes if "filiales" in ligne)
+    eteinte = next(ligne for ligne in lignes if "frais" in ligne)
     allumee = next(ligne for ligne in lignes if "promos" in ligne)
     assert "éteint" in eteinte.casefold()
     assert "éteint" not in allumee.casefold()
@@ -73,7 +73,7 @@ async def test_la_liste_ignore_les_extinctions_du_voisin():
     """Montrer l'état d'un autre serveur ferait chercher ici la panne d'ailleurs.
     """
     bot = await _bot()
-    await bot.store.pour(VOISIN).eteindre_module("filiales")
+    await bot.store.pour(VOISIN).eteindre_module("frais")
 
     interaction = _interaction(EMPIRE)
     await _commande(bot, "reglages modules liste").callback(interaction)
@@ -107,12 +107,12 @@ async def test_desactiver_eteint_le_module_dans_ce_serveur_seulement():
     bot = await _bot()
 
     await _commande(bot, "reglages modules desactiver").callback(
-        _interaction(EMPIRE), module="filiales"
+        _interaction(EMPIRE), module="frais"
     )
 
-    assert await bot.store.pour(EMPIRE).module_actif("filiales") is False
-    assert await bot.store.pour(VOISIN).module_actif("filiales") is True
-    assert await bot.store.module_actif("filiales") is True
+    assert await bot.store.pour(EMPIRE).module_actif("frais") is False
+    assert await bot.store.pour(VOISIN).module_actif("frais") is True
+    assert await bot.store.module_actif("frais") is True
 
 
 async def test_desactiver_previent_que_la_publication_sarrete():
@@ -122,7 +122,7 @@ async def test_desactiver_previent_que_la_publication_sarrete():
     interaction = _interaction(EMPIRE)
 
     await _commande(bot, "reglages modules desactiver").callback(
-        interaction, module="filiales"
+        interaction, module="frais"
     )
 
     texte = " ".join(interaction.textes)
@@ -134,11 +134,11 @@ async def test_desactiver_un_module_deja_eteint_le_dit():
     """Un « ✅ » ferait croire qu'on vient de changer quelque chose, et chercher
     ailleurs la raison d'un post qui sort encore."""
     bot = await _bot()
-    await bot.store.pour(EMPIRE).eteindre_module("filiales")
+    await bot.store.pour(EMPIRE).eteindre_module("frais")
     interaction = _interaction(EMPIRE)
 
     await _commande(bot, "reglages modules desactiver").callback(
-        interaction, module="filiales"
+        interaction, module="frais"
     )
 
     texte = " ".join(interaction.textes)
@@ -154,16 +154,16 @@ async def test_desactiver_refuse_deteindre_le_dernier_module():
     bot = await _bot()
     magasin = bot.store.pour(EMPIRE)
     for nom in LES_MODULES:
-        if nom != "filiales":
+        if nom != "frais":
             await magasin.eteindre_module(nom)
     interaction = _interaction(EMPIRE)
 
     await _commande(bot, "reglages modules desactiver").callback(
-        interaction, module="filiales"
+        interaction, module="frais"
     )
 
     assert "❌" in " ".join(interaction.textes)
-    assert await magasin.module_actif("filiales") is True
+    assert await magasin.module_actif("frais") is True
 
 
 async def test_desactiver_un_module_inconnu_refuse_en_listant_les_noms():
@@ -193,15 +193,15 @@ async def test_desactiver_un_module_inconnu_refuse_en_listant_les_noms():
 async def test_activer_rallume_le_module_dans_ce_serveur():
     bot = await _bot()
     magasin = bot.store.pour(EMPIRE)
-    await magasin.eteindre_module("filiales")
+    await magasin.eteindre_module("frais")
     interaction = _interaction(EMPIRE)
 
     await _commande(bot, "reglages modules activer").callback(
-        interaction, module="filiales"
+        interaction, module="frais"
     )
 
     assert "✅" in " ".join(interaction.textes)
-    assert await magasin.module_actif("filiales") is True
+    assert await magasin.module_actif("frais") is True
 
 
 async def test_activer_un_module_deja_allume_le_dit():
@@ -209,7 +209,7 @@ async def test_activer_un_module_deja_allume_le_dit():
     interaction = _interaction(EMPIRE)
 
     await _commande(bot, "reglages modules activer").callback(
-        interaction, module="filiales"
+        interaction, module="frais"
     )
 
     texte = " ".join(interaction.textes)
@@ -234,7 +234,7 @@ async def test_desactiver_ne_propose_que_les_modules_allumes():
     """Proposer un module déjà éteint ferait choisir un nom pour s'entendre
     répondre qu'il n'y avait rien à faire."""
     bot = await _bot()
-    await bot.store.pour(EMPIRE).eteindre_module("filiales")
+    await bot.store.pour(EMPIRE).eteindre_module("frais")
     commande = _commande(bot, "reglages modules desactiver")
 
     choix = await _propositions(commande, "module")(_interaction(EMPIRE), "")
@@ -244,19 +244,19 @@ async def test_desactiver_ne_propose_que_les_modules_allumes():
 
 async def test_activer_ne_propose_que_les_modules_eteints():
     bot = await _bot()
-    await bot.store.pour(EMPIRE).eteindre_module("filiales")
+    await bot.store.pour(EMPIRE).eteindre_module("frais")
     commande = _commande(bot, "reglages modules activer")
 
     choix = await _propositions(commande, "module")(_interaction(EMPIRE), "")
 
-    assert [c.value for c in choix] == ["filiales"]
+    assert [c.value for c in choix] == ["frais"]
 
 
 async def test_les_propositions_sont_celles_de_ce_serveur():
     """Lues dans la configuration commune, elles proposeraient à une entreprise
     de rallumer ce que l'autre a éteint."""
     bot = await _bot()
-    await bot.store.pour(VOISIN).eteindre_module("filiales")
+    await bot.store.pour(VOISIN).eteindre_module("frais")
     commande = _commande(bot, "reglages modules activer")
 
     choix = await _propositions(commande, "module")(_interaction(EMPIRE), "")

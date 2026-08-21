@@ -6,7 +6,7 @@ toi-même sur [Discohook](https://discohook.org).
 
 Plusieurs fourchettes, chacune avec **ses propres salons** : les grosses affaires
 dans un salon, les petits prix dans un autre. Un bot neuf n'en a aucune et ne
-publie donc rien — `/fourchette ajouter` puis `/fourchette salon ajouter`.
+publie donc rien — `/promos ajouter` puis `/promos salon ajouter`.
 
 ## Comment le bot lit les promotions
 
@@ -43,7 +43,7 @@ Le repêchage prend le plus proche, quel qu'il soit. Sur une fourchette
 La zone de tolérance sert à dire ce que tu accepterais vraiment :
 
 ```
-/fourchette tolerance nom:grosses min:50T max:8P
+/promos tolerance fourchette:grosses min:50T max:8P
 ```
 
 Désormais, quand « grosses » n'a pas ses deux promotions, le bot cherche
@@ -59,10 +59,10 @@ sans accepter d'acheter plus petit).
 Sans bornes, la commande efface la zone :
 
 ```
-/fourchette tolerance nom:grosses
+/promos tolerance fourchette:grosses
 ```
 
-Si `/fourchette prix` élargit ensuite les bornes idéales au-delà de la zone,
+Si `/promos prix` élargit ensuite les bornes idéales au-delà de la zone,
 celle-ci est élargie d'autant et la commande le signale — une zone qui exclut
 une partie de sa propre fourchette n'aurait aucun sens.
 
@@ -101,35 +101,41 @@ montant recopié depuis un message du bot est réutilisable tel quel.
 
 Le bot affiche toujours un montant dans le plus grand palier qui tient
 (`2.71 PØ`). Le jeu, lui, en choisit parfois un autre pour le même montant, et
-recouper les deux à la main est fastidieux — d'où deux commandes qui ne touchent
-à aucun réglage.
+recouper les deux à la main est fastidieux — d'où deux calculatrices, rangées
+sous `/convertir` parce qu'elles font la même chose : rendre un montant à partir
+d'un autre, sans toucher à aucun réglage.
 
-`/convertir montant vers` impose le palier d'arrivée : `2.71P` vers `T` donne
-`2 710.57 TØ`. Le palier se choisit dans un menu déroulant — les symboles ne
+`/convertir montant` impose le palier d'arrivée par sa case `vers` : `2.71P` vers
+`T` donne `2 710.57 TØ`. Le palier se choisit dans un menu déroulant — les symboles ne
 suivent pas les préfixes SI, donc personne ne les tape de mémoire. La mantisse
 peut dépasser 1 000 ou tomber sous 1 : c'est le but, et le bot ne rebascule pas
 sur un autre symbole comme il le fait ailleurs.
 
-`/frais montant` calcule les frais de gestion, **7 % sans décimales** — le jeu
+`/convertir frais` calcule les frais de gestion, **7 % sans décimales** — le jeu
 ne facture pas de fraction d'Ø. L'arrondi est au plus proche, comme partout dans
-le bot. Elle ne fait que calculer : c'est `/filiales releve` qui enregistre.
+le bot. Elle ne fait que calculer : c'est `/frais releve` qui enregistre.
 
-Les deux rappellent le montant de départ tel qu'elles l'ont compris (la seule
-façon de vérifier que `50 6P` a bien été lu comme 506 PØ), donnent le résultat en
-notation courte **et** en chiffres complets (on ne paie pas « 189.70 TØ »), et
-répondent en privé.
+Les deux calculatrices rappellent le montant de départ tel qu'elles l'ont compris
+(la seule façon de vérifier que `50 6P` a bien été lu comme 506 PØ), donnent le
+résultat en notation courte **et** en chiffres complets (on ne paie pas
+« 189.70 TØ »), et répondent en privé.
+
+Le mot « frais » sert donc deux fois dans le menu, et sans ambiguïté :
+`/convertir frais` **calcule** sur un montant qu'on lui donne, `/frais` **liste et
+publie** ce qu'il y a à payer. Le premier est un calcul, le second un sujet — et
+c'est pour libérer ce nom-là que les deux calculatrices sont sous un seul mot.
 
 ## Les frais par filiale
 
-`/filiales releve filiale:ARMEE DE TERRE montant:2,71P` comprend le montant
+`/frais releve filiale:ARMEE DE TERRE montant:2,71P` comprend le montant
 comme les **bénéfices** de cette filiale : il calcule les 7 %, enregistre le
 relevé et annonce le total de toutes les filiales. Les deux cases sont
 obligatoires — un relevé sans montant, ou sans nom, n'est pas un relevé.
 
-C'était longtemps `/frais` avec une case `filiale` facultative : la même commande
-écrivait en base ou pas selon qu'on l'avait remplie, et rien dans son nom ne
-prévenait celui qui la tapait. Deux commandes, donc, dont une seule laisse
-quelque chose derrière elle.
+C'était longtemps la calculatrice, alors nommée `/frais`, avec une case `filiale`
+facultative : la même commande écrivait en base ou pas selon qu'on l'avait
+remplie, et rien dans son nom ne prévenait celui qui la tapait. Deux commandes,
+donc, dont une seule laisse quelque chose derrière elle.
 
 Le nom est celui du jeu, conservé caractère pour caractère (doubles espaces
 compris) : c'est la clé d'import. Il se complète tout seul dès la deuxième
@@ -141,8 +147,8 @@ Une filiale qui ne gagne rien ne paie rien : le jeu ne rembourse pas, donc des
 bénéfices nuls ou négatifs donnent 0 Ø, et la ligne est marquée « en perte » —
 un 0 Ø muet se lirait comme une saisie oubliée.
 
-Chaque jour à l'heure réglée par `/filiales heure`, le bot publie un tableau dans
-les salons de `/filiales salon ajouter` : une ligne par filiale des frais les plus
+Chaque jour à l'heure réglée par `/frais heure`, le bot publie un tableau dans
+les salons de `/frais salon ajouter` : une ligne par filiale des frais les plus
 lourds aux plus légers, chaque montant en notation courte **et** en chiffres
 complets, puis le total. Les relevés qui ne datent pas du jour portent leur date,
 pour repérer ceux qu'on a oublié de mettre à jour.
@@ -171,14 +177,14 @@ Les filiales non affichées sont comptées sous la liste, et le total les inclut
 
 ### Recommencer un cycle, vider le tableau
 
-`/filiales vider` remet tous les bénéfices à 0 Ø **en gardant les noms**. Ils sont
+`/frais vider` remet tous les bénéfices à 0 Ø **en gardant les noms**. Ils sont
 la clé d'import du jeu et l'assise de l'autocomplétion : les garder fait qu'un
-nouveau cycle ne demande que de ressaisir les montants, un `/filiales releve` à la
+nouveau cycle ne demande que de ressaisir les montants, un `/frais releve` à la
 fois. Les filiales restent donc listées, marquées « en perte » — ce qui est exact,
 il n'y a rien à prélever sur zéro. C'est bien les **montants** qu'elle vide, pas
-la liste ; pour perdre les noms aussi, c'est `/filiales retirer filiales:tout`.
+la liste ; pour perdre les noms aussi, c'est `/frais retirer filiales:tout`.
 
-`/filiales retirer` accepte un nom, un lot, ou `tout`. Discord n'offre pas de
+`/frais retirer` accepte un nom, un lot, ou `tout`. Discord n'offre pas de
 champ répétable, donc les noms arrivent dans une chaîne, séparés par des virgules
 ou collés d'une liste, un par ligne. Les espaces **internes** des noms survivent
 au découpage, doubles compris, et les noms introuvables sont dits plutôt que
@@ -193,7 +199,7 @@ base d'essai** : l'écriture va dans la base courante, production comprise.
 
 ### Renvoyer les frais dans le jeu
 
-`/filiales export` rend un `.txt` au format d'import du jeu, une filiale par
+`/frais export` rend un `.txt` au format d'import du jeu, une filiale par
 ligne :
 
 ```
@@ -243,12 +249,13 @@ local, mais elle repart des valeurs de `.env` à chaque redémarrage.
    permissions **Send Messages** et **Embed Links**. Ouvre l'URL générée pour
    inviter le bot.
    
-   **⚠️ Inviter le bot sur un serveur revient à en donner les clés.** `est_admin`
-   vient des permissions du serveur où la commande est tapée et la config est
-   globale, donc un administrateur de **n'importe quel** serveur déclaré dans
-   `GUILD_IDS` peut changer les prix, l'heure, le template et la liste d'accès —
-   pour tous les serveurs. Un serveur **non** déclaré dans `GUILD_IDS` n'a aucune
-   commande du bot.
+   **⚠️ Inviter le bot sur un serveur revient à en donner les clés — celles de ce
+   serveur-là.** `est_admin` vient des permissions du serveur où la commande est
+   tapée, et chaque serveur a sa propre configuration : un administrateur ne
+   change les prix, les heures, le template et la liste d'accès que **chez lui**.
+   Restent communs à tous : la source des données (donc la clé d'API du jeu, que
+   `/reglages source tester` fait appeler) et ce que lit le site de contrôle. Un
+   serveur **non** déclaré dans `GUILD_IDS` n'a aucune commande du bot.
    
 4. Renseigne `GUILD_IDS` avec les IDs de tes serveurs (séparés par des virgules) :
    les commandes y apparaissent immédiatement au lieu d'attendre la propagation
@@ -258,33 +265,37 @@ local, mais elle repart des valeurs de `.env` à chaque redémarrage.
 
 | Commande | Effet |
 |---|---|
-| `/convertir montant vers` | Exprime un montant dans un autre palier (`2.71P` → `2 710.57 TØ`) |
-| `/frais montant` | Frais de gestion (7 %, sans décimales) — calcule seulement |
-| `/filiales liste` | Les filiales enregistrées, leurs frais et le total |
-| `/filiales releve filiale montant` | Enregistre les bénéfices d'une filiale pour le tableau du jour |
-| `/filiales export` | Le tableau en `.txt` au format d'import du jeu (`nom`+tab+`frais`, CRLF) |
-| `/filiales retirer filiales [confirmer]` | Oublie une filiale, un lot (noms séparés par des virgules), ou `tout` |
-| `/filiales vider confirmer` | Remet tous les bénéfices à 0 Ø en gardant les noms — nouveau cycle |
-| `/filiales heure [heure]` | Heure du tableau des frais (`HH:MM`), distincte de celle des promotions ; sans argument, l'affiche |
-| `/filiales salon ajouter salon` | Publie le tableau des frais dans ce salon |
-| `/filiales salon retirer salon` | Cesse de l'y publier |
-| `/filiales apercu` | Prévisualise le tableau sans publier ni consommer le post du jour |
-| `/filiales publier` | Publie le tableau maintenant, à la place de celui de l'heure prévue |
-| `/promos [min] [max]` | Promotions à la demande ; sans argument, l'**union** des fourchettes |
-| `/fourchette ajouter nom min max` | Crée une fourchette (ex : `nom:grosses min:100T max:6P`) |
-| `/fourchette prix nom min max` | Modifie ses bornes, en gardant ses salons |
-| `/fourchette tolerance nom [min] [max]` | Zone acceptée quand la fourchette est trop pauvre ; sans bornes, l'efface |
-| `/fourchette supprimer nom` | Supprime une fourchette et ses salons |
-| `/fourchette liste` | Les fourchettes, leurs bornes et leurs salons |
-| `/fourchette salon ajouter nom salon` | Publie **cette** fourchette dans ce salon |
-| `/fourchette salon retirer nom salon` | Cesse de l'y publier |
-| `/fourchette heure [heure]` | Heure des promotions (`HH:MM`), distincte de celle du tableau ; sans argument, l'affiche |
-| `/fourchette apercu` | Prévisualise les posts du jour, un par fourchette, sans publier |
-| `/fourchette publier` | Publie les promotions maintenant, à la place de celles de l'heure prévue |
-| `/reglages voir` | Affiche la configuration courante |
-| `/reglages fuseau fuseau` | Fuseau horaire commun aux deux publications (ex : `Europe/Paris`) |
+| `/convertir montant` (`montant`, `vers`) | Exprime un montant dans un autre palier (`2.71P` → `2 710.57 TØ`) |
+| `/convertir frais montant` | Frais de gestion (7 %, sans décimales) — calcule seulement |
+| `/promos chercher [min] [max]` | Promotions à la demande ; sans argument, l'**union** des fourchettes |
+| `/promos liste` | Les fourchettes, leurs bornes et leurs salons |
+| `/promos ajouter fourchette min max` | Crée une fourchette (ex : `fourchette:grosses min:100T max:6P`) |
+| `/promos prix fourchette min max` | Modifie ses bornes, en gardant ses salons |
+| `/promos tolerance fourchette [min] [max]` | Zone acceptée quand la fourchette est trop pauvre ; sans bornes, l'efface |
+| `/promos supprimer fourchette` | Supprime une fourchette et ses salons |
+| `/promos salon ajouter fourchette salon` | Publie **cette** fourchette dans ce salon |
+| `/promos salon retirer fourchette salon` | Cesse de l'y publier |
+| `/promos heure [heure]` | Heure des promotions (`HH:MM`), distincte de celle du tableau ; sans argument, l'affiche |
+| `/promos apercu` | Prévisualise les posts du jour, un par fourchette, sans publier |
+| `/promos publier` | Publie les promotions maintenant, à la place de celles de l'heure prévue |
+| `/frais liste` | Les filiales enregistrées, leurs frais et le total |
+| `/frais releve filiale montant` | Enregistre les bénéfices d'une filiale pour le tableau du jour |
+| `/frais export` | Le tableau en `.txt` au format d'import du jeu (`nom`+tab+`frais`, CRLF) |
+| `/frais retirer filiales [confirmer]` | Oublie une filiale, un lot (noms séparés par des virgules), ou `tout` |
+| `/frais vider confirmer` | Remet tous les bénéfices à 0 Ø en gardant les noms — nouveau cycle |
+| `/frais salon ajouter salon` | Publie le tableau des frais dans ce salon |
+| `/frais salon retirer salon` | Cesse de l'y publier |
+| `/frais heure [heure]` | Heure du tableau des frais (`HH:MM`), distincte de celle des promotions ; sans argument, l'affiche |
+| `/frais apercu` | Prévisualise le tableau sans publier ni consommer le post du jour |
+| `/frais publier` | Publie le tableau maintenant, à la place de celui de l'heure prévue |
+| `/reglages voir` | Affiche la configuration de ce serveur |
+| `/reglages importer` | Reprend dans ce serveur l'ancienne configuration commune, ses salons seulement |
+| `/reglages fuseau fuseau` | Fuseau horaire des publications de ce serveur (ex : `Europe/Paris`) |
 | `/reglages mention [role]` | Rôle mentionné dans le post ; sans argument, aucune mention |
 | `/reglages logs [salon]` | Salon de journal ; sans argument, journal désactivé |
+| `/reglages modules liste` | Les modules trouvés et leur état dans ce serveur |
+| `/reglages modules activer module` | Rallume un module dans ce serveur |
+| `/reglages modules desactiver module` | L'éteint : ses commandes quittent le menu et ses publications se taisent |
 | `/reglages acces ajouter membre` | Autorise un membre à utiliser les commandes |
 | `/reglages acces retirer membre` | Lui retire cet accès |
 | `/reglages acces liste` | Qui peut utiliser les commandes |
@@ -293,6 +304,52 @@ local, mais elle repart des valeurs de `.env` à chaque redémarrage.
 | `/reglages template charger fichier` | Charge ton export Discohook `.json` |
 | `/reglages template voir` | Renvoie le template actuel |
 | `/reglages template champs` | Liste tous les placeholders disponibles |
+
+## Un fichier par module
+
+Tout ce que fait le bot, sauf `/reglages`, vient d'un fichier de `src/modules/`.
+Le dossier est **balayé au démarrage** : il n'y a aucune liste à tenir à jour
+ailleurs. Ajouter une fonctionnalité, c'est poser un fichier et déployer ; la
+retirer, c'est enlever le fichier.
+
+| Module | Ce qu'il apporte | Publications |
+|---|---|---|
+| `conversion` | `/convertir` | aucune |
+| `promos` | `/promos` | une : les promotions |
+| `frais` | `/frais` | une : le tableau des frais |
+
+Chaque fichier déclare un `Module` — son `nom` (la clé qu'on tape dans
+`/reglages modules`), son `titre`, sa `description`, son `ordre` dans le menu, la
+fonction qui greffe ses commandes, et ses `publications`. Une publication tient
+en une déclaration : son heure, ses salons, ce qu'elle envoie. La mécanique
+commune (compte à rebours, « déjà publié aujourd'hui ? », boucle sur les salons,
+pannes salon par salon) est écrite **une fois**, dans `src/tournee.py`, et elle
+donne à chaque publication ses `heure`, `apercu` et `publier` — les mêmes mots
+pour toutes. Le `salon ajouter|retirer` est greffé de même, sauf si le module le
+décline : les salons des promotions appartiennent aux **fourchettes**, pas à la
+publication, d'où `/promos salon ajouter fourchette salon`.
+
+Il n'y a **pas de nombre maximum** de publications : un module peut en déclarer
+deux, un récapitulatif le matin et une alerte le soir, chacune avec son heure,
+ses salons et sa propre marque de passage. Une qui échoue n'empêche pas les
+autres.
+
+**Un module cassé ne casse pas le bot.** Un fichier qui refuse de se charger est
+ignoré, le démarrage continue, et le bot le nomme dans le salon de logs — sans
+quoi un module en cours d'écriture couperait les publications de tous les
+serveurs.
+
+**On ne dépose pas un module sur le bot en marche** : ce serait exécuter du code
+arbitraire arrivé par Discord, et le disque de Render étant effacé à chaque
+redémarrage, le fichier disparaîtrait de lui-même. Un module passe par le dépôt
+et un déploiement. L'activation par serveur, elle, est immédiate.
+
+`/reglages` n'est pas un module : c'est le noyau, toujours présent. Le bot refuse
+d'éteindre le dernier module actif, et `/reglages` reste dans le menu quoi qu'il
+arrive — sans lui, un serveur qui a tout éteint ne pourrait plus rien rallumer.
+Une commande éteinte est refusée à **deux** endroits : elle quitte le menu du
+serveur, et le gardien de l'arbre la rejette à l'exécution. Le second verrou est
+nécessaire parce que Discord garde le menu en cache chez le client.
 
 ## Qui peut utiliser les commandes
 
@@ -329,18 +386,19 @@ aux membres autorisés non-administrateurs.
 Une fourchette porte **ses bornes et ses salons** :
 
 ```
-/fourchette ajouter nom:grosses min:100T max:6P
-/fourchette salon ajouter nom:grosses salon:#affaires
-/fourchette salon ajouter nom:grosses salon:#général
+/promos ajouter fourchette:grosses min:100T max:6P
+/promos salon ajouter fourchette:grosses salon:#affaires
+/promos salon ajouter fourchette:grosses salon:#général
 
-/fourchette ajouter nom:petits min:100K max:1G
-/fourchette salon ajouter nom:petits salon:#débutants
+/promos ajouter fourchette:petits min:100K max:1G
+/promos salon ajouter fourchette:petits salon:#débutants
 ```
 
 À l'heure dite, **un seul passage** publie tout : un post par fourchette et par
 salon, chacun avec sa propre recherche et son propre repêchage. Ici, trois posts.
-L'heure, le fuseau, la mention de rôle, le salon de logs et le template restent
-**globaux** — ce qui change d'un salon à l'autre, ce sont les prix.
+L'heure, le fuseau, la mention de rôle, le salon de logs et le template sont
+communs à toutes les fourchettes **de ce serveur** — ce qui change d'un salon à
+l'autre, ce sont les prix.
 
 Les noms sont insensibles à la casse (`Grosses` et `grosses` désignent la même) et
 proposés en autocomplétion, pour ne pas régler une fourchette jamais créée.
@@ -349,7 +407,7 @@ proposés en autocomplétion, pour ne pas régler une fourchette jamais créée.
 messages** et **Intégrer des liens**, et refuse sinon : une permission manquante
 découverte à l'heure du post serait un post perdu.
 
-Une fourchette **sans salon est muette** : le bot la saute. `/fourchette liste` et
+Une fourchette **sans salon est muette** : le bot la saute. `/promos liste` et
 le site la signalent, faute de quoi ça ne se remarquerait que le lendemain.
 
 L'isolation des pannes est à **deux niveaux** : une fourchette dont le rendu
@@ -361,22 +419,44 @@ sinon le passage suivant reposterait là où ça avait marché. Si **tous** les 
 Un même salon peut servir deux fourchettes : il reçoit alors deux posts. C'est
 pourquoi le compte rendu parle d'**envois** et non de salons.
 
-## Plusieurs serveurs
+## Une configuration par serveur
 
-Les salons peuvent vivre sur plusieurs serveurs Discord. Le bot résout les IDs
-de salons à travers tous les serveurs où il est présent — **la publication n'a
-rien de spécial à faire**.
+Chaque serveur a **sa** configuration, complète et séparée : ses fourchettes, ses
+filiales, ses heures, son fuseau, son template, son rôle mentionné, son salon de
+logs, sa liste d'accès et ses modules allumés. Un réglage fait dans un serveur ne
+touche plus les autres. Deux bénéfices au passage : chaque serveur a sa propre
+marque de « déjà publié aujourd'hui », donc une panne chez l'un n'annule plus la
+journée des autres ; et les données du jeu ne sont téléchargées **qu'une fois**
+pour tout le monde.
 
-La **mention de rôle** (`/reglages mention`) se règle **par serveur** : elle vaut
-pour le serveur où la commande est tapée. Chaque serveur peut donc avoir son
-propre rôle mentionné, ou aucun.
+Aucune commande ne lit la configuration commune. Toutes passent par
+`pour_ce_serveur` (`src/commandes.py`), qui rend la vue du serveur où la commande
+est tapée ; `tests/test_cloisonnement.py` le vérifie commande par commande, et la
+vue lève plutôt que de répondre si on la contourne.
 
-De même, `/fourchette salon ajouter` doit être tapé **dans le serveur du salon** :
-Discord propose l'autocomplétion des salons du serveur courant uniquement.
+Avant chaque envoi, le bot vérifie que le salon appartient bien au serveur dont
+il lit la configuration, et signale dans le journal celui qui ne colle pas plutôt
+que d'y publier. C'était le vrai risque du cloisonnement : une seule liste de
+salons couvrait les deux serveurs, et mal fait, chacun aurait publié dans les
+salons de tous les autres — deux posts par salon au lieu d'un.
+
+`/reglages importer` reprend l'ancienne configuration commune, **à taper une fois
+dans chaque serveur**. Elle ne garde que les salons de ce serveur-là, dit ce
+qu'elle a repris et ce qu'elle a écarté, et ne touche pas à l'existant : si le
+résultat ne va pas, rien n'est perdu. Il n'y a **pas** de reprise automatique — un
+serveur qui ne la tape pas part d'une configuration neuve, donc sans fourchette,
+donc muet.
+
+Les salons peuvent vivre sur plusieurs serveurs Discord ; le bot résout les IDs
+à travers tous ceux où il est présent. `/promos salon ajouter` doit malgré tout
+être tapé **dans le serveur du salon** : Discord ne propose en autocomplétion que
+les salons du serveur courant.
 
 Le site affiche **quel salon vit sur quel serveur** en se basant sur les noms
 mémorisés au moment du réglage : le site n'a pas accès à Discord et ne peut pas
-résoudre les IDs lui-même.
+résoudre les IDs lui-même. Il lit encore la configuration **commune** — le
+raccorder aux configurations par serveur, et lui montrer les modules, est un
+chantier à part.
 
 ### Migration depuis la fourchette unique
 
@@ -549,9 +629,10 @@ Trois pièges, dans l'ordre de gravité :
 - **Jamais le même `DISCORD_TOKEN` que la prod.** Deux processus connectés au
   même token se déconnectent mutuellement en boucle, et la prod cesse de poster.
   Il faut une seconde application sur le portail Discord.
-- **Jamais le `DATABASE_URL` de la prod.** La table `bot_state` n'a qu'une seule
-  clé `config`, sans distinction de serveur : le bot de test écraserait la
-  fourchette, l'heure et le template de la prod.
+- **Jamais le `DATABASE_URL` de la prod.** La configuration est cloisonnée par
+  serveur, mais elle vit dans la **même** table : le bot de test écrirait dans la
+  base de la prod, et sur un serveur commun aux deux `GUILD_IDS` il en écraserait
+  les fourchettes, l'heure et le template.
 - **`GUILD_IDS` sur un serveur de test.** Sinon les commandes du bot de test
   apparaissent en double dans le serveur réel.
 
@@ -562,7 +643,7 @@ persistants » plutôt que de le laisser deviner.
 
 Ce job unique remplit deux rôles : il empêche le service gratuit de
 s'endormir, et il déclenche la publication. L'heure exacte du post reste
-réglée par `/fourchette heure` et `/filiales heure` — le bot publie au premier
+réglée par `/promos heure` et `/frais heure` — le bot publie au premier
 ping suivant l'heure prévue, et une seule fois par jour et par publication.
 
 Le bot possède **aussi une boucle interne** qui vérifie l'heure chaque minute :
@@ -631,7 +712,7 @@ nom du champ fautif.
 Les **bornes** suivent leurs salons : une fourchette porte les deux ensemble, et
 régler un prix depuis le site sans pouvoir en régler les salons donnerait une
 fourchette à moitié modifiable. `prix_min` et `prix_max` sont donc refusés comme
-les autres — le site les **affiche**, `/fourchette prix` les change.
+les autres — le site les **affiche**, `/promos prix` les change.
 
 ### Sans bornes, `/api/promos` renvoie l'union
 
@@ -711,7 +792,7 @@ Erreur : L'API a répondu 401 : Clé API invalide ou révoquée. Vérifie EMPIRE
 
 La commande teste **la source, pas la fourchette** : « 0 promotion » n'est pas
 un échec, c'est peut-être simplement le cas du jour. Pour voir le post tel
-qu'il sortira, utilise `/fourchette apercu`. `/reglages source voir` rappelle la source active
+qu'il sortira, utilise `/promos apercu`. `/reglages source voir` rappelle la source active
 sans appel réseau.
 
 Le bot distingue les pannes et les explique en clair, en reprenant le message
@@ -735,7 +816,7 @@ pip install -r requirements-dev.txt
 python -m pytest -q
 ```
 
-470 tests couvrent la notation monétaire, le parsing du CSV (entiers de
+1105 tests couvrent la notation monétaire, le parsing du CSV (entiers de
 21 chiffres, notation scientifique), le calcul des remises, le repêchage hors
 fourchette, le rendu du template, les limites Discord, le planning (fenêtre
 de rattrapage, idempotence quotidienne), l'API du jeu (construction de l'URL,
@@ -747,7 +828,11 @@ multi-salon (échec partiel, échec total, salon supprimé), le salon de journal
 protégées, admin jamais verrouillé dehors, liste non modifiable par un membre
 autorisé), les commandes slash (exécutées hors ligne, embeds inspectés), les
 endpoints HTTP et l'API du site (secret partagé, validation des écritures,
-non-fuite de la clé d'API dans les erreurs).
+non-fuite de la clé d'API dans les erreurs), le contrat de module (un fichier
+cassé écarté et nommé, publications multiples, ordre du menu), le cloisonnement
+par serveur (aucune commande ne lit la configuration commune, un envoi ne sort
+pas de son serveur, `/reglages importer`) et l'extinction par serveur (le menu
+d'un serveur, le refus à l'exécution, `/reglages` inextinguible).
 
 ### Deux exports, deux usages
 
@@ -766,22 +851,34 @@ daté, sans écraser l'ancien.
 ### Vérifier que les tests mordent
 
 ```bash
-python tests/mutations.py          # les 51 mutations
-python tests/mutations.py acces    # celles dont le nom contient « acces »
+python -m tests.mutations          # les 363 mutations
+python -m tests.mutations acces    # celles dont le nom contient « acces »
 ```
 
 Une suite verte prouve que le code passe les tests, pas que les tests
 vérifieraient quoi que ce soit. `tests/mutations.py` introduit une à une
-51 fautes plausibles dans `src/` (inverser une comparaison, ôter une garde,
-supprimer un masquage de secret) et exige que la suite échoue à chaque fois. Un
-**survivant** est un trou de couverture, pas un faux positif.
+363 fautes plausibles dans `src/` (inverser une comparaison, ôter une garde,
+supprimer un masquage de secret, renommer une commande sans renommer son module)
+et exige que la suite échoue à chaque fois. Un **survivant** est un trou de
+couverture, pas un faux positif.
 
 Le fichier muté est restauré dans un `finally`, donc rien ne reste modifié même
-sur Ctrl-C. Vérification de sûreté : `git diff --stat src/` après un passage.
+sur Ctrl-C. Un passage interrompu par un délai dépassé, en revanche, peut laisser
+`src/` muté — et la suite serait alors rouge pour de mauvaises raisons, ce qui
+ferait passer les motifs suivants pour couverts. Vérification de sûreté après
+chaque passage : `git status --short -- src/`.
 
 ## Structure
 
 ```
+src/modules/           un fichier par fonctionnalité, balayé au démarrage
+  __init__.py          le contrat (Module, Publication), le balayage, la greffe
+  conversion.py        /convertir
+  promos.py            /promos et la publication des promotions
+  frais.py             /frais et la publication du tableau
+src/tournee.py   la mécanique de publication commune à tous les modules
+src/commandes.py l'outillage commun des commandes, et celles greffées d'office
+src/reglages.py  le noyau /reglages, qui n'appartient à aucun module
 src/money.py     échelle Ø du jeu (format + saisie)
 src/promos.py    parsing CSV, calcul des remises, filtre et tri
 src/source.py    provenance des données (API du jeu ou fichier local)
@@ -789,10 +886,11 @@ src/template.py  substitution des {placeholders} Discohook
 src/publish.py   assemblage des embeds et limites Discord
 src/filiales.py  relevés de frais par filiale (cœur pur, sans Discord ni base)
 src/publish_filiales.py  le tableau des frais en un embed
-src/bot.py       client Discord et commandes slash
+src/bot.py       client Discord, menu par serveur, gardien de l'arbre
 src/journal.py   compte rendu dans le salon de logs
 src/schedule.py  « est-ce l'heure de publier ? »
-src/db.py        configuration persistante (Postgres, chez Supabase)
+src/db.py        configuration persistante, cloisonnée par serveur (Postgres)
+src/importation.py  reprise de l'ancienne configuration commune
 src/migration.py déménagement de l'état d'une base Postgres à une autre
 src/acces.py     qui a le droit d'utiliser les commandes
 src/web.py       /health et /tick

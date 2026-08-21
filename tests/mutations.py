@@ -5,8 +5,8 @@ suite, et vérifier qu'elle passe au rouge. Une mutation qui survit signale un
 test décoratif — il exécute le code sans en vérifier le comportement.
 
 Usage :
-    python tests/mutations.py            # toutes
-    python tests/mutations.py acces      # celles dont le nom contient 'acces'
+    python -m tests.mutations            # toutes
+    python -m tests.mutations acces      # celles dont le nom contient 'acces'
 
 Le fichier muté est restauré dans tous les cas, y compris si la suite plante ou
 si l'on interrompt le script (Ctrl-C).
@@ -1458,7 +1458,7 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
         "src/bot.py",
         '        racine = getattr(commande, "root_parent", None) or commande',
         "        racine = commande",
-        "`/filiales liste` passerait alors que `/filiales` est éteint : c'est la "
+        "`/frais liste` passerait alors que `/frais` est éteint : c'est la "
         "racine qui appartient au module, pas la sous-commande",
     ),
     (
@@ -1782,6 +1782,23 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
         "les fourchettes reviendraient à la racine, à côté des promotions qu'elles "
         "sont seules à découper",
     ),
+    (
+        "bot-tableau-nomme-par-son-decoupage",
+        "src/modules/frais.py",
+        '        name="frais", description="Tableau des frais de gestion par filiale"',
+        '        name="filiales", description="Tableau des frais de gestion par '
+        'filiale"',
+        "le menu nommerait la façon dont le tableau est découpé plutôt que ce qu'on "
+        "vient y chercher",
+    ),
+    (
+        "bot-tableau-module-nomme-autrement-que-sa-commande",
+        "src/modules/frais.py",
+        '    nom="frais",',
+        '    nom="filiales",',
+        "`/reglages modules liste` citerait un `filiales` introuvable dans le menu, "
+        "et `desactiver frais` ne nommerait plus rien",
+    ),
 
     # --- Les modules lisent la configuration de leur serveur ---------------
     #
@@ -1848,8 +1865,8 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
         "on choisirait un nom que la commande refuse ensuite",
     ),
     (
-        "bot-filiales-releve-dans-le-commun",
-        "src/modules/filiales.py",
+        "bot-tableau-releve-dans-le-commun",
+        "src/modules/frais.py",
         "            releve = await magasin.enregistrer_filiale(\n"
         "                filiale, valeur, await _aujourdhui(magasin)\n"
         "            )",
@@ -1859,15 +1876,15 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
         "chaque entreprise verrait les frais de l'autre dans son tableau du soir",
     ),
     (
-        "bot-filiales-releve-date-du-fuseau-commun",
-        "src/modules/filiales.py",
+        "bot-tableau-releve-date-du-fuseau-commun",
+        "src/modules/frais.py",
         "                filiale, valeur, await _aujourdhui(magasin)",
         "                filiale, valeur, await _aujourdhui(bot.store)",
         "le relevé du jour se lirait « relevé d'hier » dans un serveur décalé",
     ),
     (
-        "bot-filiales-liste-du-commun",
-        "src/modules/filiales.py",
+        "bot-tableau-liste-du-commun",
+        "src/modules/frais.py",
         "        filiales = await magasin.filiales()\n"
         "        await interaction.response.send_message(",
         "        filiales = await bot.store.filiales()\n"
@@ -1875,22 +1892,22 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
         "le tableau montrerait des filiales qu'on ne possède pas ici",
     ),
     (
-        "bot-filiales-retrait-dans-le-commun",
-        "src/modules/filiales.py",
+        "bot-tableau-retrait-dans-le-commun",
+        "src/modules/frais.py",
         "        retirees, inconnus = await magasin.retirer_filiales(noms)",
         "        retirees, inconnus = await bot.store.retirer_filiales(noms)",
         "la filiale reviendrait dans le tableau du soir, et manquerait chez l'autre",
     ),
     (
-        "bot-filiales-vidage-dans-le-commun",
-        "src/modules/filiales.py",
+        "bot-tableau-vidage-dans-le-commun",
+        "src/modules/frais.py",
         "        combien = await magasin.remettre_a_zero_filiales(await _aujourdhui(magasin))",
         "        combien = await bot.store.remettre_a_zero_filiales(await _aujourdhui(magasin))",
         "un nouveau cycle ici effacerait les relevés que l'autre n'a pas publiés",
     ),
     (
-        "bot-filiales-export-du-commun",
-        "src/modules/filiales.py",
+        "bot-tableau-export-du-commun",
+        "src/modules/frais.py",
         "        magasin = pour_ce_serveur(bot, interaction)\n"
         "        filiales = await magasin.filiales()\n"
         "        if not filiales:",
@@ -1901,8 +1918,8 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
         "importée pour de bon",
     ),
     (
-        "bot-filiales-autocompletion-du-commun",
-        "src/modules/filiales.py",
+        "bot-tableau-autocompletion-du-commun",
+        "src/modules/frais.py",
         "            for f in await pour_ce_serveur(bot, interaction).filiales()",
         "            for f in await bot.store.filiales()",
         "le nom proposé ferait saisir un relevé sur une filiale d'un autre serveur",
@@ -2449,21 +2466,21 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
     ),
     (
         "bot-vider-sans-confirmation",
-        "src/modules/filiales.py",
+        "src/modules/frais.py",
         "        if not confirmer:\n            await interaction.response.send_message(\n                f\"❌ Rien effacé : coche `confirmer` pour aller au bout.\\n\"",
         "        if False:\n            await interaction.response.send_message(\n                f\"❌ Rien effacé : coche `confirmer` pour aller au bout.\\n\"",
         "un cycle entier de relevés partirait sur un clic de travers",
     ),
     (
         "bot-retirer-lot-sans-confirmation",
-        "src/modules/filiales.py",
+        "src/modules/frais.py",
         "        if (tout or len(noms) > 1) and not confirmer:",
         "        if False:",
         "un lot de filiales partirait sans qu'on ait vu lequel",
     ),
     (
         "bot-retirer-tout-sans-confirmation",
-        "src/modules/filiales.py",
+        "src/modules/frais.py",
         "        if (tout or len(noms) > 1) and not confirmer:",
         "        if len(noms) > 1 and not confirmer:",
         "`tout` sur une seule filiale l'emporterait sans cérémonie, alors que le "
@@ -2471,7 +2488,7 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
     ),
     (
         "bot-retirer-un-nom-demande-une-ceremonie",
-        "src/modules/filiales.py",
+        "src/modules/frais.py",
         "        if (tout or len(noms) > 1) and not confirmer:",
         "        if (tout or len(noms) >= 1) and not confirmer:",
         "une case à cocher sur un geste d'un mot apprendrait à cocher sans lire, "
@@ -2483,14 +2500,14 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
     # faux. C'est la garde elle-même qui est mutée.
     (
         "bot-retirer-saisie-vide-mal-annoncee",
-        "src/modules/filiales.py",
+        "src/modules/frais.py",
         "        if not saisie:\n            await interaction.response.send_message(\n                \"❌ Aucun nom saisi.",
         "        if False:\n            await interaction.response.send_message(\n                \"❌ Aucun nom saisi.",
         "un refus annoncerait « aucune filiale enregistrée » alors qu'il y en a",
     ),
     (
         "bot-retirer-tout-non-reconnu",
-        "src/modules/filiales.py",
+        "src/modules/frais.py",
         '        tout = saisie.casefold() == "tout"',
         '        tout = saisie == "tout"',
         "`TOUT` ne serait pas reconnu et passerait pour un nom de filiale",
@@ -2625,50 +2642,50 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
         "    return Date.fromisoformat(iso)",
         "un relevé d'une version antérieure empêcherait tout le tableau de sortir",
     ),
-    # --- src/modules/filiales.py : la saisie du tableau --------------------
+    # --- src/modules/frais.py : la saisie du tableau --------------------
     #
     # Plus de motif sur la fourche `if filiale is not None` de `/frais` : la case
     # facultative qui décidait d'écrire en base ou non a disparu, et avec elle les
-    # deux mutants qui l'éprouvaient. La saisie est `/filiales releve`, où les deux
+    # deux mutants qui l'éprouvaient. La saisie est `/frais releve`, où les deux
     # champs sont obligatoires — il n'y a plus de branche à couper.
     (
         "bot-releve-montant-illisible-enregistre-quand-meme",
-        "src/modules/filiales.py",
+        "src/modules/frais.py",
         "            await interaction.response.send_message(\n                f\"❌ {erreur}\\n{aide_montants()}\", ephemeral=True\n            )\n            return\n\n        magasin = pour_ce_serveur(bot, interaction)",
         "            await interaction.response.send_message(\n                f\"❌ {erreur}\\n{aide_montants()}\", ephemeral=True\n            )\n\n        magasin = pour_ce_serveur(bot, interaction)",
         "une filiale serait retenue à un montant faux et fausserait le total",
     ),
     (
         "bot-releve-public",
-        "src/modules/filiales.py",
+        "src/modules/frais.py",
         "        await interaction.response.send_message(corps, ephemeral=True)",
         "        await interaction.response.send_message(corps, ephemeral=False)",
         "les résultats de l'entreprise s'afficheraient dans le salon",
     ),
     (
         "bot-releve-ressaisie-annoncee-comme-un-ajout",
-        "src/modules/filiales.py",
+        "src/modules/frais.py",
         '        verbe = "mise à jour" if existait else "enregistrée"',
         '        verbe = "enregistrée"',
         "on ne saurait pas qu'on vient d'écraser un relevé",
     ),
     (
         "bot-releve-sans-alerte-de-salon-manquant",
-        "src/modules/filiales.py",
-        '        if not await magasin.salons_filiales():\n            # Une saisie qui n\'ira nulle part doit se voir maintenant, pas au\n            # moment où l\'on s\'étonne de ne rien recevoir.\n            corps += "\\n⚠️ Aucun salon pour le tableau : `/filiales salon ajouter`."',
+        "src/modules/frais.py",
+        '        if not await magasin.salons_filiales():\n            # Une saisie qui n\'ira nulle part doit se voir maintenant, pas au\n            # moment où l\'on s\'étonne de ne rien recevoir.\n            corps += "\\n⚠️ Aucun salon pour le tableau : `/frais salon ajouter`."',
         "        pass",
         "on saisirait des relevés que personne ne recevrait",
     ),
     (
         "bot-tableau-a-l-heure-des-promotions",
-        "src/modules/filiales.py",
+        "src/modules/frais.py",
         "    return await magasin.heure_filiales()",
         '    return (await magasin.config())["heure"]',
         "régler l'heure des promotions déplacerait le tableau",
     ),
     (
         "bot-tableau-dans-les-salons-des-promotions",
-        "src/modules/filiales.py",
+        "src/modules/frais.py",
         "    salons = await magasin.salons_filiales()",
         "    salons = await magasin.salons()",
         "les frais de l'entreprise partiraient dans le salon des promotions",
@@ -2679,8 +2696,8 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
     # dans le lot `cloisonnement-` : `cloisonnement-tour-du-premier-module-seul`
     # et `cloisonnement-panne-dun-serveur-interrompt-le-tour`.
     (
-        "bot-filiales-heure-ecrit-celle-des-promotions",
-        "src/modules/filiales.py",
+        "bot-tableau-heure-ecrit-celle-des-promotions",
+        "src/modules/frais.py",
         "    await magasin.maj_config(filiales_heure=heure)",
         "    await magasin.maj_config(heure=heure)",
         "régler le tableau déplacerait le post des promotions",
@@ -2873,28 +2890,28 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
     ),
     (
         "bot-export-fichier-non-joint",
-        "src/modules/filiales.py",
+        "src/modules/frais.py",
         "            file=fichier,\n            ephemeral=True,\n        )",
         "            ephemeral=True,\n        )",
         "la commande annoncerait un export sans rien rendre",
     ),
     (
         "bot-export-vide-annonce-un-fichier",
-        "src/modules/filiales.py",
+        "src/modules/frais.py",
         "        filiales = await magasin.filiales()\n        if not filiales:\n            # Pas de fichier vide",
         "        filiales = await magasin.filiales()\n        if False:\n            # Pas de fichier vide",
         "un fichier de zéro octet se lirait comme une panne du bot",
     ),
     (
         "bot-export-nom-de-fichier-sans-date",
-        "src/modules/filiales.py",
+        "src/modules/frais.py",
         'filename=f"frais-{await _aujourdhui(magasin)}.txt",',
         'filename="frais.txt",',
         "deux exports d'affilée se confondraient dans le fil",
     ),
     (
         "bot-export-nom-deforme-en-silence",
-        "src/modules/filiales.py",
+        "src/modules/frais.py",
         "        deformes = [\n            nom_pour_import(f.nom) for f in filiales if nom_pour_import(f.nom) != f.nom\n        ]",
         "        deformes = []",
         "un nom réécrit partirait sans un mot, et rien n'expliquerait le refus du jeu",

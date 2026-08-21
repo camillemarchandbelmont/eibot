@@ -3,7 +3,7 @@
 Dernière moitié de l'étape. La tournée saute déjà les modules éteints
 (`tests/test_modules_par_serveur.py`) et `/reglages modules` les allume
 (`tests/test_reglages_modules.py`) ; il reste les commandes, qui sont ce qu'on
-voit. Un `/filiales` toujours dans la liste après `desactiver filiales` se lirait
+voit. Un `/frais` toujours dans la liste après `desactiver frais` se lirait
 comme une commande qui n'a pas marché.
 
 **Deux verrous, et il en faut deux.** Le menu par serveur est le bon : chaque
@@ -29,7 +29,7 @@ from tests.test_commandes_par_serveur import EMPIRE, VOISIN, _interaction
 MENU_COMPLET = {
     "convertir",
     "promos",
-    "filiales",
+    "frais",
     "reglages",
     "bonjour",
     "bonsoir",
@@ -37,7 +37,7 @@ MENU_COMPLET = {
 
 #: Les modules du dossier, dans l'ordre de leur rang. Nommés ici pour que l'ajout
 #: d'un cinquième casse ce fichier plutôt que de passer inaperçu.
-TOUS_LES_MODULES = ("conversion", "promos", "filiales", "politesse")
+TOUS_LES_MODULES = ("conversion", "promos", "frais", "politesse")
 
 
 #: Les deux commandes nues que le module d'essai pose à la racine.
@@ -138,9 +138,21 @@ async def test_chaque_module_est_associe_a_ses_commandes():
     assert bot.commandes_des_modules == {
         "conversion": ("convertir",),
         "promos": ("promos",),
-        "filiales": ("filiales",),
+        "frais": ("frais",),
         "politesse": ("bonjour", "bonsoir"),
     }
+
+
+async def test_le_tableau_des_frais_seteint_sous_le_nom_quon_tape():
+    """`desactiver frais` doit nommer ce qui va disparaître : `/frais`.
+
+    Le module s'appelait `filiales` et posait `/filiales` — le nom collait. Rebaptiser
+    la commande sans rebaptiser le module aurait cassé ce lien, et `/reglages modules
+    liste` aurait cité un `filiales` qu'on ne trouve plus dans le menu.
+    """
+    bot = await _bot()
+
+    assert bot.commandes_des_modules["frais"] == ("frais",)
 
 
 async def test_reglages_nappartient_a_aucun_module():
@@ -165,9 +177,9 @@ async def test_un_module_eteint_quitte_le_menu():
     """La moitié visible de l'extinction, et celle que le plan fait vérifier."""
     bot = await _bot()
 
-    menu = _noms(bot.commandes_du_menu(["filiales"]))
+    menu = _noms(bot.commandes_du_menu(["frais"]))
 
-    assert menu == MENU_COMPLET - {"filiales"}
+    assert menu == MENU_COMPLET - {"frais"}
 
 
 async def test_eteindre_un_module_retire_toutes_ses_commandes(monkeypatch):
@@ -201,11 +213,11 @@ async def test_chaque_serveur_recoit_son_propre_menu():
     """Le cœur de l'étape : le voisin garde ce que celui-ci a éteint."""
     bot = await _bot()
     pousses = _sans_reseau(bot)
-    await bot.store.pour(EMPIRE).eteindre_module("filiales")
+    await bot.store.pour(EMPIRE).eteindre_module("frais")
 
     await bot.synchroniser_les_menus([EMPIRE, VOISIN])
 
-    assert _menu_de(bot, EMPIRE) == MENU_COMPLET - {"filiales"}
+    assert _menu_de(bot, EMPIRE) == MENU_COMPLET - {"frais"}
     assert _menu_de(bot, VOISIN) == MENU_COMPLET
     # Poussé aux deux : un menu construit et jamais envoyé ne change rien à ce
     # qu'on voit dans Discord.
@@ -223,10 +235,10 @@ async def test_le_menu_est_reconstruit_et_non_complete():
     magasin = bot.store.pour(EMPIRE)
 
     await bot.synchroniser_le_menu(EMPIRE)
-    await magasin.eteindre_module("filiales")
+    await magasin.eteindre_module("frais")
     await bot.synchroniser_le_menu(EMPIRE)
 
-    assert "filiales" not in _menu_de(bot, EMPIRE)
+    assert "frais" not in _menu_de(bot, EMPIRE)
 
 
 async def test_les_commandes_globales_restent_completes():
@@ -237,7 +249,7 @@ async def test_les_commandes_globales_restent_completes():
     """
     bot = await _bot()
     _sans_reseau(bot)
-    await bot.store.pour(EMPIRE).eteindre_module("filiales")
+    await bot.store.pour(EMPIRE).eteindre_module("frais")
 
     await bot.synchroniser_le_menu(EMPIRE)
 
@@ -270,21 +282,21 @@ async def test_desactiver_rafraichit_le_menu_sans_redemarrage():
     pousses = _sans_reseau(bot)
 
     await _commande(bot, "reglages modules desactiver").callback(
-        _interaction(EMPIRE), module="filiales"
+        _interaction(EMPIRE), module="frais"
     )
 
-    assert _menu_de(bot, EMPIRE) == MENU_COMPLET - {"filiales"}
+    assert _menu_de(bot, EMPIRE) == MENU_COMPLET - {"frais"}
     assert pousses == [EMPIRE]
 
 
 async def test_activer_rafraichit_le_menu_sans_redemarrage():
     bot = await _bot()
     _sans_reseau(bot)
-    await bot.store.pour(EMPIRE).eteindre_module("filiales")
+    await bot.store.pour(EMPIRE).eteindre_module("frais")
     await bot.synchroniser_le_menu(EMPIRE)
 
     await _commande(bot, "reglages modules activer").callback(
-        _interaction(EMPIRE), module="filiales"
+        _interaction(EMPIRE), module="frais"
     )
 
     assert _menu_de(bot, EMPIRE) == MENU_COMPLET
@@ -302,14 +314,14 @@ async def test_desactiver_previent_quand_le_menu_na_pas_suivi():
     interaction = _interaction(EMPIRE)
 
     await _commande(bot, "reglages modules desactiver").callback(
-        interaction, module="filiales"
+        interaction, module="frais"
     )
 
     texte = " ".join(interaction.textes)
     assert "✅" in texte and "⚠️" in texte
     # Le réglage, lui, est bien écrit : c'est ce qui rend l'avertissement
     # supportable plutôt qu'inquiétant.
-    assert await bot.store.pour(EMPIRE).module_actif("filiales") is False
+    assert await bot.store.pour(EMPIRE).module_actif("frais") is False
 
 
 # --- Le second verrou : le gardien de l'arbre -------------------------------
@@ -320,8 +332,8 @@ async def test_une_commande_dun_module_eteint_est_refusee():
     `GUILD_IDS` la synchronisation est globale — il n'y a alors aucun menu par
     serveur. Sans ce refus, la commande éteinte resterait utilisable."""
     bot = await _bot()
-    await bot.store.pour(EMPIRE).eteindre_module("filiales")
-    interaction = _tape(bot, "filiales liste", EMPIRE)
+    await bot.store.pour(EMPIRE).eteindre_module("frais")
+    interaction = _tape(bot, "frais liste", EMPIRE)
 
     assert await bot.tree.interaction_check(interaction) is False
     texte = " ".join(interaction.textes)
@@ -344,7 +356,7 @@ async def test_une_commande_racine_dun_module_eteint_est_refusee(monkeypatch):
 
 async def test_une_commande_dun_module_allume_passe():
     bot = await _bot()
-    await bot.store.pour(EMPIRE).eteindre_module("filiales")
+    await bot.store.pour(EMPIRE).eteindre_module("frais")
 
     assert await bot.tree.interaction_check(_tape(bot, "promos chercher", EMPIRE)) is True
 
@@ -352,9 +364,9 @@ async def test_une_commande_dun_module_allume_passe():
 async def test_une_commande_eteinte_ailleurs_passe_ici():
     """Le refus est propre au serveur, comme l'extinction."""
     bot = await _bot()
-    await bot.store.pour(VOISIN).eteindre_module("filiales")
+    await bot.store.pour(VOISIN).eteindre_module("frais")
 
-    assert await bot.tree.interaction_check(_tape(bot, "filiales liste", EMPIRE)) is True
+    assert await bot.tree.interaction_check(_tape(bot, "frais liste", EMPIRE)) is True
 
 
 async def test_reglages_passe_meme_si_tout_est_eteint():

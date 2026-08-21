@@ -31,6 +31,11 @@ async def test_la_racine_ne_montre_que_les_entrees_du_menu():
     découper les promotions, et `/fourchette` à côté de `/promos` laissait deviner
     deux sujets là où il n'y en a qu'un.
 
+    Le tableau se tape `/frais` et non `/filiales` : ce qu'on vient y chercher est
+    ce qu'il y a à payer. « filiales » nommait la façon dont le tableau est
+    découpé, pas ce qu'il dit — et le nom était libre depuis que la calculatrice
+    est passée sous `/convertir`.
+
     L'égalité est stricte à dessein : un groupe oublié à la racine ne se
     remarquerait jamais dans une assertion « contient ». C'est aussi ce qui fait
     que le module d'épreuve casse ce test au lieu de s'y glisser sans bruit.
@@ -44,7 +49,7 @@ async def test_la_racine_ne_montre_que_les_entrees_du_menu():
         # tableau des frais, pas celui d'un calcul.
         "convertir",
         "promos",
-        "filiales",
+        "frais",
         "reglages",
         # Le module jetable, et ses deux publications dans un seul fichier.
         "bonjour",

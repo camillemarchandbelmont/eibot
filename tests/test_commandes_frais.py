@@ -1,6 +1,6 @@
-"""Le groupe `/filiales` : le tableau des frais, sa saisie et son entretien.
+"""Le groupe `/frais` : le tableau des frais, sa saisie et son entretien.
 
-La saisie d'un relevé est `/filiales releve`, et `/convertir frais` n'est plus
+La saisie d'un relevé est `/frais releve`, et `/convertir frais` n'est plus
 qu'une calculatrice. C'était une seule commande, qui écrivait en base ou pas
 selon qu'une case facultative était remplie : rien dans son nom ne prévenait
 celui qui la tapait, et les deux moitiés étaient invisibles l'une à l'autre
@@ -83,14 +83,14 @@ async def test_la_calculatrice_reste_privee():
     assert all(m.get("ephemeral") for m in interaction.response.messages)
 
 
-# --- /filiales releve : calcule et enregistre -------------------------------
+# --- /frais releve : calcule et enregistre ----------------------------------
 
 
 async def test_releve_enregistre_le_releve():
     bot = await _bot()
     interaction = InteractionFactice()
 
-    await _commande(bot, "filiales releve").callback(
+    await _commande(bot, "frais releve").callback(
         interaction, filiale="ARMEE  DE TERRE", montant="1000"
     )
 
@@ -103,7 +103,7 @@ async def test_releve_confirme_avec_le_nom_et_le_montant():
     bot = await _bot()
     interaction = InteractionFactice()
 
-    await _commande(bot, "filiales releve").callback(
+    await _commande(bot, "frais releve").callback(
         interaction, filiale="ARMEE", montant="1000"
     )
 
@@ -117,7 +117,7 @@ async def test_releve_donne_le_montant_recopiable():
     bot = await _bot()
     interaction = InteractionFactice()
 
-    await _commande(bot, "filiales releve").callback(
+    await _commande(bot, "frais releve").callback(
         interaction, filiale="ARMEE", montant="2 710 572 934 559 948"
     )
 
@@ -131,7 +131,7 @@ async def test_releve_annonce_le_total_de_toutes_les_filiales():
     await _magasin(bot).enregistrer_filiale("A", Decimal(1000), "2026-08-11")
     interaction = InteractionFactice()
 
-    await _commande(bot, "filiales releve").callback(
+    await _commande(bot, "frais releve").callback(
         interaction, filiale="B", montant="2000"
     )
 
@@ -146,7 +146,7 @@ async def test_une_ressaisie_le_dit_au_lieu_d_annoncer_un_ajout():
     await _magasin(bot).enregistrer_filiale("ARMEE", Decimal(1000), "2026-08-09")
     interaction = InteractionFactice()
 
-    await _commande(bot, "filiales releve").callback(
+    await _commande(bot, "frais releve").callback(
         interaction, filiale="armee", montant="2000"
     )
 
@@ -161,7 +161,7 @@ async def test_releve_en_perte_enregistre_zero_et_le_signale():
     bot = await _bot()
     interaction = InteractionFactice()
 
-    await _commande(bot, "filiales releve").callback(
+    await _commande(bot, "frais releve").callback(
         interaction, filiale="PERTE", montant="-500"
     )
 
@@ -175,7 +175,7 @@ async def test_releve_montant_illisible_n_enregistre_rien():
     bot = await _bot()
     interaction = InteractionFactice()
 
-    await _commande(bot, "filiales releve").callback(
+    await _commande(bot, "frais releve").callback(
         interaction, filiale="ARMEE", montant="beaucoup"
     )
 
@@ -190,7 +190,7 @@ async def test_releve_avec_un_nom_vide_est_refuse():
     bot = await _bot()
     interaction = InteractionFactice()
 
-    await _commande(bot, "filiales releve").callback(
+    await _commande(bot, "frais releve").callback(
         interaction, filiale="   ", montant="1000"
     )
 
@@ -204,11 +204,11 @@ async def test_releve_rappelle_ou_le_tableau_sortira():
     bot = await _bot()
     interaction = InteractionFactice()
 
-    await _commande(bot, "filiales releve").callback(
+    await _commande(bot, "frais releve").callback(
         interaction, filiale="A", montant="1000"
     )
 
-    assert "/filiales salon" in _texte(interaction)
+    assert "/frais salon" in _texte(interaction)
 
 
 async def test_releve_ne_previent_plus_quand_un_salon_est_regle():
@@ -216,11 +216,11 @@ async def test_releve_ne_previent_plus_quand_un_salon_est_regle():
     await _magasin(bot).ajouter_salon_filiales("123")
     interaction = InteractionFactice()
 
-    await _commande(bot, "filiales releve").callback(
+    await _commande(bot, "frais releve").callback(
         interaction, filiale="A", montant="1000"
     )
 
-    assert "/filiales salon" not in _texte(interaction)
+    assert "/frais salon" not in _texte(interaction)
 
 
 async def test_releve_reste_prive():
@@ -228,7 +228,7 @@ async def test_releve_reste_prive():
     bot = await _bot()
     interaction = InteractionFactice()
 
-    await _commande(bot, "filiales releve").callback(
+    await _commande(bot, "frais releve").callback(
         interaction, filiale="A", montant="1000"
     )
 
@@ -242,7 +242,7 @@ async def test_releve_demande_les_deux_cases():
     `/convertir frais` ne peut pas exprimer."""
     bot = await _bot()
 
-    parametres = _commande(bot, "filiales releve").parameters
+    parametres = _commande(bot, "frais releve").parameters
 
     assert [p.name for p in parametres] == ["filiale", "montant"]
     assert all(p.required for p in parametres)
@@ -257,13 +257,13 @@ async def test_le_nom_du_releve_se_complete_avec_les_filiales_connues():
     )
     await _magasin(bot).enregistrer_filiale("MARINE", Decimal(1000), "2026-08-11")
 
-    completer = _autocomplete(_commande(bot, "filiales releve"), "filiale")
+    completer = _autocomplete(_commande(bot, "frais releve"), "filiale")
     choix = await completer(InteractionFactice(), "mar")
 
     assert [c.value for c in choix] == ["MARINE"]
 
 
-# --- /filiales liste --------------------------------------------------------
+# --- /frais liste -----------------------------------------------------------
 
 
 async def test_liste_montre_les_filiales_et_le_total():
@@ -272,7 +272,7 @@ async def test_liste_montre_les_filiales_et_le_total():
     await _magasin(bot).enregistrer_filiale("B", Decimal(2000), "2026-08-11")
     interaction = InteractionFactice()
 
-    await _commande(bot, "filiales liste").callback(interaction)
+    await _commande(bot, "frais liste").callback(interaction)
 
     texte = _texte(interaction)
     assert "A" in texte and "B" in texte
@@ -283,12 +283,12 @@ async def test_liste_vide_dit_comment_ajouter():
     bot = await _bot()
     interaction = InteractionFactice()
 
-    await _commande(bot, "filiales liste").callback(interaction)
+    await _commande(bot, "frais liste").callback(interaction)
 
-    assert "/filiales releve" in _texte(interaction)
+    assert "/frais releve" in _texte(interaction)
 
 
-# --- /filiales retirer : un nom, un lot, ou tout ----------------------------
+# --- /frais retirer : un nom, un lot, ou tout -------------------------------
 #
 # Une seule commande là où il y en avait deux. `retirer` et `retirer-plusieurs`
 # faisaient le même geste, l'une refusant ce que l'autre acceptait : il fallait
@@ -300,7 +300,7 @@ async def test_retirer_supprime_la_filiale():
     await _magasin(bot).enregistrer_filiale("A", Decimal(1000), "2026-08-11")
     interaction = InteractionFactice()
 
-    await _commande(bot, "filiales retirer").callback(interaction, filiales="a")
+    await _commande(bot, "frais retirer").callback(interaction, filiales="a")
 
     assert await _magasin(bot).filiales() == []
     assert "✅" in _texte(interaction)
@@ -312,7 +312,7 @@ async def test_retirer_un_seul_nom_ne_demande_pas_de_confirmation():
     bot = await _bot()
     await _magasin(bot).enregistrer_filiale("A", Decimal(1000), "2026-08-11")
 
-    await _commande(bot, "filiales retirer").callback(
+    await _commande(bot, "frais retirer").callback(
         InteractionFactice(), filiales="A"
     )
 
@@ -324,7 +324,7 @@ async def test_retirer_se_complete_avec_les_filiales_connues():
     bot = await _bot()
     await _magasin(bot).enregistrer_filiale("MARINE", Decimal(1000), "2026-08-11")
 
-    completer = _autocomplete(_commande(bot, "filiales retirer"), "filiales")
+    completer = _autocomplete(_commande(bot, "frais retirer"), "filiales")
 
     assert [c.value for c in await completer(InteractionFactice(), "")] == ["MARINE"]
 
@@ -336,7 +336,7 @@ async def test_retirer_une_filiale_inconnue_liste_les_connues():
     await _magasin(bot).enregistrer_filiale("ARMEE", Decimal(1000), "2026-08-11")
     interaction = InteractionFactice()
 
-    await _commande(bot, "filiales retirer").callback(interaction, filiales="MARINE")
+    await _commande(bot, "frais retirer").callback(interaction, filiales="MARINE")
 
     texte = _texte(interaction)
     assert "❌" in texte
@@ -349,7 +349,7 @@ async def test_retirer_supprime_tout_le_lot():
         await _magasin(bot).enregistrer_filiale(nom, Decimal(1000), "2026-08-11")
     interaction = InteractionFactice()
 
-    await _commande(bot, "filiales retirer").callback(
+    await _commande(bot, "frais retirer").callback(
         interaction, filiales="a, C", confirmer=True
     )
 
@@ -367,7 +367,7 @@ async def test_un_lot_sans_confirmation_ne_touche_a_rien():
     await _magasin(bot).enregistrer_filiale("B", Decimal(2000), "2026-08-11")
     interaction = InteractionFactice()
 
-    await _commande(bot, "filiales retirer").callback(interaction, filiales="A, B")
+    await _commande(bot, "frais retirer").callback(interaction, filiales="A, B")
 
     assert len(await _magasin(bot).filiales()) == 2
     texte = _texte(interaction)
@@ -385,7 +385,7 @@ async def test_retirer_tout_demande_une_confirmation_meme_pour_une_filiale():
     await _magasin(bot).enregistrer_filiale("A", Decimal(1000), "2026-08-11")
     interaction = InteractionFactice()
 
-    await _commande(bot, "filiales retirer").callback(interaction, filiales="tout")
+    await _commande(bot, "frais retirer").callback(interaction, filiales="tout")
 
     assert len(await _magasin(bot).filiales()) == 1
     assert "❌" in _texte(interaction)
@@ -398,7 +398,7 @@ async def test_retirer_dit_les_noms_inconnus():
     await _magasin(bot).enregistrer_filiale("A", Decimal(1000), "2026-08-11")
     interaction = InteractionFactice()
 
-    await _commande(bot, "filiales retirer").callback(
+    await _commande(bot, "frais retirer").callback(
         interaction, filiales="A, MARINE", confirmer=True
     )
 
@@ -415,7 +415,7 @@ async def test_retirer_accepte_le_tout():
         await _magasin(bot).enregistrer_filiale(nom, Decimal(1000), "2026-08-11")
     interaction = InteractionFactice()
 
-    await _commande(bot, "filiales retirer").callback(
+    await _commande(bot, "frais retirer").callback(
         interaction, filiales="tout", confirmer=True
     )
 
@@ -437,7 +437,7 @@ async def test_retirer_sans_nom_ne_vide_pas_le_tableau():
     await _magasin(bot).enregistrer_filiale("A", Decimal(1000), "2026-08-11")
     interaction = InteractionFactice()
 
-    await _commande(bot, "filiales retirer").callback(
+    await _commande(bot, "frais retirer").callback(
         interaction, filiales="  ", confirmer=True
     )
 
@@ -459,7 +459,7 @@ async def test_retirer_reconnait_tout_quelle_que_soit_la_casse():
     await _magasin(bot).enregistrer_filiale("A", Decimal(1000), "2026-08-11")
     interaction = InteractionFactice()
 
-    await _commande(bot, "filiales retirer").callback(
+    await _commande(bot, "frais retirer").callback(
         interaction, filiales="TOUT", confirmer=True
     )
 
@@ -474,21 +474,21 @@ async def test_retirer_garde_les_doubles_espaces_du_nom():
     )
     interaction = InteractionFactice()
 
-    await _commande(bot, "filiales retirer").callback(
+    await _commande(bot, "frais retirer").callback(
         interaction, filiales="ARMEE  DE TERRE"
     )
 
     assert await _magasin(bot).filiales() == []
 
 
-# --- /filiales heure --------------------------------------------------------
+# --- /frais heure -----------------------------------------------------------
 
 
 async def test_heure_regle_l_heure_du_tableau():
     bot = await _bot()
     interaction = InteractionFactice()
 
-    await _commande(bot, "filiales heure").callback(interaction, heure="20:30")
+    await _commande(bot, "frais heure").callback(interaction, heure="20:30")
 
     assert await _magasin(bot).heure_filiales() == "20:30"
     assert "20:30" in _texte(interaction)
@@ -498,7 +498,7 @@ async def test_heure_invalide_est_refusee():
     bot = await _bot()
     interaction = InteractionFactice()
 
-    await _commande(bot, "filiales heure").callback(interaction, heure="25:00")
+    await _commande(bot, "frais heure").callback(interaction, heure="25:00")
 
     assert "❌" in _texte(interaction)
     assert await _magasin(bot).heure_filiales() == "09:00"
@@ -509,7 +509,7 @@ async def test_heure_ne_touche_pas_a_celle_des_promotions():
     surprise découverte le lendemain matin."""
     bot = await _bot()
 
-    await _commande(bot, "filiales heure").callback(InteractionFactice(), heure="20:30")
+    await _commande(bot, "frais heure").callback(InteractionFactice(), heure="20:30")
 
     assert (await _magasin(bot).config())["heure"] == "09:00"
 
@@ -520,19 +520,19 @@ async def test_regler_l_heure_oublie_la_marque_du_jour():
     bot = await _bot()
     await _magasin(bot).marquer_publie_filiales("2026-08-11")
 
-    await _commande(bot, "filiales heure").callback(InteractionFactice(), heure="20:30")
+    await _commande(bot, "frais heure").callback(InteractionFactice(), heure="20:30")
 
     assert await _magasin(bot).derniere_publication_filiales() is None
 
 
-# --- /filiales salon --------------------------------------------------------
+# --- /frais salon -----------------------------------------------------------
 
 
 async def test_salon_ajouter_enregistre_le_salon():
     bot = await _bot()
     interaction = InteractionFactice()
 
-    await _commande(bot, "filiales salon ajouter").callback(
+    await _commande(bot, "frais salon ajouter").callback(
         interaction, salon=SalonFactice(123)
     )
 
@@ -546,7 +546,7 @@ async def test_salon_ajouter_refuse_sans_permission():
     bot = await _bot()
     interaction = InteractionFactice()
 
-    await _commande(bot, "filiales salon ajouter").callback(
+    await _commande(bot, "frais salon ajouter").callback(
         interaction, salon=SalonFactice(123, peut_ecrire=False)
     )
 
@@ -557,12 +557,12 @@ async def test_salon_ajouter_refuse_sans_permission():
 async def test_salon_ajouter_deux_fois_le_dit():
     bot = await _bot()
     salon = SalonFactice(123)
-    await _commande(bot, "filiales salon ajouter").callback(
+    await _commande(bot, "frais salon ajouter").callback(
         InteractionFactice(), salon=salon
     )
     interaction = InteractionFactice()
 
-    await _commande(bot, "filiales salon ajouter").callback(interaction, salon=salon)
+    await _commande(bot, "frais salon ajouter").callback(interaction, salon=salon)
 
     assert "déjà" in _texte(interaction)
     assert await _magasin(bot).salons_filiales() == ["123"]
@@ -573,7 +573,7 @@ async def test_salon_retirer_retire_le_salon():
     await _magasin(bot).ajouter_salon_filiales("123")
     interaction = InteractionFactice()
 
-    await _commande(bot, "filiales salon retirer").callback(
+    await _commande(bot, "frais salon retirer").callback(
         interaction, salon=SalonFactice(123)
     )
 
@@ -584,7 +584,7 @@ async def test_salon_retirer_un_salon_absent_le_dit():
     bot = await _bot()
     interaction = InteractionFactice()
 
-    await _commande(bot, "filiales salon retirer").callback(
+    await _commande(bot, "frais salon retirer").callback(
         interaction, salon=SalonFactice(123)
     )
 
@@ -594,14 +594,14 @@ async def test_salon_retirer_un_salon_absent_le_dit():
 async def test_les_salons_du_tableau_ne_touchent_pas_a_ceux_des_promotions():
     bot = await _bot()
 
-    await _commande(bot, "filiales salon ajouter").callback(
+    await _commande(bot, "frais salon ajouter").callback(
         InteractionFactice(), salon=SalonFactice(123)
     )
 
     assert await _magasin(bot).salons() == []
 
 
-# --- /filiales apercu ------------------------------------------------------
+# --- /frais apercu ----------------------------------------------------------
 
 
 async def test_apercu_montre_le_tableau_sans_publier():
@@ -610,7 +610,7 @@ async def test_apercu_montre_le_tableau_sans_publier():
     await _magasin(bot).enregistrer_filiale("A", Decimal(1000), "2026-08-11")
     interaction = InteractionFactice()
 
-    await _commande(bot, "filiales apercu").callback(interaction)
+    await _commande(bot, "frais apercu").callback(interaction)
 
     assert "70 Ø" in _texte(interaction)
     # Rien n'a été marqué : le post du jour doit encore pouvoir sortir.
@@ -622,13 +622,13 @@ async def test_apercu_sans_salon_dit_qu_il_ne_sortirait_rien():
 
     Sans salon, la réponse est « rien », et montrer le tableau quand même
     laisserait croire l'inverse. Pour le regarder sans le publier, c'est
-    `/filiales liste` — le même embed, sans promesse d'envoi.
+    `/frais liste` — le même embed, sans promesse d'envoi.
     """
     bot = await _bot()
     await _magasin(bot).enregistrer_filiale("A", Decimal(1000), "2026-08-11")
     interaction = InteractionFactice()
 
-    await _commande(bot, "filiales apercu").callback(interaction)
+    await _commande(bot, "frais apercu").callback(interaction)
 
     texte = _texte(interaction)
     assert "❌" in texte
@@ -639,13 +639,13 @@ async def test_apercu_reste_prive():
     bot = await _bot()
     interaction = InteractionFactice()
 
-    await _commande(bot, "filiales apercu").callback(interaction)
+    await _commande(bot, "frais apercu").callback(interaction)
 
     messages = [*interaction.response.messages, *interaction.followup.messages]
     assert messages and all(m.get("ephemeral") for m in messages)
 
 
-# --- /filiales vider -------------------------------------------------------
+# --- /frais vider -----------------------------------------------------------
 #
 # `vider` vide les **montants**, pas la liste : les noms sont la clé d'import du
 # jeu, et les reperdre à chaque cycle obligerait à les retaper un par un. Pour
@@ -660,7 +660,7 @@ async def test_vider_annule_les_montants_et_garde_les_noms():
     await _magasin(bot).enregistrer_filiale("B", Decimal(2000), "2026-08-11")
     interaction = InteractionFactice()
 
-    await _commande(bot, "filiales vider").callback(interaction, confirmer=True)
+    await _commande(bot, "frais vider").callback(interaction, confirmer=True)
 
     filiales = await _magasin(bot).filiales()
     assert [f.nom for f in filiales] == ["A", "B"]
@@ -674,7 +674,7 @@ async def test_vider_sans_confirmer_ne_touche_a_rien():
     await _magasin(bot).enregistrer_filiale("A", Decimal(1000), "2026-08-11")
     interaction = InteractionFactice()
 
-    await _commande(bot, "filiales vider").callback(interaction, confirmer=False)
+    await _commande(bot, "frais vider").callback(interaction, confirmer=False)
 
     assert (await _magasin(bot).filiales())[0].benefices == Decimal(1000)
     texte = _texte(interaction)
@@ -689,7 +689,7 @@ async def test_vider_sans_filiale_le_dit():
     bot = await _bot()
     interaction = InteractionFactice()
 
-    await _commande(bot, "filiales vider").callback(interaction, confirmer=True)
+    await _commande(bot, "frais vider").callback(interaction, confirmer=True)
 
     assert "aucune" in _texte(interaction).lower()
 
@@ -700,7 +700,7 @@ async def test_vider_confirme_combien_de_filiales():
     await _magasin(bot).enregistrer_filiale("B", Decimal(2000), "2026-08-11")
     interaction = InteractionFactice()
 
-    await _commande(bot, "filiales vider").callback(interaction, confirmer=True)
+    await _commande(bot, "frais vider").callback(interaction, confirmer=True)
 
     texte = _texte(interaction)
     assert "✅" in texte
@@ -712,9 +712,9 @@ async def test_vider_garde_les_noms_pour_la_completion():
     les montants, et l'autocomplétion propose encore les filiales."""
     bot = await _bot()
     await _magasin(bot).enregistrer_filiale("MARINE", Decimal(1000), "2026-08-11")
-    await _commande(bot, "filiales vider").callback(InteractionFactice(), confirmer=True)
+    await _commande(bot, "frais vider").callback(InteractionFactice(), confirmer=True)
 
-    completer = _autocomplete(_commande(bot, "filiales releve"), "filiale")
+    completer = _autocomplete(_commande(bot, "frais releve"), "filiale")
 
     assert [c.value for c in await completer(InteractionFactice(), "")] == ["MARINE"]
 
@@ -723,13 +723,13 @@ async def test_vider_reste_prive():
     bot = await _bot()
     interaction = InteractionFactice()
 
-    await _commande(bot, "filiales vider").callback(interaction, confirmer=True)
+    await _commande(bot, "frais vider").callback(interaction, confirmer=True)
 
     assert all(m.get("ephemeral") for m in interaction.response.messages)
 
 
 
-# --- /filiales export -------------------------------------------------------
+# --- /frais export ----------------------------------------------------------
 
 
 def _fichiers(interaction: InteractionFactice) -> list:
@@ -766,7 +766,7 @@ async def test_export_joint_un_fichier():
     await _magasin(bot).enregistrer_filiale("MEGAPOLE", Decimal(1000), "2026-08-11")
     interaction = InteractionFactice()
 
-    await _commande(bot, "filiales export").callback(interaction)
+    await _commande(bot, "frais export").callback(interaction)
 
     assert len(_fichiers(interaction)) == 1, interaction.response.messages
 
@@ -782,7 +782,7 @@ async def test_export_rend_exactement_le_format_d_import():
     await _magasin(bot).enregistrer_filiale("EN PERTE", Decimal(-500), "2026-08-11")
     interaction = InteractionFactice()
 
-    await _commande(bot, "filiales export").callback(interaction)
+    await _commande(bot, "frais export").callback(interaction)
 
     attendu = vers_import(await _magasin(bot).filiales())
     assert _octets(_fichiers(interaction)[0]) == attendu.encode("utf-8")
@@ -798,7 +798,7 @@ async def test_export_n_ecrit_pas_de_bom():
     await _magasin(bot).enregistrer_filiale("MEGAPOLE", Decimal(1000), "2026-08-11")
     interaction = InteractionFactice()
 
-    await _commande(bot, "filiales export").callback(interaction)
+    await _commande(bot, "frais export").callback(interaction)
 
     assert not _octets(_fichiers(interaction)[0]).startswith(b"\xef\xbb\xbf")
 
@@ -809,7 +809,7 @@ async def test_export_nomme_le_fichier_avec_la_date():
     await _magasin(bot).enregistrer_filiale("MEGAPOLE", Decimal(1000), "2026-08-11")
     interaction = InteractionFactice()
 
-    await _commande(bot, "filiales export").callback(interaction)
+    await _commande(bot, "frais export").callback(interaction)
 
     aujourdhui = maintenant_local(
         (await _magasin(bot).config())["fuseau"]
@@ -826,12 +826,12 @@ async def test_export_sans_filiale_ne_joint_rien():
     bot = await _bot()
     interaction = InteractionFactice()
 
-    await _commande(bot, "filiales export").callback(interaction)
+    await _commande(bot, "frais export").callback(interaction)
 
     assert _fichiers(interaction) == []
     annonce = " ".join(interaction.textes)
     assert "aucune" in annonce.lower(), annonce
-    assert "/filiales releve" in annonce, annonce
+    assert "/frais releve" in annonce, annonce
 
 
 async def test_export_dit_les_noms_qu_il_a_du_modifier():
@@ -846,7 +846,7 @@ async def test_export_dit_les_noms_qu_il_a_du_modifier():
     )
     interaction = InteractionFactice()
 
-    await _commande(bot, "filiales export").callback(interaction)
+    await _commande(bot, "frais export").callback(interaction)
 
     annonce = " ".join(interaction.textes)
     assert "ARMEE DE TERRE" in annonce, annonce
@@ -857,6 +857,6 @@ async def test_export_reste_prive():
     await _magasin(bot).enregistrer_filiale("MEGAPOLE", Decimal(1000), "2026-08-11")
     interaction = InteractionFactice()
 
-    await _commande(bot, "filiales export").callback(interaction)
+    await _commande(bot, "frais export").callback(interaction)
 
     assert all(m.get("ephemeral") for m in interaction.response.messages)

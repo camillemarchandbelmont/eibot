@@ -48,7 +48,7 @@ async def _preparer(bot: Any, magasin: Any, maintenant: Any) -> Tournee:
     salons = await magasin.salons_filiales()
     if not salons:
         return Tournee(
-            raison="aucun salon pour le tableau des frais (/filiales salon ajouter)"
+            raison="aucun salon pour le tableau des frais (/frais salon ajouter)"
         )
 
     # Publié même vide : l'absence de post ne se distinguerait pas d'une panne du
@@ -67,7 +67,7 @@ async def _preparer(bot: Any, magasin: Any, maintenant: Any) -> Tournee:
 
     return Tournee(
         envois=(
-            Envoi(etiquette="filiales", salons=tuple(salons), envoyer=envoyer_dans),
+            Envoi(etiquette="frais", salons=tuple(salons), envoyer=envoyer_dans),
         ),
         compte=len(filiales),
         resume=f"{len(filiales)} filiale{'s' if len(filiales) > 1 else ''}",
@@ -105,7 +105,7 @@ async def _retirer_salon(magasin: Any, salon_id: str) -> bool:
 
 
 PUBLICATION = Publication(
-    cle="filiales",
+    cle="frais",
     titre="tableau des frais",
     preparer=_preparer,
     lire_heure=_lire_heure,
@@ -128,7 +128,7 @@ async def _aujourdhui(magasin: Any) -> str:
 
 
 def enregistrer(bot: Any) -> None:
-    """Greffe le groupe `/filiales` sur l'arbre du bot.
+    """Greffe le groupe `/frais` sur l'arbre du bot.
 
     Le tableau, sa saisie et son entretien au même endroit : c'est le module qui
     possède ces données, donc c'est lui qui porte les commandes qui y touchent.
@@ -136,7 +136,7 @@ def enregistrer(bot: Any) -> None:
     vocabulaire commun et ne sont pas réécrits ici.
     """
     groupe = app_commands.Group(
-        name="filiales", description="Tableau des frais de gestion par filiale"
+        name="frais", description="Tableau des frais de gestion par filiale"
     )
 
     async def completer_filiale(
@@ -159,7 +159,7 @@ def enregistrer(bot: Any) -> None:
         ][:25]  # limite Discord
 
     @groupe.command(name="liste", description="Filiales enregistrées et total")
-    async def filiales_liste(interaction: discord.Interaction) -> None:
+    async def frais_liste(interaction: discord.Interaction) -> None:
         magasin = pour_ce_serveur(bot, interaction)
         filiales = await magasin.filiales()
         await interaction.response.send_message(
@@ -172,7 +172,7 @@ def enregistrer(bot: Any) -> None:
         montant="Bénéfices du cycle (ex: 2,71P, 100T)",
     )
     @app_commands.autocomplete(filiale=completer_filiale)
-    async def filiales_releve(
+    async def frais_releve(
         interaction: discord.Interaction, filiale: str, montant: str
     ) -> None:
         """Calcule les frais, enregistre le relevé et rend compte — en privé.
@@ -237,7 +237,7 @@ def enregistrer(bot: Any) -> None:
         if not await magasin.salons_filiales():
             # Une saisie qui n'ira nulle part doit se voir maintenant, pas au
             # moment où l'on s'étonne de ne rien recevoir.
-            corps += "\n⚠️ Aucun salon pour le tableau : `/filiales salon ajouter`."
+            corps += "\n⚠️ Aucun salon pour le tableau : `/frais salon ajouter`."
 
         await interaction.response.send_message(corps, ephemeral=True)
 
@@ -247,7 +247,7 @@ def enregistrer(bot: Any) -> None:
         confirmer="Obligatoire pour un lot ou pour `tout` : le retrait est définitif",
     )
     @app_commands.autocomplete(filiales=completer_filiale)
-    async def filiales_retirer(
+    async def frais_retirer(
         interaction: discord.Interaction, filiales: str, confirmer: bool = False
     ) -> None:
         """Une seule commande là où il y en avait deux.
@@ -278,7 +278,7 @@ def enregistrer(bot: Any) -> None:
         if not noms:
             await interaction.response.send_message(
                 "ℹ️ Aucune filiale enregistrée : rien à retirer.\n"
-                "-# `/filiales releve` pour en ajouter une.",
+                "-# `/frais releve` pour en ajouter une.",
                 ephemeral=True,
             )
             return
@@ -331,7 +331,7 @@ def enregistrer(bot: Any) -> None:
 
     @groupe.command(name="vider", description="Remet tous les bénéfices à 0, garde les noms")
     @app_commands.describe(confirmer="À cocher : les relevés du cycle sont effacés")
-    async def filiales_vider(
+    async def frais_vider(
         interaction: discord.Interaction, confirmer: bool
     ) -> None:
         """Ouvre un nouveau cycle sans perdre les noms.
@@ -339,7 +339,7 @@ def enregistrer(bot: Any) -> None:
         Vide les **montants**, pas la liste : les noms sont la clé d'import du jeu
         et l'assise de l'autocomplétion, si bien qu'un nouveau cycle ne demande
         que de ressaisir les montants. Pour perdre les noms aussi, c'est
-        `/filiales retirer tout`.
+        `/frais retirer tout`.
 
         À zéro, chaque filiale s'affiche « en perte » dans le tableau, ce qui est
         exact — il n'y a rien à prélever.
@@ -350,7 +350,7 @@ def enregistrer(bot: Any) -> None:
         if not filiales:
             await interaction.response.send_message(
                 "ℹ️ Aucune filiale enregistrée : rien à vider.\n"
-                "-# `/filiales releve` pour en ajouter une.",
+                "-# `/frais releve` pour en ajouter une.",
                 ephemeral=True,
             )
             return
@@ -368,7 +368,7 @@ def enregistrer(bot: Any) -> None:
 
         await interaction.response.send_message(
             f"✅ {combien} filiale(s) remise(s) à 0 Ø, noms gardés.\n"
-            f"-# `/filiales releve` pour saisir le nouveau cycle ; "
+            f"-# `/frais releve` pour saisir le nouveau cycle ; "
             f"l'autocomplétion propose toujours les noms.",
             ephemeral=True,
         )
@@ -376,7 +376,7 @@ def enregistrer(bot: Any) -> None:
     @groupe.command(
         name="export", description="Le tableau au format d'import du jeu (.txt)"
     )
-    async def filiales_export(interaction: discord.Interaction) -> None:
+    async def frais_export(interaction: discord.Interaction) -> None:
         """Le fichier à donner au champ d'import du jeu.
 
         En pièce jointe et non dans un bloc de code : la tabulation ne se saisit
@@ -392,7 +392,7 @@ def enregistrer(bot: Any) -> None:
             # panne du bot plutôt que comme un tableau vide.
             await interaction.response.send_message(
                 "ℹ️ Aucune filiale enregistrée : rien à exporter.\n"
-                "-# `/filiales releve` pour remplir le tableau.",
+                "-# `/frais releve` pour remplir le tableau.",
                 ephemeral=True,
             )
             return
@@ -432,7 +432,7 @@ def enregistrer(bot: Any) -> None:
 
 
 MODULE = Module(
-    nom="filiales",
+    nom="frais",
     titre="Tableau des frais",
     description="Relevés de frais de gestion par filiale, et tableau quotidien.",
     ordre=30,

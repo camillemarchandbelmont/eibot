@@ -506,7 +506,7 @@ async def test_autocompletion_filtre_sur_la_saisie():
 
 
 async def test_fourchette_recoit_les_mots_communs_aux_publications():
-    """Les mêmes qu'ailleurs : `/filiales heure` et `/promos heure` s'écrivent
+    """Les mêmes qu'ailleurs : `/frais heure` et `/promos heure` s'écrivent
     pareil, et le module qui ajoutera une troisième publication héritera de ces
     mots sans en inventer.
 

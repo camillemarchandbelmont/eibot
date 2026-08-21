@@ -222,7 +222,7 @@ async def test_heure_previent_quand_aucun_salon_ne_recoit_le_post():
 async def test_heure_ne_previent_pas_quand_les_salons_sont_declares_ailleurs():
     """Le tableau des frais garde ses salons dans son ancienne liste.
 
-    Cherchés dans le tiroir générique, ils seraient introuvables et `/filiales
+    Cherchés dans le tiroir générique, ils seraient introuvables et `/frais
     heure` annoncerait que rien ne sortira — alors que le post part chaque soir.
     C'est le mensonge le plus coûteux possible : il ferait défaire un réglage
     qui marche.

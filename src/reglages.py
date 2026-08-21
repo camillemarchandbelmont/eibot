@@ -158,7 +158,7 @@ def enregistrer_les_reglages(bot: EmpireBot) -> None:
     async def reglages_fuseau(interaction: discord.Interaction, fuseau: str):
         """Le seul réglage d'horloge commun aux publications.
 
-        L'heure de chacune se règle chez elle (`/promos heure`, `/filiales
+        L'heure de chacune se règle chez elle (`/promos heure`, `/frais
         heure`). Le fuseau, lui, est partagé : le régler depuis l'une déplacerait
         l'autre, surprise qui ne se découvrirait que le lendemain. D'où sa propre
         commande, à l'endroit des réglages communs.
@@ -381,7 +381,7 @@ def enregistrer_les_reglages(bot: EmpireBot) -> None:
     # Rien qui ressemble à l'ancien `/config retester` : elle effaçait la marque
     # du jour des promotions seules, sous un nom qui ne nommait aucune
     # publication — illisible sur un bot qui en a deux et pourra en avoir plus.
-    # Pour republier tout de suite, `/promos publier` et `/filiales publier`
+    # Pour republier tout de suite, `/promos publier` et `/frais publier`
     # le font sans détour, et préviennent que le post de l'heure prévue ne
     # repassera pas. Pour éprouver la source, `/reglages source tester`.
 

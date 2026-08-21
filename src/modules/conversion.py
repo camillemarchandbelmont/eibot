@@ -13,7 +13,7 @@ menu défait.
 `/convertir frais` ne s'occupe **que** du calcul. Elle a longtemps enregistré
 aussi, selon qu'une case facultative était remplie : rien dans son nom ne
 prévenait celui qui la tapait, et la moitié qui écrivait en base était invisible
-jusqu'au tableau du soir. La saisie d'un relevé est désormais `/filiales releve`,
+jusqu'au tableau du soir. La saisie d'un relevé est désormais `/frais releve`,
 chez le module qui tient le tableau — c'est-à-dire chez celui qui possède les
 données.
 """
@@ -95,7 +95,7 @@ def enregistrer(bot: Any) -> None:
 
         Pas de case `filiale` ici, même facultative : tant qu'elle existe, elle
         est proposée dans le menu, et celui qui la remplit attend un
-        enregistrement. C'est `/filiales releve` qui écrit.
+        enregistrement. C'est `/frais releve` qui écrit.
         """
         try:
             valeur = parse_money(montant)

@@ -15,7 +15,7 @@ from src.acces import acces_autorise
 from src.db import Store
 from src.journal import Journal
 from src.modules import decouvrir, greffer
-from src.modules import filiales as module_filiales
+from src.modules import frais as module_frais
 from src.modules import promos as module_promos
 from src.promos import Building, Meta, find_promos, parse_csv
 from src.publish import construire_embeds, message_aucune_promo
@@ -117,7 +117,7 @@ class ArbreProtege(app_commands.CommandTree):
             return True
 
         # La racine, et non la sous-commande : c'est elle qui appartient au
-        # module. `/filiales liste` s'éteint avec `/filiales`.
+        # module. `/frais liste` s'éteint avec `/frais`.
         racine = getattr(commande, "root_parent", None) or commande
         module = self.client.module_des_commandes.get(racine.name)
         if module is None:
@@ -164,7 +164,7 @@ class EmpireBot(discord.Client):
         self.modules_refuses.update(refuses)
         #: De quel module relève une commande de premier niveau. Le sens inverse
         #: du relevé de la greffe, celui dont on a besoin à chaque interaction :
-        #: la question posée est « ce `/filiales` qu'on vient de taper, est-il
+        #: la question posée est « ce `/frais` qu'on vient de taper, est-il
         #: allumé ici ? ». `/reglages` n'y figure pas — il n'a pas de module,
         #: donc rien ne l'éteint.
         self.module_des_commandes = {
@@ -390,7 +390,7 @@ class EmpireBot(discord.Client):
     async def publier_filiales_si_lheure(self, forcer: bool = False) -> str:
         """Le tableau des frais, depuis la configuration commune. Même rôle."""
         return await self.faire_publication(
-            module_filiales.PUBLICATION, forcer=forcer
+            module_frais.PUBLICATION, forcer=forcer
         )
 
     async def faire_publication(

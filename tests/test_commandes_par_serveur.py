@@ -29,7 +29,7 @@ from tests.test_commandes_fourchettes import (
     _bot,
     _commande,
 )
-from tests.test_commandes_filiales import _fichiers, _octets
+from tests.test_commandes_frais import _fichiers, _octets
 from tests.test_commandes_publication import _groupe, _publication, _tournee
 
 #: Les deux entreprises de l'histoire. Des ids, et non des noms : c'est par l'id
@@ -382,7 +382,7 @@ async def test_lautocompletion_ne_propose_que_les_fourchettes_du_serveur():
     assert [c.value for c in choix] == ["chez-nous"]
 
 
-# --- /filiales : les relevés appartiennent à leur serveur -------------------
+# --- /frais : les relevés appartiennent à leur serveur -------------------
 
 
 async def test_un_releve_est_enregistre_dans_son_serveur():
@@ -390,7 +390,7 @@ async def test_un_releve_est_enregistre_dans_son_serveur():
     donneraient à chacune les frais de l'autre, et un total faux des deux côtés."""
     bot = await _bot()
 
-    await _commande(bot, "filiales releve").callback(
+    await _commande(bot, "frais releve").callback(
         _interaction(EMPIRE), filiale="ARMEE", montant="1000"
     )
 
@@ -410,7 +410,7 @@ async def test_un_releve_est_date_dans_le_fuseau_du_serveur():
     await bot.store.maj_config(fuseau="Pacific/Kiritimati")
     await bot.store.pour(EMPIRE).maj_config(fuseau="Pacific/Niue")
 
-    await _commande(bot, "filiales releve").callback(
+    await _commande(bot, "frais releve").callback(
         _interaction(EMPIRE), filiale="ARMEE", montant="1000"
     )
 
@@ -430,7 +430,7 @@ async def test_la_liste_ne_montre_que_les_filiales_du_serveur():
     )
     interaction = _interaction(EMPIRE)
 
-    await _commande(bot, "filiales liste").callback(interaction)
+    await _commande(bot, "frais liste").callback(interaction)
 
     rendu = repr(interaction.embeds[0].to_dict())
     assert "CHEZ-NOUS" in rendu
@@ -446,7 +446,7 @@ async def test_retirer_une_filiale_ne_touche_que_son_serveur():
             "ARMEE", Decimal(1000), "2026-08-20"
         )
 
-    await _commande(bot, "filiales retirer").callback(
+    await _commande(bot, "frais retirer").callback(
         _interaction(EMPIRE), filiales="ARMEE"
     )
 
@@ -463,7 +463,7 @@ async def test_vider_ne_remet_a_zero_que_son_serveur():
             "ARMEE", Decimal(1000), "2026-08-20"
         )
 
-    await _commande(bot, "filiales vider").callback(
+    await _commande(bot, "frais vider").callback(
         _interaction(EMPIRE), confirmer=True
     )
 
@@ -483,7 +483,7 @@ async def test_lexport_ne_sort_que_les_filiales_du_serveur():
     )
     interaction = _interaction(EMPIRE)
 
-    await _commande(bot, "filiales export").callback(interaction)
+    await _commande(bot, "frais export").callback(interaction)
 
     contenu = _octets(_fichiers(interaction)[0]).decode("utf-8")
     assert "CHEZ-NOUS" in contenu
@@ -500,7 +500,7 @@ async def test_lautocompletion_ne_propose_que_les_filiales_du_serveur():
     await bot.store.pour(VOISIN).enregistrer_filiale(
         "CHEZ-LE-VOISIN", Decimal(2000), "2026-08-20"
     )
-    completer = _propositions(_commande(bot, "filiales releve"), "filiale")
+    completer = _propositions(_commande(bot, "frais releve"), "filiale")
 
     choix = await completer(_interaction(EMPIRE), "")
 

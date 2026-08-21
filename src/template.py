@@ -150,7 +150,8 @@ def _chaines(modele: Any):
 def placeholders_inconnus(modele: Any) -> set[str]:
     """Placeholders présents dans le template mais non reconnus.
 
-    Sert à te signaler une faute de frappe au moment de `/template`, plutôt
+    Sert à te signaler une faute de frappe au moment de `/reglages template
+    charger`, plutôt
     que de laisser un `{prixx}` traîner dans le post quotidien.
     """
     trouves: set[str] = set()
