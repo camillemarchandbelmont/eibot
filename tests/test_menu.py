@@ -44,8 +44,8 @@ async def test_la_racine_ne_montre_que_les_six_entrees_du_menu():
 async def test_reglages_rassemble_tout_ce_qui_configure_le_bot():
     """Un seul endroit à ouvrir pour régler quoi que ce soit.
 
-    Trois sous-groupes plutôt qu'une liste plate : `acces`, `source` et
-    `template` sont des sujets entiers, et Discord n'accepte pas un quatrième
+    Quatre sous-groupes plutôt qu'une liste plate : `modules`, `acces`, `source`
+    et `template` sont des sujets entiers, et Discord n'accepte pas un quatrième
     niveau — c'est donc la profondeur maximale, et elle est atteinte.
     """
     bot = await _bot()
@@ -64,6 +64,12 @@ async def test_reglages_rassemble_tout_ce_qui_configure_le_bot():
         # Le pont vers la configuration par serveur : chaque serveur a la sienne,
         # sans repli sur la commune, et c'est cette commande qui la reprend.
         "importer",
+        # L'allumage par serveur : un module éteint ne publie plus et quitte le
+        # menu de ce serveur seul.
+        "modules",
+        "modules liste",
+        "modules activer",
+        "modules desactiver",
         "acces",
         "acces ajouter",
         "acces retirer",

@@ -11,9 +11,9 @@ une commande qui s'en sert vit dans son module.** C'est ce qui distingue
 (qu'est-ce qui partirait ce soir ?), alors que les deux touchent aux mêmes
 données.
 
-Trois sous-groupes — `acces`, `source`, `template` — parce que ce sont des sujets
-entiers, et pas un de plus : Discord n'accepte que trois niveaux, si bien que
-`/reglages template charger` est déjà au fond.
+Quatre sous-groupes — `modules`, `acces`, `source`, `template` — parce que ce sont
+des sujets entiers, et pas un de plus : Discord n'accepte que trois niveaux, si
+bien que `/reglages template charger` est déjà au fond.
 """
 
 from __future__ import annotations
@@ -46,6 +46,20 @@ from src.template import (
 
 if TYPE_CHECKING:  # pragma: no cover - uniquement pour les annotations
     from src.bot import EmpireBot
+
+
+def _choix(modules, saisie: str, garder) -> list[app_commands.Choice[str]]:
+    """Les modules retenus par `garder`, en propositions Discord.
+
+    L'ordre reçu est conservé : c'est celui du menu, donc celui qu'on a sous les
+    yeux quand on cherche le nom à taper.
+    """
+    debut = (saisie or "").strip().casefold()
+    return [
+        app_commands.Choice(name=f"{module.nom} — {module.titre}", value=module.nom)
+        for module in modules
+        if garder(module) and debut in module.nom.casefold()
+    ][:25]  # limite Discord
 
 
 def enregistrer_les_reglages(bot: EmpireBot) -> None:
@@ -370,6 +384,176 @@ def enregistrer_les_reglages(bot: EmpireBot) -> None:
     # Pour republier tout de suite, `/fourchette publier` et `/filiales publier`
     # le font sans détour, et préviennent que le post de l'heure prévue ne
     # repassera pas. Pour éprouver la source, `/reglages source tester`.
+
+    # --- /reglages modules --------------------------------------------------
+    #
+    # Le seul chemin pour éteindre un module : sans ces commandes, il faudrait
+    # écrire dans la base à la main. Elles restent ouvertes aux membres
+    # autorisés, comme le reste de `/reglages` — éteindre un module ne donne
+    # aucun droit, à la différence de la liste d'accès.
+
+    modules_groupe = app_commands.Group(
+        name="modules",
+        description="Quels modules sont allumés dans ce serveur",
+        parent=groupe,
+    )
+
+    def module_nomme(nom: str):
+        """Le module de ce nom, ou None. Le nom est une clé, donc en minuscules."""
+        cherche = (nom or "").strip().casefold()
+        for module in bot.modules:
+            if module.nom == cherche:
+                return module
+        return None
+
+    async def refuser_module_inconnu(
+        interaction: discord.Interaction, nom: str
+    ) -> None:
+        """Refuse en listant les noms trouvés.
+
+        Sans ce refus, un nom mal tapé écrirait dans la liste des éteints un
+        module qui n'existe pas : rien ne le rallumerait jamais, et il resterait
+        là à faire croire à un réglage.
+        """
+        noms = ", ".join(f"`{module.nom}`" for module in bot.modules) or "*aucun*"
+        await interaction.response.send_message(
+            f"❌ Aucun module nommé « {(nom or '').strip()} ».\n"
+            f"Modules trouvés : {noms}.",
+            ephemeral=True,
+        )
+
+    async def completer_allume(
+        interaction: discord.Interaction, saisie: str
+    ) -> list[app_commands.Choice[str]]:
+        """Propose les modules allumés ici — ceux que `desactiver` peut éteindre.
+
+        Proposer un module déjà éteint ferait choisir un nom pour s'entendre
+        répondre qu'il n'y avait rien à faire.
+        """
+        eteints = await pour_ce_serveur(bot, interaction).modules_eteints()
+        return _choix(bot.modules, saisie, lambda module: module.nom not in eteints)
+
+    async def completer_eteint(
+        interaction: discord.Interaction, saisie: str
+    ) -> list[app_commands.Choice[str]]:
+        """Propose les modules éteints ici — ceux que `activer` peut rallumer."""
+        eteints = await pour_ce_serveur(bot, interaction).modules_eteints()
+        return _choix(bot.modules, saisie, lambda module: module.nom in eteints)
+
+    @modules_groupe.command(
+        name="liste", description="Modules trouvés et leur état dans ce serveur"
+    )
+    async def modules_liste(interaction: discord.Interaction):
+        """Tous les modules du dossier, allumés comme éteints.
+
+        Un module absent de cette liste se lirait comme un module jamais
+        déployé : ceux qui ont refusé de se charger y sont donc nommés avec leur
+        raison, plutôt que de disparaître en silence.
+        """
+        eteints = await pour_ce_serveur(bot, interaction).modules_eteints()
+        embed = discord.Embed(
+            title="Modules dans ce serveur",
+            description=(
+                "Tout est allumé par défaut, et chaque serveur choisit pour lui "
+                "seul."
+            ),
+            color=0x5865F2,
+        )
+        if bot.modules:
+            embed.add_field(
+                name=f"Trouvés ({len(bot.modules)})",
+                value="\n".join(
+                    f"⛔ `{module.nom}` — {module.titre} *(éteint)*"
+                    if module.nom in eteints
+                    else f"✅ `{module.nom}` — {module.titre}"
+                    for module in bot.modules
+                ),
+                inline=False,
+            )
+        else:
+            embed.add_field(
+                name="Trouvés (0)",
+                value="*Aucun.* Le bot ne publie rien et n'a que `/reglages`.",
+                inline=False,
+            )
+        if bot.modules_refuses:
+            embed.add_field(
+                name=f"Refusés au démarrage ({len(bot.modules_refuses)})",
+                value="\n".join(
+                    f"• `{nom}` — {raison}"
+                    for nom, raison in sorted(bot.modules_refuses.items())
+                ),
+                inline=False,
+            )
+        embed.set_footer(
+            text="/reglages modules activer · /reglages modules desactiver"
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    @modules_groupe.command(
+        name="activer", description="Rallume un module dans ce serveur"
+    )
+    @app_commands.describe(module="Nom du module")
+    @app_commands.autocomplete(module=completer_eteint)
+    async def modules_activer(interaction: discord.Interaction, module: str):
+        trouve = module_nomme(module)
+        if trouve is None:
+            await refuser_module_inconnu(interaction, module)
+            return
+
+        if not await pour_ce_serveur(bot, interaction).rallumer_module(trouve.nom):
+            await interaction.response.send_message(
+                f"ℹ️ **{trouve.titre}** est déjà allumé dans ce serveur.",
+                ephemeral=True,
+            )
+            return
+
+        message = f"✅ Module **{trouve.titre}** (`{trouve.nom}`) allumé ici."
+        if trouve.publications:
+            message += "\n-# Ses publications repartiront à leur heure."
+        await interaction.response.send_message(message, ephemeral=True)
+
+    @modules_groupe.command(
+        name="desactiver", description="Éteint un module dans ce serveur"
+    )
+    @app_commands.describe(module="Nom du module")
+    @app_commands.autocomplete(module=completer_allume)
+    async def modules_desactiver(interaction: discord.Interaction, module: str):
+        trouve = module_nomme(module)
+        if trouve is None:
+            await refuser_module_inconnu(interaction, module)
+            return
+
+        magasin = pour_ce_serveur(bot, interaction)
+        eteints = await magasin.modules_eteints()
+        if trouve.nom in eteints:
+            # Dit avant le refus du dernier : « déjà éteint » est la vérité,
+            # alors que « c'est le dernier allumé » serait faux.
+            await interaction.response.send_message(
+                f"ℹ️ **{trouve.titre}** est déjà éteint dans ce serveur.",
+                ephemeral=True,
+            )
+            return
+
+        allumes = [m for m in bot.modules if m.nom not in eteints]
+        if len(allumes) <= 1:
+            # Un serveur sans aucun module répond encore à `/reglages`, et à rien
+            # d'autre : rien à l'écran ne distinguerait ce réglage d'une panne.
+            await interaction.response.send_message(
+                f"❌ **{trouve.titre}** est le dernier module allumé ici.\n"
+                "L'éteindre rendrait le bot muet dans ce serveur, ce qui "
+                "ressemble à une panne.\n"
+                "-# Allume un autre module d'abord.",
+                ephemeral=True,
+            )
+            return
+
+        await magasin.eteindre_module(trouve.nom)
+        message = f"✅ Module **{trouve.titre}** (`{trouve.nom}`) éteint ici."
+        if trouve.publications:
+            message += "\n-# Ses publications quotidiennes ne sortiront plus ici."
+        message += "\n-# `/reglages modules activer` le rallume."
+        await interaction.response.send_message(message, ephemeral=True)
 
     # --- /reglages acces ----------------------------------------------------
 

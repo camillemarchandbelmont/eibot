@@ -13,8 +13,9 @@ Deux règles gouvernent le stockage, et expliquent qu'on retienne les modules
   ne saurait qu'il faut le faire.
 
 Un module éteint ne publie plus rien dans ce serveur, et ses commandes quittent
-son menu. Ce fichier éprouve les deux, plus le refus d'éteindre le dernier : un
-serveur sans aucun module ressemblerait trait pour trait à une panne du bot.
+son menu. Ce fichier éprouve le stockage et la tournée ; les commandes qui
+allument et éteignent sont dans `tests/test_reglages_modules.py`, avec le refus
+d'éteindre le dernier.
 """
 
 from src.db import PREFIXE_SERVEUR, Store

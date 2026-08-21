@@ -1162,6 +1162,138 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
         "seuls les modules éteints publieraient : un serveur qui n'a rien éteint "
         "deviendrait muet",
     ),
+    # `/reglages modules` est le seul chemin pour allumer et éteindre : sans ces
+    # commandes il faudrait écrire dans la base à la main.
+    (
+        "activation-liste-sans-etat",
+        "src/reglages.py",
+        '                    f"⛔ `{module.nom}` — {module.titre} *(éteint)*"\n'
+        "                    if module.nom in eteints\n"
+        '                    else f"✅ `{module.nom}` — {module.titre}"',
+        '                    f"✅ `{module.nom}` — {module.titre}"',
+        "la liste ne répondrait plus à la seule question qu'on lui pose : "
+        "est-ce que le tableau du soir va sortir ce soir ?",
+    ),
+    (
+        "activation-liste-du-commun",
+        "src/reglages.py",
+        "        eteints = await pour_ce_serveur(bot, interaction).modules_eteints()\n"
+        "        embed = discord.Embed(",
+        "        eteints = await bot.store.modules_eteints()\n"
+        "        embed = discord.Embed(",
+        "la liste montrerait l'état d'un autre serveur : on chercherait ici la "
+        "panne d'ailleurs",
+    ),
+    (
+        "activation-liste-cache-les-refuses",
+        "src/reglages.py",
+        "        if bot.modules_refuses:",
+        "        if False:",
+        "un module cassé au démarrage se lirait comme un module jamais déployé, "
+        "et on chercherait la panne dans le dépôt",
+    ),
+    (
+        "activation-nom-inconnu-sans-les-noms",
+        "src/reglages.py",
+        '        noms = ", ".join(f"`{module.nom}`" for module in bot.modules) or "*aucun*"',
+        '        noms = "*aucun*"',
+        "un nom mal tapé serait refusé sans dire lesquels existent",
+    ),
+    (
+        "activation-desactiver-nom-inconnu-accepte",
+        "src/reglages.py",
+        "        trouve = module_nomme(module)\n"
+        "        if trouve is None:\n"
+        "            await refuser_module_inconnu(interaction, module)\n"
+        "            return\n"
+        "\n"
+        "        magasin = pour_ce_serveur(bot, interaction)",
+        "        trouve = module_nomme(module)\n"
+        "        magasin = pour_ce_serveur(bot, interaction)",
+        "un nom mal tapé écrirait dans les éteints un module qui n'existe pas, "
+        "et rien ne le rallumerait jamais",
+    ),
+    (
+        "activation-desactiver-dans-le-commun",
+        "src/reglages.py",
+        "        magasin = pour_ce_serveur(bot, interaction)\n"
+        "        eteints = await magasin.modules_eteints()",
+        "        magasin = bot.store\n"
+        "        eteints = await magasin.modules_eteints()",
+        "éteindre chez soi éteindrait ailleurs — ou plutôt nulle part, la "
+        "tournée ne lisant plus la configuration commune",
+    ),
+    (
+        "activation-desactiver-nenregistre-rien",
+        "src/reglages.py",
+        "        await magasin.eteindre_module(trouve.nom)",
+        "        pass",
+        "« ✅ éteint » sur un module qui publierait le soir même",
+    ),
+    (
+        "activation-deja-eteint-non-dit",
+        "src/reglages.py",
+        "        if trouve.nom in eteints:",
+        "        if False:",
+        "un « ✅ » ferait croire qu'on vient de changer quelque chose, et "
+        "chercher ailleurs la raison d'un post qui sort encore",
+    ),
+    (
+        "activation-dernier-module-eteignable",
+        "src/reglages.py",
+        "        if len(allumes) <= 1:",
+        "        if False:",
+        "un serveur sans aucun module ne répondrait plus qu'à `/reglages`, sans "
+        "que rien ne distingue ce réglage d'une panne",
+    ),
+    (
+        "activation-dernier-module-mal-compte",
+        "src/reglages.py",
+        "        allumes = [m for m in bot.modules if m.nom not in eteints]",
+        "        allumes = list(bot.modules)",
+        "la garde compterait les éteints parmi les allumés : le dernier "
+        "s'éteindrait quand même",
+    ),
+    (
+        "activation-activer-nenregistre-rien",
+        "src/reglages.py",
+        "        if not await pour_ce_serveur(bot, interaction).rallumer_module(trouve.nom):",
+        "        if False:",
+        "« ✅ allumé » sur un module qui resterait éteint",
+    ),
+    (
+        "activation-activer-dans-le-commun",
+        "src/reglages.py",
+        "        if not await pour_ce_serveur(bot, interaction).rallumer_module(trouve.nom):",
+        "        if not await bot.store.rallumer_module(trouve.nom):",
+        "rallumer dans un serveur ne rallumerait rien : la tournée ne lit plus "
+        "la configuration commune",
+    ),
+    (
+        "activation-propositions-allumes-inversees",
+        "src/reglages.py",
+        "        return _choix(bot.modules, saisie, lambda module: module.nom not in eteints)",
+        "        return _choix(bot.modules, saisie, lambda module: module.nom in eteints)",
+        "`desactiver` proposerait les modules déjà éteints : on choisirait un nom "
+        "pour s'entendre répondre qu'il n'y avait rien à faire",
+    ),
+    (
+        "activation-propositions-eteints-inversees",
+        "src/reglages.py",
+        "        return _choix(bot.modules, saisie, lambda module: module.nom in eteints)",
+        "        return _choix(bot.modules, saisie, lambda module: module.nom not in eteints)",
+        "`activer` proposerait les modules déjà allumés",
+    ),
+    (
+        "activation-propositions-du-commun",
+        "src/reglages.py",
+        "        eteints = await pour_ce_serveur(bot, interaction).modules_eteints()\n"
+        "        return _choix(bot.modules, saisie, lambda module: module.nom in eteints)",
+        "        eteints = await bot.store.modules_eteints()\n"
+        "        return _choix(bot.modules, saisie, lambda module: module.nom in eteints)",
+        "les propositions viendraient d'un autre serveur : on se verrait offrir "
+        "de rallumer ce que le voisin a éteint",
+    ),
     # --- src/importation.py, src/reglages.py : reprendre l'ancienne config ---
     #
     # Le cloisonnement n'a pas de repli : au déploiement, chaque serveur se
