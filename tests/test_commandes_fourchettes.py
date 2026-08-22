@@ -171,6 +171,11 @@ async def test_tout_ce_qui_touche_aux_promotions_est_sous_un_seul_mot():
         "salon",
         "salon ajouter",
         "salon retirer",
+        # Les types de bâtiments qu'on ne veut jamais voir sortir.
+        "types",
+        "types liste",
+        "types exclure",
+        "types remettre",
         # Le vocabulaire commun à toutes les publications.
         "heure",
         "apercu",

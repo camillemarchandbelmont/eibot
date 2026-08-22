@@ -73,6 +73,41 @@ afficher la distance à la fourchette (`0 Ø` pour une promo dans le budget).
 S'il n'y a aucune promotion du tout dans l'export, le bot poste un simple
 message le disant, pour que tu saches qu'il a bien tourné.
 
+### Écarter des types de bâtiments
+
+Le jeu range chaque bâtiment sous un type — `zones`, `bureaux`, `transport`,
+`industriels`, `commerciaux`. Une entreprise qui n'achète jamais de transport
+peut les faire taire :
+
+```
+/promos types liste          ce qui est écarté, et ce qui reste
+/promos types exclure type:transport
+/promos types remettre type:transport
+```
+
+Les noms viennent de l'export lui-même : ils sont proposés sous le curseur, et
+un nom que l'export ne contient pas est refusé — accepté, il donnerait un filtre
+qui ne filtre rien, et le post inchangé ne dirait pas pourquoi.
+
+Le réglage est **par serveur** : deux entreprises n'ont pas les mêmes goûts.
+Il vaut partout à la fois — le post du soir, `/promos apercu` et
+`/promos chercher` — sinon l'aperçu montrerait des promotions qui ne sortiront
+pas.
+
+**Il n'y a pas de repêchage de ce qu'on a écarté.** Un type écarté ne revient
+pas par la zone de tolérance ni par le repêchage, même le jour où il n'y a rien
+d'autre : c'est ce qui distingue une exclusion d'une préférence. Un post peut
+donc être plus court, voire ne pas sortir du tout — et c'est alors le message
+habituel des jours sans promotion qui part. Le bot refuse en revanche d'écarter
+le **dernier** type restant : un post vide tous les soirs ressemblerait trait
+pour trait à une panne.
+
+`/reglages voir` rappelle les types écartés, mais seulement s'il y en a — c'est
+là qu'on relit la configuration quand on cherche pourquoi un post a maigri.
+`/promos types remettre` ne charge pas l'export : défaire un réglage ne doit pas
+dépendre de l'API du jeu, et c'est le seul chemin qui rende un type disparu de
+l'export.
+
 ## Notation monétaire
 
 Le jeu a ses propres symboles, qui ne suivent pas les préfixes SI. Le bot les
@@ -275,6 +310,9 @@ local, mais elle repart des valeurs de `.env` à chaque redémarrage.
 | `/promos supprimer fourchette` | Supprime une fourchette et ses salons |
 | `/promos salon ajouter fourchette salon` | Publie **cette** fourchette dans ce salon |
 | `/promos salon retirer fourchette salon` | Cesse de l'y publier |
+| `/promos types liste` | Types de bâtiments écartés dans ce serveur, et ceux qui restent |
+| `/promos types exclure type` | N'affiche plus jamais les promotions de ce type |
+| `/promos types remettre type` | Les affiche de nouveau |
 | `/promos heure [heure]` | Heure des promotions (`HH:MM`), distincte de celle du tableau ; sans argument, l'affiche |
 | `/promos apercu` | Prévisualise les posts du jour, un par fourchette, sans publier |
 | `/promos publier` | Publie les promotions maintenant, à la place de celles de l'heure prévue |
@@ -721,6 +759,11 @@ vient de la plus basse, la borne haute de la plus haute. Un prix compris dans
 cette union peut donc n'appartenir à **aucune** fourchette — la page dit ce qui
 est surveillé, pas ce que recevra un salon donné. `/api/apercu`, lui, rend un
 bloc par fourchette, dans l'ordre de publication.
+
+Les deux routes appliquent les **types écartés** de la configuration commune,
+celle dont le site parle faute de dire de quel serveur il s'agit. Sans ce filtre,
+la page listerait des promotions que le bot ne publie nulle part, et l'on
+croirait à une panne.
 
 ### Les montants ne passent jamais en nombre JSON
 

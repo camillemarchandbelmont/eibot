@@ -3038,6 +3038,140 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
         "    if False:\n        pass",
         "une copie vers la mémoire du processus, effacée à sa sortie",
     ),
+    # --- Les types de bâtiments écartés -------------------------------------
+    #
+    # Une exclusion qui n'exclut pas est le pire des défauts de ce réglage : le
+    # post sort inchangé, et rien à l'écran ne dit pourquoi. Les motifs suivants
+    # visent donc d'abord le silence.
+    (
+        "types-filtre-ignore",
+        "src/promos.py",
+        "        if b.promotion > 0 and normaliser_type(b.type) not in exclus",
+        "        if b.promotion > 0",
+        "un type écarté sortirait quand même, tous les soirs",
+    ),
+    (
+        "types-entree-vide-ecarte-les-sans-type",
+        "src/promos.py",
+        "    exclus = {t for t in (normaliser_type(nom) for nom in types_exclus) if t}",
+        "    exclus = {normaliser_type(nom) for nom in types_exclus}",
+        "un `\"\"` glissé dans la liste écarterait les bâtiments sans type",
+    ),
+    (
+        "types-comparaison-sensible-a-la-casse",
+        "src/promos.py",
+        '    return str(nom or "").strip().casefold()',
+        '    return str(nom or "")',
+        "« Transport » n'écarterait rien, et rien ne dirait pourquoi",
+    ),
+    (
+        "types-proposes-reduits-aux-promos-du-jour",
+        "src/promos.py",
+        "    return sorted({b.type.strip() for b in batiments if b.type.strip()})",
+        "    return sorted(\n"
+        "        {b.type.strip() for b in batiments if b.type.strip() and b.promotion > 0}\n"
+        "    )",
+        "un type ne serait proposable que les jours où il est en promotion",
+    ),
+    (
+        "types-ecartes-du-commun-dans-le-post",
+        "src/bot.py",
+        "            types_exclus=await magasin.types_exclus(),",
+        "            types_exclus=await self.store.types_exclus(),",
+        "l'exclusion d'une entreprise ferait maigrir le post de l'autre",
+    ),
+    (
+        "types-memoire-jamais-ecrite",
+        "src/bot.py",
+        "            await self.store.memoriser_types(types_disponibles(batiments))",
+        "            pass",
+        "rien sous le curseur : il faudrait taper les noms de types de mémoire",
+    ),
+    (
+        "types-liste-vide-jamais-ecrite",
+        "src/db.py",
+        "        await self.maj_config(types_exclus=restants)",
+        "        await self.maj_config(types_exclus=restants or None)",
+        "le dernier type remis se réexcluerait tout seul au redémarrage",
+    ),
+    (
+        "types-deja-ecarte-reecrit",
+        "src/db.py",
+        "        if normaliser_type(propre) in {normaliser_type(t) for t in exclus}:",
+        "        if False:",
+        "deux graphies du même type se liraient comme deux exclusions",
+    ),
+    (
+        "types-connus-effaces-par-un-export-vide",
+        "src/db.py",
+        "        if not propres or propres == await self.types_connus():",
+        "        if False:",
+        "un export illisible viderait les propositions, panne ailleurs, réglage muet",
+    ),
+    (
+        "types-exclure-accepte-un-nom-inconnu",
+        "src/modules/promos.py",
+        "        if vrai is None:",
+        "        if False:",
+        "`zone` au singulier donnerait un filtre inerte et un « ✅ » menteur",
+    ),
+    (
+        "types-exclure-accepte-le-dernier",
+        "src/modules/promos.py",
+        "        if len(restants) <= 1 and cible not in ecartes:",
+        "        if False and cible not in ecartes:",
+        "tout écarté, plus aucun post : indiscernable d'une panne du bot",
+    ),
+    (
+        "types-dernier-type-compte-les-orphelins",
+        "src/modules/promos.py",
+        "        restants = [nom for nom in monde if normaliser_type(nom) not in ecartes]",
+        "        restants = monde[len(ecartes) :]",
+        "un type disparu du jeu ferait refuser le réglage, dernier type annoncé à tort",
+    ),
+    (
+        "types-propositions-a-ecarter-du-commun",
+        "src/modules/promos.py",
+        "        exclus = {normaliser_type(nom) for nom in await magasin.types_exclus()}",
+        "        exclus = {normaliser_type(nom) for nom in await bot.store.types_exclus()}",
+        "on choisirait un type déjà écarté pour s'entendre dire qu'il l'était",
+    ),
+    (
+        "types-propositions-a-remettre-du-commun",
+        "src/modules/promos.py",
+        "            for nom in await magasin.types_exclus()\n"
+        "            if saisie.casefold() in nom.casefold()",
+        "            for nom in await bot.store.types_exclus()\n"
+        "            if saisie.casefold() in nom.casefold()",
+        "on se verrait proposer de rendre ce qu'un autre serveur a écarté",
+    ),
+    (
+        "types-reglages-voir-muet",
+        "src/reglages.py",
+        "        if types_ecartes := await magasin.types_exclus():",
+        "        if False and (types_ecartes := await magasin.types_exclus()):",
+        "le post plus court resterait inexpliqué là où on relit la configuration",
+    ),
+    (
+        "types-api-promos-non-filtrees",
+        "src/api.py",
+        "            types_exclus=await bot.store.types_exclus(),\n"
+        "        )\n"
+        "        return _json(promos_en_json(trouvees, meta, await _date_du_jour(bot)))",
+        "        )\n"
+        "        return _json(promos_en_json(trouvees, meta, await _date_du_jour(bot)))",
+        "le site listerait des promotions que le bot ne publie nulle part",
+    ),
+    (
+        "types-api-apercu-non-filtre",
+        "src/api.py",
+        "            types_exclus=await bot.store.types_exclus(),\n"
+        "        )\n"
+        "        date = await _date_du_jour(bot)",
+        "        )\n"
+        "        date = await _date_du_jour(bot)",
+        "l'aperçu du site promettrait un post que le soir ne produira pas",
+    ),
 ]
 
 

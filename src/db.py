@@ -38,6 +38,7 @@ from src.filiales import (
     valeurs_aleatoires,
     vers_json,
 )
+from src.promos import normaliser_type
 
 log = logging.getLogger(__name__)
 
@@ -783,6 +784,90 @@ class Store:
         await self.maj_config(modules_eteints=[n for n in eteints if n != nom])
         return True
 
+    # --- Types de bâtiments écartés dans ce serveur -------------------------
+    #
+    # Un goût d'acheteur, pas une propriété du monde : une entreprise n'achète
+    # jamais de transport, une autre ne vit que de ça. La liste est donc rangée
+    # par serveur, comme les modules éteints, et pour la même raison ce sont les
+    # **écartés** qui sont retenus : rien d'enregistré vaut « tout est proposé »,
+    # donc ni un serveur neuf ni un déploiement ne filtrent quoi que ce soit.
+
+    async def types_exclus(self) -> list[str]:
+        """Types de bâtiments à ne jamais proposer dans ce serveur, triés."""
+        config = await self.config()
+        return sorted(
+            {
+                str(nom).strip()
+                for nom in config.get("types_exclus") or []
+                if str(nom).strip()
+            }
+        )
+
+    async def exclure_type(self, nom: str) -> bool:
+        """Écarte un type. Renvoie False s'il l'était déjà.
+
+        La comparaison passe par `normaliser_type`, celle de la sélection : un
+        « Transport » ajouté à côté de `transport` se lirait comme deux
+        exclusions dans `/promos types liste`, et en remettre une laisserait
+        l'autre filtrer sans que rien ne le dise.
+        """
+        propre = str(nom).strip()
+        exclus = await self.types_exclus()
+        if normaliser_type(propre) in {normaliser_type(t) for t in exclus}:
+            return False
+        await self.maj_config(types_exclus=sorted([*exclus, propre]))
+        return True
+
+    async def remettre_type(self, nom: str) -> bool:
+        """Rend un type écarté. Renvoie False s'il ne l'était pas.
+
+        La liste vidée est écrite telle quelle — `maj_config` n'écarte que les
+        `None`. Sauter une liste vide garderait l'ancienne en base : le type
+        semblerait remis jusqu'au redémarrage, puis se réexcluerait tout seul là
+        où personne ne regarde.
+        """
+        cible = normaliser_type(nom)
+        exclus = await self.types_exclus()
+        restants = [t for t in exclus if normaliser_type(t) != cible]
+        if len(restants) == len(exclus):
+            return False
+        await self.maj_config(types_exclus=restants)
+        return True
+
+    # --- Types connus, ceux du dernier export ------------------------------
+    #
+    # Communs à tous les serveurs : ils décrivent le monde M8 et non un serveur.
+    # Ils ne servent qu'à proposer des noms justes sous le curseur — Discord
+    # n'accorde que trois secondes à une frappe, ce qui exclut de charger
+    # l'export à chaque lettre tapée.
+
+    async def types_connus(self) -> list[str]:
+        """Types vus dans le dernier export chargé, triés."""
+        config = await self.config()
+        return sorted(
+            {
+                str(nom).strip()
+                for nom in config.get("types_connus") or []
+                if str(nom).strip()
+            }
+        )
+
+    async def memoriser_types(self, noms: Any) -> None:
+        """Retient les types de l'export qui vient d'être lu.
+
+        Appelé à chaque chargement, comme les noms de salons se corrigent au
+        premier post : un type ajouté par le jeu devient proposable sans qu'on y
+        touche. D'où les deux abandons avant écriture — un export vide ou
+        illisible ne doit pas vider les propositions, et un export identique à la
+        veille ne doit pas écrire en base à chaque commande tapée.
+        """
+        propres = sorted({str(nom).strip() for nom in noms or [] if str(nom).strip()})
+        if not propres or propres == await self.types_connus():
+            return
+        config = await self._enregistree()
+        config["types_connus"] = propres
+        await self.set("config", config)
+
     async def maj_config(self, **champs: Any) -> dict:
         enregistree = await self._enregistree()
         enregistree.update(
@@ -1078,6 +1163,18 @@ class VueServeur(Store):
         les noms des salons de tous les autres.
         """
         return await self.commun.oublier_salons_orphelins()
+
+    async def types_connus(self) -> list[str]:
+        """Ceux du monde, donc du magasin commun.
+
+        Lus dans le tiroir du serveur, ils seraient vides pour qui n'a encore
+        rien publié — et la commande n'aurait rien à proposer alors que l'export
+        est là. Les types **écartés**, eux, restent au serveur : c'est un goût.
+        """
+        return await self.commun.types_connus()
+
+    async def memoriser_types(self, noms: Any) -> None:
+        await self.commun.memoriser_types(noms)
 
     async def roles(self) -> dict[str, str]:
         return await self.commun.roles()

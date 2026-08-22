@@ -17,7 +17,7 @@ from src.journal import Journal
 from src.modules import decouvrir, greffer
 from src.modules import frais as module_frais
 from src.modules import promos as module_promos
-from src.promos import Building, Meta, find_promos, parse_csv
+from src.promos import Building, Meta, find_promos, parse_csv, types_disponibles
 from src.publish import construire_embeds, message_aucune_promo
 from src.reglages import enregistrer_les_reglages
 from src.schedule import boucle_planning, maintenant_local
@@ -306,8 +306,23 @@ class EmpireBot(discord.Client):
         return decrire(self.source)
 
     async def charger(self):
+        """L'export du jeu, lu et découpé — et ses types retenus au passage.
+
+        La mémoire des types sert aux propositions de `/promos types` : Discord
+        n'accorde que trois secondes à une frappe, ce qui exclut de charger
+        l'export à chaque lettre tapée. Écrite ici plutôt qu'au réglage, elle
+        suit d'elle-même un type que le jeu ajouterait.
+
+        Une panne de base n'y fait rien tomber : c'est un cache, et il ne doit
+        jamais coûter un post du soir.
+        """
         texte = await self.source.fetch()
-        return parse_csv(texte)
+        meta, batiments = parse_csv(texte)
+        try:
+            await self.store.memoriser_types(types_disponibles(batiments))
+        except Exception:
+            log.warning("Impossible de mémoriser les types de l'export.", exc_info=True)
+        return meta, batiments
 
     async def construire_publication(
         self,
@@ -332,12 +347,18 @@ class EmpireBot(discord.Client):
         dit pas de quel serveur il parle. Deux entreprises n'ont pas la même
         charte, et c'est tout l'intérêt d'un template par serveur : lu dans le
         commun, il ne changerait jamais rien à ce qui sort.
+
+        C'est aussi lui qui dit quels **types** de bâtiments sont écartés. Posé
+        ici, le filtre vaut du même coup pour le post du soir, l'aperçu et
+        `/promos chercher` : filtré à la seule publication, l'aperçu montrerait
+        des promotions qui ne sortiront pas.
         """
         magasin = self.store if magasin is None else magasin
         meta, batiments = donnees if donnees is not None else await self.charger()
         promos = find_promos(
             batiments, prix_min, prix_max,
             tolere_min=tolere_min, tolere_max=tolere_max,
+            types_exclus=await magasin.types_exclus(),
         )
         modele = await magasin.template()
         date = maintenant_local((await magasin.config())["fuseau"]).strftime("%Y-%m-%d")

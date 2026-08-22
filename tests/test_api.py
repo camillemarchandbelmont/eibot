@@ -274,6 +274,37 @@ async def test_promos_signale_les_repechees(api):
     assert Decimal(repechee["ecart_brut"]) > 0
 
 
+async def test_promos_ecarte_les_types_exclus(api):
+    """Le site doit montrer ce que le bot publierait, filtres compris.
+
+    Sans le filtre, la page listerait des promotions qui ne sortent dans aucun
+    salon : on croirait le bot en panne, alors qu'il obéit à un réglage que la
+    page ne montre pas. La configuration lue est la **commune**, la seule dont le
+    site parle, faute de dire de quel serveur il s'agit.
+    """
+    client, bot = await api()
+    await bot.store.exclure_type("industriels")
+
+    corps = await (await client.get(
+        "/api/promos?min=0&max=1000000", headers=_entetes()
+    )).json()
+
+    assert "Entrepôt" not in [p["nom"] for p in corps["promos"]]
+
+
+async def test_apercu_ecarte_les_types_exclus(api):
+    """Le même filtre sur l'autre appel, sans quoi l'aperçu du site montrerait un
+    post que la publication ne produira pas."""
+    client, bot = await api()
+    await bot.store.exclure_type("industriels")
+
+    corps = await (await client.post(
+        "/api/apercu", json={"min": "0", "max": "1000000"}, headers=_entetes()
+    )).json()
+
+    assert "Entrepôt" not in str(corps)
+
+
 async def test_promos_accepte_la_notation_du_jeu(api):
     """« 50 6P » doit être lu comme dans Discord : une seule grammaire de
     saisie pour les deux façades. Lu comme 506 PØ, il exclut le Mégapôle."""

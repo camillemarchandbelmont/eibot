@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import csv
 import io
+from collections.abc import Iterable
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 
@@ -139,6 +140,31 @@ def parse_csv(texte: str) -> tuple[Meta, list[Building]]:
     return meta, batiments
 
 
+def normaliser_type(nom: str | None) -> str:
+    """Un type comparable : sans espaces autour, sans casse.
+
+    La liste des types écartés est du JSON retouchable à la main et vient parfois
+    d'une saisie. Comparer les chaînes brutes ferait qu'un « Transport » ne
+    filtrerait rien — une exclusion silencieuse, donc le pire des cas : le post
+    sort inchangé et rien à l'écran ne dit pourquoi.
+    """
+    return str(nom or "").strip().casefold()
+
+
+def types_disponibles(batiments: list[Building]) -> list[str]:
+    """Les types que l'export contient, dédoublonnés et triés.
+
+    **Tous les bâtiments, et pas les seuls en promotion.** Les promotions
+    tournent d'un jour à l'autre, les types du monde non : réduite aux promos du
+    moment, la liste ne proposerait `transport` que les jours où il s'en trouve
+    un en promotion, c'est-à-dire pas le jour où l'on veut l'exclure.
+
+    Triés parce que cette liste est ce que Discord propose sous le curseur : dans
+    l'ordre du fichier, elle changerait de place à chaque export.
+    """
+    return sorted({b.type.strip() for b in batiments if b.type.strip()})
+
+
 def to_promo(batiment: Building) -> Promo:
     """Calcule les montants dérivés d'un bâtiment en promotion."""
     prix = batiment.valeur
@@ -175,6 +201,7 @@ def find_promos(
     minimum: int = CIBLE_MINIMUM,
     tolere_min: Decimal | None = None,
     tolere_max: Decimal | None = None,
+    types_exclus: Iterable[str] = (),
 ) -> list[Promo]:
     """Promotions dont le prix payé tombe dans [prix_min, prix_max].
 
@@ -193,8 +220,20 @@ def find_promos(
     `ecart` et leur `zone`.
 
     `minimum=0` désactive tolérance et repêchage (filtre strict).
+
+    `types_exclus` écarte des types de bâtiments (`transport`, `zones`…) **avant
+    les trois passes**. Posée sur la seule passe idéale, l'exclusion ne tiendrait
+    que les jours où elle ne sert à rien : le repêchage ramènerait le type écarté
+    le jour creux, celui où personne ne s'y attend. Un type écarté peut donc
+    valoir un post plus court, ou pas de post du tout — c'est le sens d'une
+    exclusion, par opposition à une préférence.
     """
-    en_promo = [b for b in batiments if b.promotion > 0]
+    exclus = {t for t in (normaliser_type(nom) for nom in types_exclus) if t}
+    en_promo = [
+        b
+        for b in batiments
+        if b.promotion > 0 and normaliser_type(b.type) not in exclus
+    ]
     ecart = lambda b: _ecart_a_la_fourchette(b.valeur, prix_min, prix_max)  # noqa: E731
 
     dedans = [b for b in en_promo if prix_min <= b.valeur <= prix_max]

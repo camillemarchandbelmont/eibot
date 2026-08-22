@@ -137,6 +137,17 @@ def enregistrer_les_reglages(bot: EmpireBot) -> None:
             value=lister_fourchettes(bot, fourchettes),
             inline=False,
         )
+        # Seulement s'il y en a : c'est le réglage qui explique un post plus court
+        # que prévu, et c'est ici qu'on relit la configuration quand on cherche
+        # pourquoi. Un champ « *aucun* » de plus, lui, ferait chercher un réglage
+        # là où il n'y a que le défaut.
+        if types_ecartes := await magasin.types_exclus():
+            embed.add_field(
+                name=f"Types écartés ({len(types_ecartes)})",
+                value=", ".join(f"`{nom}`" for nom in types_ecartes)
+                + "\n-# leurs promotions ne sortent pas — `/promos types remettre`",
+                inline=False,
+            )
         embed.add_field(
             name="Journal",
             value=f"<#{logs}>" if logs else "*désactivé*",

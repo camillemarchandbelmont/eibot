@@ -261,7 +261,15 @@ def enregistrer_routes(app: web.Application, bot) -> None:
     async def promos(requete: web.Request) -> web.Response:
         prix_min, prix_max = await _fourchette(bot, requete)
         meta, batiments = await bot.charger()
-        trouvees = find_promos(batiments, prix_min, prix_max)
+        # Les types écartés de la configuration **commune** : le site ne dit pas
+        # de quel serveur il parle, et il ne montrerait sinon des promotions que
+        # personne ne publie — de quoi croire le bot en panne.
+        trouvees = find_promos(
+            batiments,
+            prix_min,
+            prix_max,
+            types_exclus=await bot.store.types_exclus(),
+        )
         return _json(promos_en_json(trouvees, meta, await _date_du_jour(bot)))
 
     # --- Configuration ------------------------------------------------------
@@ -351,7 +359,14 @@ def enregistrer_routes(app: web.Application, bot) -> None:
 
         prix_min, prix_max = await _fourchette(bot, requete, charge)
         meta, batiments = await bot.charger()
-        trouvees = find_promos(batiments, prix_min, prix_max)
+        # Le même filtre que la vraie publication : montré sans lui, l'aperçu
+        # promettrait un post que le soir ne produira pas.
+        trouvees = find_promos(
+            batiments,
+            prix_min,
+            prix_max,
+            types_exclus=await bot.store.types_exclus(),
+        )
         date = await _date_du_jour(bot)
 
         if not trouvees:

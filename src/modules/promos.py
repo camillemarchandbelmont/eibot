@@ -33,6 +33,7 @@ from src.commandes import (
 from src.db import bornes_tolerees
 from src.modules import Envoi, Module, Publication, Tournee
 from src.money import MoneyError, format_money, parse_money
+from src.promos import normaliser_type, types_disponibles
 from src.publish import envoyer
 from src.source import SourceError
 
@@ -546,6 +547,212 @@ def enregistrer(bot: Any) -> None:
         await interaction.response.send_message(
             f"✅ **{fourchette.strip()}** ne sera plus publiée dans {salon.mention}.",
             ephemeral=True,
+        )
+
+    # --- Les types de bâtiments écartés -------------------------------------
+    #
+    # Sous `/promos` et non sous `/reglages` : c'est un réglage des promotions,
+    # comme leur heure et leurs salons, et il disparaît avec le module.
+
+    types_groupe = app_commands.Group(
+        name="types",
+        description="Types de bâtiments à ne jamais proposer",
+        parent=groupe,
+    )
+
+    async def _types_du_monde(magasin: Any) -> tuple[list[str], bool]:
+        """Les types que l'export contient, et s'ils en viennent vraiment.
+
+        L'export fait foi, et il est mémorisé au chargement. Injoignable, on se
+        rabat sur ce que le dernier chargement avait retenu plutôt que de refuser
+        tout net : le jour où l'API du jeu tombe est justement celui où l'on veut
+        pouvoir taire un type qui pollue les posts.
+        """
+        try:
+            _, batiments = await bot.charger()
+        except SourceError:
+            return await magasin.types_connus(), False
+        return types_disponibles(batiments), True
+
+    async def completer_type_garde(
+        interaction: discord.Interaction, saisie: str
+    ) -> list[app_commands.Choice[str]]:
+        """Les types encore proposés dans ce serveur.
+
+        Lues en base et jamais dans l'export : Discord n'accorde que trois
+        secondes à une frappe, et charger l'export à chaque lettre tapée ferait
+        tomber l'autocomplétion en multipliant les appels à l'API du jeu.
+        """
+        magasin = pour_ce_serveur(bot, interaction)
+        exclus = {normaliser_type(nom) for nom in await magasin.types_exclus()}
+        return [
+            app_commands.Choice(name=nom, value=nom)
+            for nom in await magasin.types_connus()
+            if normaliser_type(nom) not in exclus
+            and saisie.casefold() in nom.casefold()
+        ][:25]
+
+    async def completer_type_ecarte(
+        interaction: discord.Interaction, saisie: str
+    ) -> list[app_commands.Choice[str]]:
+        """Les types écartés dans ce serveur, les seuls qu'on puisse remettre."""
+        magasin = pour_ce_serveur(bot, interaction)
+        return [
+            app_commands.Choice(name=nom, value=nom)
+            for nom in await magasin.types_exclus()
+            if saisie.casefold() in nom.casefold()
+        ][:25]
+
+    @types_groupe.command(
+        name="liste", description="Types écartés dans ce serveur, et ceux qui restent"
+    )
+    async def types_liste(interaction: discord.Interaction) -> None:
+        """Ce qui est écarté, ce qui reste, et ce qui n'existe plus.
+
+        Les deux moitiés sont là parce que la question posée est « qu'est-ce qui
+        va sortir ce soir ? » : la seule liste des écartés obligerait à connaître
+        l'autre de mémoire.
+        """
+        await interaction.response.defer(ephemeral=True)
+        magasin = pour_ce_serveur(bot, interaction)
+        exclus = await magasin.types_exclus()
+        monde, frais = await _types_du_monde(magasin)
+        ecartes = {normaliser_type(nom) for nom in exclus}
+
+        embed = discord.Embed(
+            title="Types de bâtiments dans ce serveur",
+            description=(
+                "Tout est proposé par défaut, et chaque serveur choisit pour lui "
+                "seul."
+            ),
+            color=0x5865F2,
+        )
+        if monde:
+            embed.add_field(
+                name=f"Dans l'export ({len(monde)})",
+                value="\n".join(
+                    f"⛔ `{nom}` *(écarté)*"
+                    if normaliser_type(nom) in ecartes
+                    else f"✅ `{nom}`"
+                    for nom in monde
+                ),
+                inline=False,
+            )
+        # Un type écarté que l'export ne contient plus : le monde change, le goût
+        # non. Effacé, il reviendrait sans bruit si le jeu le rendait ; caché, on
+        # croirait le post filtré par autre chose.
+        connus = {normaliser_type(nom) for nom in monde}
+        orphelins = [nom for nom in exclus if normaliser_type(nom) not in connus]
+        if orphelins:
+            embed.add_field(
+                name=f"Écartés, mais plus dans l'export ({len(orphelins)})",
+                value="\n".join(f"⛔ `{nom}`" for nom in orphelins),
+                inline=False,
+            )
+        if not exclus:
+            embed.add_field(
+                name="Écartés (0)",
+                value="*Aucun.* Toutes les promotions peuvent sortir.",
+                inline=False,
+            )
+        if not frais:
+            embed.add_field(
+                name="⚠️ Export injoignable",
+                value=(
+                    "Les types listés sont ceux du dernier chargement réussi. "
+                    "Le filtre, lui, s'applique toujours."
+                ),
+                inline=False,
+            )
+        await interaction.followup.send(embed=embed, ephemeral=True)
+
+    @types_groupe.command(
+        name="exclure", description="Ne plus jamais proposer ce type de bâtiment"
+    )
+    @app_commands.describe(type="Type de bâtiment, tel que l'export du jeu l'écrit")
+    @app_commands.autocomplete(type=completer_type_garde)
+    async def types_exclure(interaction: discord.Interaction, type: str) -> None:
+        """Écarte un type, après avoir vérifié qu'il existe.
+
+        Le nom est vérifié contre l'export parce qu'un type mal orthographié
+        n'écarterait rien : un « ✅ » pour un filtre inerte, et l'on chercherait
+        ensuite pourquoi le post n'a pas changé.
+        """
+        await interaction.response.defer(ephemeral=True)
+        magasin = pour_ce_serveur(bot, interaction)
+        monde, frais = await _types_du_monde(magasin)
+
+        if not monde:
+            await interaction.followup.send(
+                "❌ Impossible de lire l'export du jeu, et aucun type connu d'un "
+                "chargement précédent : rien ne permet de vérifier ce nom. "
+                "Réessaie plus tard — `/reglages source tester` dit ce qui bloque.",
+                ephemeral=True,
+            )
+            return
+
+        cible = normaliser_type(type)
+        vrai = next((nom for nom in monde if normaliser_type(nom) == cible), None)
+        if vrai is None:
+            noms = ", ".join(f"`{nom}`" for nom in monde)
+            await interaction.followup.send(
+                f"❌ **{type.strip()}** n'est pas un type de l'export"
+                + ("" if frais else " (dernier chargement connu)")
+                + f". Les types sont : {noms}.",
+                ephemeral=True,
+            )
+            return
+
+        # Comptés sur l'export et non sur la liste des écartés : un type écarté
+        # qui a disparu du jeu y pèse encore, et refuserait le réglage en
+        # annonçant un dernier type là où il en reste trois.
+        ecartes = {normaliser_type(nom) for nom in await magasin.types_exclus()}
+        restants = [nom for nom in monde if normaliser_type(nom) not in ecartes]
+        if len(restants) <= 1 and cible not in ecartes:
+            await interaction.followup.send(
+                f"❌ **{vrai}** est le dernier type encore proposé. Tout écarter "
+                "rendrait les posts vides tous les soirs, ce qui ressemble à une "
+                "panne du bot — remets-en un d'abord avec "
+                "`/promos types remettre`.",
+                ephemeral=True,
+            )
+            return
+
+        if not await magasin.exclure_type(vrai):
+            await interaction.followup.send(
+                f"ℹ️ **{vrai}** était déjà écarté.", ephemeral=True
+            )
+            return
+
+        await interaction.followup.send(
+            f"✅ **{vrai}** est écarté : ses promotions ne sortiront plus dans ce "
+            "serveur, ni dans `/promos chercher`. Un post pourra donc être plus "
+            "court, voire ne pas sortir du tout.",
+            ephemeral=True,
+        )
+
+    @types_groupe.command(
+        name="remettre", description="Proposer de nouveau ce type de bâtiment"
+    )
+    @app_commands.describe(type="Type de bâtiment écarté")
+    @app_commands.autocomplete(type=completer_type_ecarte)
+    async def types_remettre(interaction: discord.Interaction, type: str) -> None:
+        """Rend un type écarté, sans charger l'export.
+
+        Défaire un réglage ne doit pas dépendre de l'API du jeu : le jour où elle
+        tombe est celui où l'on veut tout remettre pour voir. C'est aussi le seul
+        chemin qui rende un type disparu de l'export, qu'aucun chargement ne
+        pourrait plus valider.
+        """
+        magasin = pour_ce_serveur(bot, interaction)
+        if not await magasin.remettre_type(type):
+            await interaction.response.send_message(
+                f"ℹ️ **{type.strip()}** n'était pas écarté.", ephemeral=True
+            )
+            return
+
+        await interaction.response.send_message(
+            f"✅ **{type.strip()}** est proposé de nouveau.", ephemeral=True
         )
 
     # `salons=False` : le générique `salon ajouter` cohabiterait avec le vrai sous
