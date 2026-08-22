@@ -143,6 +143,21 @@ def _montant_ou_rien(brut: Any) -> Decimal | None:
         return None
 
 
+def _entier_ou_rien(brut: Any) -> int | None:
+    """Un compte positif, ou `None` si la valeur n'en est pas un.
+
+    Accepte le texte (`"5"`) parce que le JSON de la config a été écrit par
+    plusieurs mains — le site, une version antérieure, un éditeur. Refuse zéro et
+    les négatifs : un plafond de zéro promotion est une fourchette qui ne publie
+    rien, indiscernable d'une panne.
+    """
+    try:
+        nombre = int(str(brut).strip())
+    except (TypeError, ValueError):
+        return None
+    return nombre if nombre >= 1 else None
+
+
 def _normaliser_fourchette(brute: dict) -> dict:
     """Fourchette aux champs garantis, quelle que soit l'origine du JSON.
 
@@ -169,6 +184,12 @@ def _normaliser_fourchette(brute: dict) -> dict:
         tolere_min = min(tolere_min, _montant_ou_rien(prix_min) or Decimal(0))
         tolere_max = max(tolere_max, _montant_ou_rien(prix_max) or Decimal(0))
 
+    # `0` plutôt qu'une clé absente pour « aucun plafond » : la forme des
+    # fourchettes enregistrées reste la même d'une version à l'autre, ce qui
+    # évite d'avoir à distinguer « pas plafonnée » de « écrite avant le
+    # plafond » — les deux se lisent pareil.
+    plafond = _entier_ou_rien(brute.get("plafond"))
+
     return {
         "nom": str(brute.get("nom", "")).strip(),
         "prix_min": prix_min,
@@ -176,6 +197,7 @@ def _normaliser_fourchette(brute: dict) -> dict:
         "salons": [str(salon) for salon in brute.get("salons") or [] if salon],
         "tolere_min": "" if tolere_min is None else str(tolere_min),
         "tolere_max": "" if tolere_max is None else str(tolere_max),
+        "plafond": 0 if plafond is None else plafond,
     }
 
 
@@ -191,6 +213,16 @@ def bornes_tolerees(fourchette: dict) -> tuple[Decimal | None, Decimal | None]:
     return _montant_ou_rien(fourchette.get("tolere_min")), _montant_ou_rien(
         fourchette.get("tolere_max")
     )
+
+
+def plafond_fourchette(fourchette: dict) -> int | None:
+    """Nombre maximum de promotions à publier, `None` si la fourchette n'en a pas.
+
+    Même rôle que `bornes_tolerees` : une seule traduction pour la publication du
+    soir, l'aperçu et l'API, plutôt qu'une lecture recopiée à trois endroits dont
+    l'une oublierait un jour de plafonner.
+    """
+    return _entier_ou_rien(fourchette.get("plafond"))
 
 
 class Store:
@@ -529,6 +561,62 @@ class Store:
         liste[index] = {**liste[index], "tolere_min": "", "tolere_max": ""}
         await self._ecrire_fourchettes(liste)
         return True
+
+    async def regler_plafond_fourchette(self, nom: str, combien: int) -> bool:
+        """Limite le nombre de promotions publiées. False si la fourchette est
+        inconnue, `ValueError` si le nombre est inférieur à 1.
+
+        Le nombre est vérifié **avant** le nom : à saisie doublement fautive,
+        c'est le nombre qu'il faut signaler, parce qu'un nom de fourchette
+        s'autocomplète et qu'un plafond de zéro ne se rattrape pas — la
+        fourchette cesserait de publier sans que rien ne l'annonce.
+        """
+        if int(combien) < 1:
+            raise ValueError(
+                "Le plafond doit valoir au moins 1 promotion. Pour qu'une "
+                "fourchette ne publie plus, retire-lui ses salons."
+            )
+
+        liste = await self.fourchettes()
+        index = self._index(liste, nom)
+        if index < 0:
+            return False
+
+        liste[index] = {**liste[index], "plafond": int(combien)}
+        await self._ecrire_fourchettes(liste)
+        return True
+
+    async def effacer_plafond_fourchette(self, nom: str) -> bool:
+        """Retire le plafond. False si la fourchette est inconnue ou n'en avait
+        pas — pour que la commande n'annonce pas un effacement imaginaire."""
+        liste = await self.fourchettes()
+        index = self._index(liste, nom)
+        if index < 0 or not plafond_fourchette(liste[index]):
+            return False
+
+        liste[index] = {**liste[index], "plafond": 0}
+        await self._ecrire_fourchettes(liste)
+        return True
+
+    async def plafond_de_recherche(self) -> int | None:
+        """Plafond à appliquer à une recherche, qui couvre **l'union** des
+        fourchettes : le plus large, et seulement si toutes en ont un.
+
+        Une recherche ne porte sur aucune fourchette en particulier. Y poser le
+        plafond de l'une cacherait des promotions qu'une autre publie bel et
+        bien : `/promos chercher` montrerait alors moins que ce qui sort le soir,
+        c'est-à-dire l'inverse de ce qu'on lui demande. Il faut donc que
+        *chaque* fourchette soit plafonnée pour que la recherche le soit, et
+        alors au plus permissif des plafonds.
+
+        Sans aucune fourchette, aucun plafond : « toutes plafonnées » ne doit pas
+        être vrai d'un ensemble vide, sinon un serveur neuf verrait sa recherche
+        bornée à rien.
+        """
+        plafonds = [plafond_fourchette(f) for f in await self.fourchettes()]
+        if not plafonds or None in plafonds:
+            return None
+        return max(plafonds)
 
     async def ajouter_salon_fourchette(self, nom: str, salon_id: str) -> bool:
         """Attache un salon. False si la fourchette est inconnue ou l'a déjà."""

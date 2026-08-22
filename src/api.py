@@ -191,6 +191,24 @@ async def _fourchette(bot, requete: web.Request, charge: dict | None = None):
     )
 
 
+async def _plafond(bot, requete: web.Request, charge: dict | None = None) -> int | None:
+    """Plafond à appliquer, ou rien si la requête a donné ses propres bornes.
+
+    Même règle que `/promos chercher` : sans bornes, la question est « qu'est-ce
+    qui va sortir ? » et le plafond des fourchettes doit s'y voir ; avec des
+    bornes, c'est une recherche libre, et couper le résultat cacherait des
+    promotions qu'on vient de demander explicitement.
+
+    Le plafond est celui de **l'union** (voir `Store.plafond_de_recherche`), et
+    celui de la configuration commune : le site ne dit pas de quel serveur il
+    parle.
+    """
+    source = {**(charge or {}), **dict(requete.query)}
+    if any(source.get(cle) not in (None, "") for cle in ("min", "max")):
+        return None
+    return await bot.store.plafond_de_recherche()
+
+
 async def _config_json(bot) -> dict[str, Any]:
     """La config telle que le site la lit.
 
@@ -269,6 +287,7 @@ def enregistrer_routes(app: web.Application, bot) -> None:
             prix_min,
             prix_max,
             types_exclus=await bot.store.types_exclus(),
+            plafond=await _plafond(bot, requete),
         )
         return _json(promos_en_json(trouvees, meta, await _date_du_jour(bot)))
 
@@ -366,6 +385,7 @@ def enregistrer_routes(app: web.Application, bot) -> None:
             prix_min,
             prix_max,
             types_exclus=await bot.store.types_exclus(),
+            plafond=await _plafond(bot, requete, charge),
         )
         date = await _date_du_jour(bot)
 

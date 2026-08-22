@@ -3156,21 +3156,200 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
         "types-api-promos-non-filtrees",
         "src/api.py",
         "            types_exclus=await bot.store.types_exclus(),\n"
-        "        )\n"
-        "        return _json(promos_en_json(trouvees, meta, await _date_du_jour(bot)))",
-        "        )\n"
-        "        return _json(promos_en_json(trouvees, meta, await _date_du_jour(bot)))",
+        "            plafond=await _plafond(bot, requete),",
+        "            plafond=await _plafond(bot, requete),",
         "le site listerait des promotions que le bot ne publie nulle part",
     ),
     (
         "types-api-apercu-non-filtre",
         "src/api.py",
         "            types_exclus=await bot.store.types_exclus(),\n"
-        "        )\n"
-        "        date = await _date_du_jour(bot)",
-        "        )\n"
-        "        date = await _date_du_jour(bot)",
+        "            plafond=await _plafond(bot, requete, charge),",
+        "            plafond=await _plafond(bot, requete, charge),",
         "l'aperçu du site promettrait un post que le soir ne produira pas",
+    ),
+    # --- Le plafond du nombre de promotions ---------------------------------
+    #
+    # Deux silences à traquer : un plafond réglé que rien ne lit (la commande
+    # confirme, le post sort inchangé) et un plafond qui coupe autre chose que la
+    # queue de la liste (le post rétrécit sans qu'on sache ce qui est parti).
+    (
+        "plafond-coupe-ignoree",
+        "src/promos.py",
+        "    if plafond and plafond > 0:\n        retenus = retenus[:plafond]",
+        "    if False:\n        pass",
+        "un plafond réglé ne couperait rien, et la commande aurait confirmé",
+    ),
+    (
+        "plafond-coupe-la-tete",
+        "src/promos.py",
+        "        retenus = retenus[:plafond]",
+        "        retenus = retenus[-plafond:]",
+        "les moins chères publiées à la place des plus chères",
+    ),
+    (
+        "plafond-absurde-vide-le-post",
+        "src/promos.py",
+        "    if plafond and plafond > 0:",
+        "    if plafond is not None:",
+        "un `0` retouché à la main ferait un post vide, lu comme une panne",
+    ),
+    (
+        "plafond-total-compte-avant-la-coupe",
+        "src/promos.py",
+        "    total = len(retenus)",
+        "    total = len(dedans + toleres + repeches)",
+        "un post de deux promotions annoncé « 1/40 »",
+    ),
+    (
+        "plafond-zero-lu-comme-un-plafond",
+        "src/db.py",
+        "    return nombre if nombre >= 1 else None",
+        "    return nombre if nombre >= 0 else None",
+        "un `0` en base plafonnerait à zéro : la fourchette cesserait de publier",
+    ),
+    (
+        "plafond-en-texte-non-converti",
+        "src/db.py",
+        "    try:\n"
+        "        nombre = int(str(brut).strip())\n"
+        "    except (TypeError, ValueError):\n"
+        "        return None",
+        "    if not isinstance(brut, int):\n        return None\n    nombre = brut",
+        "un plafond écrit `\"5\"` par le site ne plafonnerait rien",
+    ),
+    (
+        "plafond-perdu-a-la-normalisation",
+        "src/db.py",
+        '        "plafond": 0 if plafond is None else plafond,',
+        '        "plafond": 0,',
+        "`/promos prix` effacerait le plafond au passage, sans le dire",
+    ),
+    (
+        "plafond-zero-accepte-en-base",
+        "src/db.py",
+        "        if int(combien) < 1:",
+        "        if False:",
+        "une fourchette réglée à zéro, muette et indiscernable d'une panne",
+    ),
+    (
+        "plafond-efface-annonce-a-tort",
+        "src/db.py",
+        "        if index < 0 or not plafond_fourchette(liste[index]):",
+        "        if index < 0:",
+        "un effacement imaginaire confirmé par un « ✅ »",
+    ),
+    (
+        "plafond-recherche-prend-le-plus-etroit",
+        "src/db.py",
+        "        return max(plafonds)",
+        "        return min(plafonds)",
+        "la recherche montrerait moins que la fourchette la plus généreuse",
+    ),
+    (
+        "plafond-recherche-plafonnee-par-une-seule",
+        "src/db.py",
+        "        if not plafonds or None in plafonds:\n"
+        "            return None\n"
+        "        return max(plafonds)",
+        "        reels = [p for p in plafonds if p]\n"
+        "        if not reels:\n"
+        "            return None\n"
+        "        return max(reels)",
+        "la recherche cacherait ce qu'une fourchette non plafonnée publie",
+    ),
+    (
+        "plafond-recherche-plafonnee-sans-fourchette",
+        "src/db.py",
+        "        if not plafonds or None in plafonds:",
+        "        if None in plafonds:",
+        "un serveur neuf verrait sa recherche bornée à rien",
+    ),
+    (
+        "plafond-jamais-transmis-au-coeur",
+        "src/bot.py",
+        "            plafond=plafond,",
+        "            plafond=None,",
+        "le réglage lu, transmis nulle part : post, aperçu et recherche entiers",
+    ),
+    (
+        "plafond-post-du-soir-non-plafonne",
+        "src/modules/promos.py",
+        "                plafond=plafond_fourchette(fourchette),",
+        "                plafond=None,",
+        "le post du soir ignorerait le plafond de sa fourchette",
+    ),
+    (
+        "plafond-recherche-jamais-plafonnee",
+        "src/modules/promos.py",
+        "        plafond = None if libre else await magasin.plafond_de_recherche()",
+        "        plafond = None",
+        "`/promos chercher` promettrait plus long que le post du soir",
+    ),
+    (
+        "plafond-recherche-libre-plafonnee",
+        "src/modules/promos.py",
+        "        plafond = None if libre else await magasin.plafond_de_recherche()",
+        "        plafond = await magasin.plafond_de_recherche()",
+        "des bornes tapées à la main verraient leur résultat coupé",
+    ),
+    (
+        "plafond-un-sans-avertissement",
+        "src/modules/promos.py",
+        "        if nombre < CIBLE_MINIMUM:",
+        "        if False:",
+        "le repêchage silencieusement annulé par un plafond de 1",
+    ),
+    (
+        "plafond-fourchette-inconnue-confirmee",
+        "src/modules/promos.py",
+        "        if not regle:\n"
+        "            await refuser_fourchette_inconnue(interaction, fourchette)\n"
+        "            return\n"
+        "\n"
+        "        # Les plus chères",
+        "        if False:\n            pass\n\n        # Les plus chères",
+        "un « ✅ » sur une fourchette qui n'existe pas",
+    ),
+    (
+        "plafond-invisible-dans-la-liste",
+        "src/commandes.py",
+        "        if plafond := plafond_fourchette(fourchette):\n"
+        "            lignes.append(\n"
+        "                f\"-# plafond : {plafond} promotion{'s' if plafond > 1 else ''} au maximum\"\n"
+        "            )",
+        "        if False:\n            pass",
+        "un plafond nulle part relisible, donc re-réglé au hasard",
+    ),
+    (
+        "plafond-absent-expose-a-zero",
+        "src/serialisation.py",
+        "    if (plafond := plafond_fourchette(fourchette)) is not None:\n"
+        "        rendu[\"plafond\"] = plafond",
+        '    rendu["plafond"] = plafond_fourchette(fourchette) or 0',
+        "le site montrerait « plafond : 0 » sur une fourchette qui publie tout",
+    ),
+    (
+        "plafond-api-promos-non-plafonnee",
+        "src/api.py",
+        "            plafond=await _plafond(bot, requete),",
+        "            plafond=None,",
+        "la page listerait plus de promotions que le post du soir",
+    ),
+    (
+        "plafond-api-apercu-non-plafonne",
+        "src/api.py",
+        "            plafond=await _plafond(bot, requete, charge),",
+        "            plafond=None,",
+        "l'aperçu du site promettrait un post plus long que le vrai",
+    ),
+    (
+        "plafond-api-bornes-libres-plafonnees",
+        "src/api.py",
+        '    if any(source.get(cle) not in (None, "") for cle in ("min", "max")):\n'
+        "        return None",
+        "    if False:\n        pass",
+        "une recherche à bornes données verrait son résultat coupé",
     ),
 ]
 

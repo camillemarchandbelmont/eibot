@@ -22,6 +22,7 @@ from __future__ import annotations
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
+from src.db import plafond_fourchette
 from src.money import format_money, format_money_brut, format_money_long
 from src.promos import Meta, Promo
 
@@ -139,6 +140,11 @@ def fourchette_en_json(fourchette: dict) -> dict[str, Any]:
             rendu.update(
                 montant_en_json(champ, _montant_ou_zero(fourchette[champ]))
             )
+    # Même règle, et un entier nu : le plafond est un compte, pas un montant, donc
+    # rien à pré-formater. Absent quand il n'y en a pas — un `0` se lirait comme
+    # une fourchette plafonnée à zéro, c'est-à-dire muette.
+    if (plafond := plafond_fourchette(fourchette)) is not None:
+        rendu["plafond"] = plafond
     return rendu
 
 

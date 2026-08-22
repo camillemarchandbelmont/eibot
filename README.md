@@ -73,6 +73,36 @@ afficher la distance à la fourchette (`0 Ø` pour une promo dans le budget).
 S'il n'y a aucune promotion du tout dans l'export, le bot poste un simple
 message le disant, pour que tu saches qu'il a bien tourné.
 
+### Plafonner le nombre de promotions
+
+Une fourchette large prend **tout** ce qu'elle contient : dix, quarante, sans
+limite. Pour en publier moins :
+
+```
+/promos plafond fourchette:grosses nombre:5
+/promos plafond fourchette:grosses          sans nombre : ne plafonne plus
+```
+
+Ce sont les **plus chères** qui restent — le post est déjà trié du plus cher au
+moins cher, on lui coupe la queue. `{rang}` et `{total}` comptent ce qui reste :
+un post de cinq promotions s'annonce « 1/5 », jamais « 1/40 ».
+
+Le plafond est **par fourchette**, parce que le besoin l'est : la fourchette des
+petits prix trouve quarante bâtiments dont on ne veut que cinq, celle des très
+gros n'en trouve que deux et on les veut tous les deux.
+
+Il **passe devant le minimum de 2** : un plafond de 1 annule la zone de
+tolérance et le repêchage les jours creux. La commande le signale, parce qu'un
+réglage qui en défait un autre en silence est introuvable ensuite.
+
+Il vaut pour le post du soir et pour `/promos apercu`, qui doit montrer le post
+tel qu'il sortira. `/promos chercher` **sans bornes** le respecte aussi ; avec
+des bornes tapées à la main, non — la question posée n'est plus « qu'est-ce qui
+va sortir ? », et couper le résultat cacherait ce qu'on vient de demander.
+
+`/promos liste` et `/reglages voir` rappellent le plafond des fourchettes qui en
+ont un.
+
 ### Écarter des types de bâtiments
 
 Le jeu range chaque bâtiment sous un type — `zones`, `bureaux`, `transport`,
@@ -307,6 +337,7 @@ local, mais elle repart des valeurs de `.env` à chaque redémarrage.
 | `/promos ajouter fourchette min max` | Crée une fourchette (ex : `fourchette:grosses min:100T max:6P`) |
 | `/promos prix fourchette min max` | Modifie ses bornes, en gardant ses salons |
 | `/promos tolerance fourchette [min] [max]` | Zone acceptée quand la fourchette est trop pauvre ; sans bornes, l'efface |
+| `/promos plafond fourchette [nombre]` | Nombre maximum de promotions publiées, les plus chères ; sans nombre, ne plafonne plus |
 | `/promos supprimer fourchette` | Supprime une fourchette et ses salons |
 | `/promos salon ajouter fourchette salon` | Publie **cette** fourchette dans ce salon |
 | `/promos salon retirer fourchette salon` | Cesse de l'y publier |
@@ -764,6 +795,12 @@ Les deux routes appliquent les **types écartés** de la configuration commune,
 celle dont le site parle faute de dire de quel serveur il s'agit. Sans ce filtre,
 la page listerait des promotions que le bot ne publie nulle part, et l'on
 croirait à une panne.
+
+Le **plafond** aussi, mais seulement quand la requête ne donne pas ses propres
+bornes — comme `/promos chercher`. Et seulement si **toutes** les fourchettes en
+ont un, le plus large d'entre eux faisant loi : le plafond de l'une ne vaut pas
+pour l'union, et l'appliquer cacherait des promotions qu'une fourchette non
+plafonnée publie bel et bien.
 
 ### Les montants ne passent jamais en nombre JSON
 

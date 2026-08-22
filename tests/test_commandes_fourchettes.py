@@ -168,6 +168,8 @@ async def test_tout_ce_qui_touche_aux_promotions_est_sous_un_seul_mot():
         "supprimer",
         "prix",
         "tolerance",
+        # Combien de promotions au maximum, par fourchette.
+        "plafond",
         "salon",
         "salon ajouter",
         "salon retirer",
@@ -207,8 +209,8 @@ async def test_les_commandes_de_fourchette_nomment_leur_cible():
     """
     bot = await _bot()
 
-    for nom in ("ajouter", "supprimer", "prix", "tolerance", "salon ajouter",
-                "salon retirer"):
+    for nom in ("ajouter", "supprimer", "prix", "tolerance", "plafond",
+                "salon ajouter", "salon retirer"):
         parametres = _commande(bot, f"promos {nom}")._params
         assert "fourchette" in parametres, nom
         assert "nom" not in parametres, nom

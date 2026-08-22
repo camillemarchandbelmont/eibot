@@ -30,10 +30,10 @@ from src.commandes import (
     permissions_manquantes,
     pour_ce_serveur,
 )
-from src.db import bornes_tolerees
+from src.db import bornes_tolerees, plafond_fourchette
 from src.modules import Envoi, Module, Publication, Tournee
 from src.money import MoneyError, format_money, parse_money
-from src.promos import normaliser_type, types_disponibles
+from src.promos import CIBLE_MINIMUM, normaliser_type, types_disponibles
 from src.publish import envoyer
 from src.source import SourceError
 
@@ -90,6 +90,7 @@ async def _preparer(bot: Any, magasin: Any, maintenant: Any) -> Tournee:
                 tolere_min=tolere_min,
                 tolere_max=tolere_max,
                 magasin=magasin,
+                plafond=plafond_fourchette(fourchette),
             )
         except Exception as erreur:
             # Rendu impossible pour *cette* fourchette (template appliqué à des
@@ -232,9 +233,17 @@ def enregistrer(bot: Any) -> None:
         if prix_min > prix_max:
             prix_min, prix_max = prix_max, prix_min
 
+        # Plafonnée seulement quand la recherche couvre les fourchettes réglées,
+        # c'est-à-dire quand elle répond à « qu'est-ce qui va sortir ce soir ? ».
+        # Avec des bornes tapées à la main, la question est autre — et cacher des
+        # promotions qu'on vient de demander explicitement serait un piège.
+        # Le plafond est alors celui de l'union (voir `plafond_de_recherche`).
+        libre = min is not None or max is not None
+        plafond = None if libre else await magasin.plafond_de_recherche()
+
         try:
             embeds, contenu, repli = await bot.construire_publication(
-                prix_min, prix_max, magasin=magasin
+                prix_min, prix_max, magasin=magasin, plafond=plafond
             )
         except SourceError as erreur:
             await interaction.followup.send(f"❌ {erreur}", ephemeral=True)
@@ -457,6 +466,73 @@ def enregistrer(bot: Any) -> None:
             f"✅ **{fourchette.strip()}** tolère **{format_money(tolere_min)}** → "
             f"**{format_money(tolere_max)}**.\n"
             "-# Cherché là en priorité quand la fourchette n'a pas assez de promos.",
+            ephemeral=True,
+        )
+
+    @groupe.command(
+        name="plafond",
+        description="Nombre maximum de promotions publiées (sans nombre : efface)",
+    )
+    @app_commands.describe(
+        nombre="Combien de promotions au maximum ; laisser vide pour ne plus plafonner",
+    )
+    @app_commands.autocomplete(fourchette=completer_fourchette)
+    async def fourchette_plafond(
+        interaction: discord.Interaction,
+        fourchette: str,
+        nombre: int | None = None,
+    ) -> None:
+        """Règle ou efface le plafond d'une fourchette.
+
+        Sans nombre, efface — le même geste que `/promos tolerance`, plutôt qu'un
+        mot de plus à retenir par réglage.
+        """
+        magasin = pour_ce_serveur(bot, interaction)
+
+        if nombre is None:
+            if not await magasin.effacer_plafond_fourchette(fourchette):
+                fourchettes = await magasin.fourchettes()
+                if magasin._index(fourchettes, fourchette) < 0:
+                    await refuser_fourchette_inconnue(interaction, fourchette)
+                else:
+                    await interaction.response.send_message(
+                        f"ℹ️ **{fourchette.strip()}** n'avait pas de plafond.",
+                        ephemeral=True,
+                    )
+                return
+
+            await interaction.response.send_message(
+                f"✅ Plafond de **{fourchette.strip()}** effacé.\n"
+                "-# Le post reprendra toutes les promotions de la fourchette.",
+                ephemeral=True,
+            )
+            return
+
+        try:
+            regle = await magasin.regler_plafond_fourchette(fourchette, nombre)
+        except ValueError as erreur:
+            await interaction.response.send_message(f"❌ {erreur}", ephemeral=True)
+            return
+
+        if not regle:
+            await refuser_fourchette_inconnue(interaction, fourchette)
+            return
+
+        # Les plus chères, dit explicitement : c'est la seule coupe qui s'explique
+        # à l'écran, et sans le dire on croirait à un tirage.
+        note = "-# Les plus chères d'abord ; les suivantes ne sortent pas."
+        if nombre < CIBLE_MINIMUM:
+            # Le plancher complète une fourchette trop pauvre en tolérant puis en
+            # repêchant. Un plafond plus bas l'annule : non dit, on chercherait
+            # pourquoi les jours creux ne donnent plus les deux promotions promises.
+            note = (
+                f"-# Passe devant le minimum de {CIBLE_MINIMUM} : plus de "
+                "repêchage hors fourchette les jours creux."
+            )
+
+        await interaction.response.send_message(
+            f"✅ **{fourchette.strip()}** publiera au maximum "
+            f"**{nombre}** promotion{'s' if nombre > 1 else ''}.\n{note}",
             ephemeral=True,
         )
 

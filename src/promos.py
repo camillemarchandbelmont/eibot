@@ -202,6 +202,7 @@ def find_promos(
     tolere_min: Decimal | None = None,
     tolere_max: Decimal | None = None,
     types_exclus: Iterable[str] = (),
+    plafond: int | None = None,
 ) -> list[Promo]:
     """Promotions dont le prix payé tombe dans [prix_min, prix_max].
 
@@ -227,6 +228,14 @@ def find_promos(
     le jour creux, celui où personne ne s'y attend. Un type écarté peut donc
     valoir un post plus court, ou pas de post du tout — c'est le sens d'une
     exclusion, par opposition à une préférence.
+
+    `plafond` limite le nombre de promotions rendues, les plus chères d'abord —
+    l'ordre du post, dont couper la queue est la seule coupe qui s'explique à
+    l'écran. Il **gagne contre `minimum`** : le plafond est un réglage explicite
+    quand le plancher n'est qu'un défaut, et un plafond de 1 qui rendrait deux
+    promotions les jours creux serait indéfendable. Un plafond absurde (`0`,
+    négatif) est ignoré : la configuration est du JSON retouchable à la main, et
+    une faute de frappe doit coûter le plafond du jour, pas la publication.
     """
     exclus = {t for t in (normaliser_type(nom) for nom in types_exclus) if t}
     en_promo = [
@@ -259,6 +268,13 @@ def find_promos(
         repeches = reste[: minimum - len(dedans) - len(toleres)]
 
     retenus = dedans + toleres + repeches
+    # Coupé ici, donc après les trois passes et avant le comptage : la liste est
+    # déjà dans l'ordre du post — les idéales, puis les tolérées, puis les
+    # repêchées, chaque groupe du plus cher au moins cher. `rang` et `total`
+    # comptent ce qui reste, sinon un post de deux promotions s'annoncerait
+    # « 1/40 » et l'on chercherait les trente-huit qui manquent.
+    if plafond and plafond > 0:
+        retenus = retenus[:plafond]
     total = len(retenus)
     # Identité plutôt qu'égalité : deux lignes du CSV peuvent avoir les mêmes
     # valeurs sans être le même bâtiment.

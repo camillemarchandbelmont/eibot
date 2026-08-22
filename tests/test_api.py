@@ -305,6 +305,50 @@ async def test_apercu_ecarte_les_types_exclus(api):
     assert "Entrepôt" not in str(corps)
 
 
+async def test_promos_respecte_le_plafond_des_fourchettes(api):
+    """Sans bornes, la route couvre l'union des fourchettes : elle doit donc
+    respecter leur plafond, sinon la page promettrait un post plus long que celui
+    qui sortira le soir."""
+    client, bot = await api()
+    await bot.store.ajouter_fourchette("tout", Decimal(0), Decimal("1e30"))
+    await bot.store.regler_plafond_fourchette("tout", 2)
+
+    corps = await (await client.get("/api/promos", headers=_entetes())).json()
+
+    assert len(corps["promos"]) == 2
+
+
+async def test_promos_avec_bornes_nest_pas_plafonnee(api):
+    """Comme `/promos chercher min: max:` : des bornes données à la main posent
+    une autre question que « qu'est-ce qui va sortir ? », et couper le résultat
+    cacherait des promotions qu'on vient de demander explicitement."""
+    client, bot = await api()
+    await bot.store.ajouter_fourchette("tout", Decimal(0), Decimal("1e30"))
+    await bot.store.regler_plafond_fourchette("tout", 2)
+
+    # 1 Q (quintillion) : au-dessus du plus gros bâtiment de l'export, donc les
+    # bornes ne retirent rien et le compte ne parle que du plafond.
+    corps = await (await client.get(
+        "/api/promos?min=0&max=1Q", headers=_entetes()
+    )).json()
+
+    assert len(corps["promos"]) == 4
+
+
+async def test_apercu_respecte_le_plafond_des_fourchettes(api):
+    """Le même plafond sur l'autre appel : un aperçu plus long que le post est
+    exactement ce que l'aperçu doit empêcher."""
+    client, bot = await api()
+    await bot.store.ajouter_fourchette("tout", Decimal(0), Decimal("1e30"))
+    await bot.store.regler_plafond_fourchette("tout", 2)
+
+    corps = await (await client.post("/api/apercu", json={}, headers=_entetes())).json()
+
+    # `corps["promos"]` est le rendu complet (monde, date, liste) : l'aperçu y
+    # ajoute les messages Discord, d'où un niveau de plus que `/api/promos`.
+    assert len(corps["promos"]["promos"]) == 2
+
+
 async def test_promos_accepte_la_notation_du_jeu(api):
     """« 50 6P » doit être lu comme dans Discord : une seule grammaire de
     saisie pour les deux façades. Lu comme 506 PØ, il exclut le Mégapôle."""

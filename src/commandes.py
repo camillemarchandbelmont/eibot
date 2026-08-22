@@ -20,7 +20,7 @@ import discord
 from discord import app_commands
 
 from src.acces import gere_la_liste
-from src.db import bornes_tolerees
+from src.db import bornes_tolerees, plafond_fourchette
 from src.modules import Publication
 from src.money import ECHELLE, NOMS, format_money, parse_money
 from src.schedule import doit_publier, maintenant_local
@@ -115,6 +115,13 @@ def lister_fourchettes(bot: Any, fourchettes: list[dict]) -> str:
         if tolere_min is not None and tolere_max is not None:
             lignes.append(
                 f"-# tolérance : {format_money(tolere_min)} → {format_money(tolere_max)}"
+            )
+        # Idem : un plafond ne se relit nulle part ailleurs, et un réglage
+        # invisible se re-règle au hasard. Rien quand il n'y en a pas — un
+        # « aucun » ferait chercher un réglage là où il n'y a qu'un défaut.
+        if plafond := plafond_fourchette(fourchette):
+            lignes.append(
+                f"-# plafond : {plafond} promotion{'s' if plafond > 1 else ''} au maximum"
             )
         if not fourchette["salons"]:
             lignes.append("⚠️ aucun salon : ne publiera rien")

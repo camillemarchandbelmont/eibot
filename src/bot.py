@@ -332,6 +332,7 @@ class EmpireBot(discord.Client):
         tolere_min: Decimal | None = None,
         tolere_max: Decimal | None = None,
         magasin=None,
+        plafond: int | None = None,
     ) -> tuple[list[dict], str, str]:
         """Renvoie (embeds, contenu, message de repli si aucune promo).
 
@@ -352,6 +353,11 @@ class EmpireBot(discord.Client):
         ici, le filtre vaut du même coup pour le post du soir, l'aperçu et
         `/promos chercher` : filtré à la seule publication, l'aperçu montrerait
         des promotions qui ne sortiront pas.
+
+        `plafond` limite le nombre de promotions montrées. Il vient en argument et
+        non du magasin, contrairement aux types écartés : il appartient à la
+        fourchette et l'appelant sait laquelle il rend, quand cette fonction, elle,
+        ne reçoit que des bornes.
         """
         magasin = self.store if magasin is None else magasin
         meta, batiments = donnees if donnees is not None else await self.charger()
@@ -359,6 +365,7 @@ class EmpireBot(discord.Client):
             batiments, prix_min, prix_max,
             tolere_min=tolere_min, tolere_max=tolere_max,
             types_exclus=await magasin.types_exclus(),
+            plafond=plafond,
         )
         modele = await magasin.template()
         date = maintenant_local((await magasin.config())["fuseau"]).strftime("%Y-%m-%d")
