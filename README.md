@@ -816,7 +816,7 @@ pip install -r requirements-dev.txt
 python -m pytest -q
 ```
 
-1105 tests couvrent la notation monétaire, le parsing du CSV (entiers de
+1090 tests couvrent la notation monétaire, le parsing du CSV (entiers de
 21 chiffres, notation scientifique), le calcul des remises, le repêchage hors
 fourchette, le rendu du template, les limites Discord, le planning (fenêtre
 de rattrapage, idempotence quotidienne), l'API du jeu (construction de l'URL,

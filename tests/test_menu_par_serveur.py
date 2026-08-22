@@ -23,21 +23,17 @@ from src.modules import Module, decouvrir
 from tests.test_commandes_fourchettes import _bot, _commande
 from tests.test_commandes_par_serveur import EMPIRE, VOISIN, _interaction
 
-#: Le menu complet, celui que voit un serveur qui n'a rien éteint. `bonjour` et
-#: `bonsoir` viennent du module d'épreuve `src/modules/politesse.py`, jetable :
-#: ils s'en vont avec lui.
+#: Le menu complet, celui que voit un serveur qui n'a rien éteint.
 MENU_COMPLET = {
     "convertir",
     "promos",
     "frais",
     "reglages",
-    "bonjour",
-    "bonsoir",
 }
 
 #: Les modules du dossier, dans l'ordre de leur rang. Nommés ici pour que l'ajout
-#: d'un cinquième casse ce fichier plutôt que de passer inaperçu.
-TOUS_LES_MODULES = ("conversion", "promos", "frais", "politesse")
+#: d'un quatrième casse ce fichier plutôt que de passer inaperçu.
+TOUS_LES_MODULES = ("conversion", "promos", "frais")
 
 
 #: Les deux commandes nues que le module d'essai pose à la racine.
@@ -139,7 +135,6 @@ async def test_chaque_module_est_associe_a_ses_commandes():
         "conversion": ("convertir",),
         "promos": ("promos",),
         "frais": ("frais",),
-        "politesse": ("bonjour", "bonsoir"),
     }
 
 

@@ -59,11 +59,6 @@ def test_les_publications_du_bot_sont_declarees_par_des_modules():
     assert [p.cle for module in charges for p in module.publications] == [
         "promos",
         "frais",
-        # Les deux du module d'épreuve, jetable : elles s'en vont avec lui. Leur
-        # présence ici est justement ce qu'il faut voir — une publication déclarée
-        # par un fichier neuf entre dans le tour sans qu'on ait touché au bot.
-        "bonjour",
-        "bonsoir",
     ]
 
 
@@ -99,12 +94,12 @@ async def test_un_module_refuse_est_nomme_dans_le_salon_de_logs():
     """
     bot = EmpireBot(Store(dsn=""), SourceFactice())
     bot.journal = JournalFactice()
-    bot.modules_refuses = {"courtoisie": "ImportError : pas de module nommé pandas"}
+    bot.modules_refuses = {"bonjour": "ImportError : pas de module nommé pandas"}
 
     await bot.signaler_les_modules_refuses()
 
     assert len(bot.journal.erreurs) == 1
-    assert "courtoisie" in bot.journal.erreurs[0]
+    assert "bonjour" in bot.journal.erreurs[0]
     assert "pandas" in bot.journal.erreurs[0]
 
 

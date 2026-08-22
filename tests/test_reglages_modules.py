@@ -19,10 +19,9 @@ from tests.test_commandes_fourchettes import _bot, _commande
 from tests.test_commandes_par_serveur import EMPIRE, VOISIN, _interaction, _propositions
 
 #: Les modules réels du dossier, ceux que le plan demande de citer. Nommés ici
-#: pour que l'ajout d'un module casse ce fichier plutôt que de laisser une
-#: assertion muette sur ce qui compte. `politesse` est le module d'épreuve,
-#: jetable : il s'en va avec son fichier.
-LES_MODULES = ("conversion", "promos", "frais", "politesse")
+#: pour que l'ajout d'un quatrième module casse ce fichier plutôt que de laisser
+#: une assertion muette sur ce qui compte.
+LES_MODULES = ("conversion", "promos", "frais")
 
 
 def _lignes(embed) -> str:
@@ -40,7 +39,7 @@ def _lignes(embed) -> str:
 # --- /reglages modules liste -------------------------------------------------
 
 
-async def test_la_liste_cite_tous_les_modules_du_dossier():
+async def test_la_liste_cite_les_trois_modules():
     """L'épreuve du plan. Un module trouvé mais absent de la liste ne pourrait
     ni s'allumer ni s'éteindre, et rien ne dirait qu'il est là."""
     bot = await _bot()
@@ -88,13 +87,13 @@ async def test_la_liste_nomme_les_modules_refuses():
     et on chercherait la panne dans le dépôt plutôt que dans le fichier.
     """
     bot = await _bot()
-    bot.modules_refuses = {"courtoisie": "ImportError : pas de module nommé pandas"}
+    bot.modules_refuses = {"bonjour": "ImportError : pas de module nommé pandas"}
     interaction = _interaction(EMPIRE)
 
     await _commande(bot, "reglages modules liste").callback(interaction)
 
     rendu = _lignes(interaction.embeds[0])
-    assert "courtoisie" in rendu
+    assert "bonjour" in rendu
     assert "ImportError" in rendu, rendu
 
 
@@ -221,7 +220,7 @@ async def test_activer_un_module_inconnu_refuse():
     interaction = _interaction(EMPIRE)
 
     await _commande(bot, "reglages modules activer").callback(
-        interaction, module="courtoisie"
+        interaction, module="bonjour"
     )
 
     assert "❌" in " ".join(interaction.textes)
@@ -239,7 +238,7 @@ async def test_desactiver_ne_propose_que_les_modules_allumes():
 
     choix = await _propositions(commande, "module")(_interaction(EMPIRE), "")
 
-    assert [c.value for c in choix] == ["conversion", "promos", "politesse"]
+    assert [c.value for c in choix] == ["conversion", "promos"]
 
 
 async def test_activer_ne_propose_que_les_modules_eteints():
