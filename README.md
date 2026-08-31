@@ -103,6 +103,36 @@ va sortir ? », et couper le résultat cacherait ce qu'on vient de demander.
 `/promos liste` et `/reglages voir` rappellent le plafond des fourchettes qui en
 ont un.
 
+### Plafonner par tranche de prix
+
+Un plafond de fourchette coupe la queue de la liste : dans une fourchette qui
+couvre `100T → 1P`, ce sont les gros qui raflent tout le post. Pour partager,
+ajoute des bornes au **même** mot :
+
+```
+/promos plafond fourchette:grosses nombre:3 min:100T max:500T
+/promos plafond fourchette:grosses nombre:5 min:500T max:1P
+/promos plafond fourchette:grosses min:100T max:500T   sans nombre : efface la tranche
+```
+
+Au plus trois promotions entre 100 TØ et 500 TØ, au plus cinq entre 500 TØ et
+1 PØ, et le reste de la fourchette n'est pas touché. Chaque tranche garde ses
+**plus chères**, comme le plafond.
+
+Les bornes sont **incluses**, et une promotion à cheval sur deux tranches compte
+dans les deux : autrement la tranche oubliée laisserait passer une promotion de
+plus que son nombre. Une tranche s'efface par ses bornes et non par un numéro —
+un numéro changerait de sens dès qu'une autre tranche est ajoutée.
+
+Les tranches coupent **avant** le plafond de la fourchette, pour que leurs
+comptes portent sur toute la récolte ; les deux réglages se composent et ne
+s'effacent pas l'un l'autre. Une tranche que la fourchette n'atteint pas est
+signalée à l'écran : réglée, elle ne rencontrerait jamais aucune promotion.
+
+Comme le plafond, elles valent pour le post du soir, pour `/promos apercu` et
+pour `/promos chercher` sans bornes ; avec des bornes tapées à la main, non.
+`/promos liste` en montre une ligne par tranche.
+
 ### Écarter des types de bâtiments
 
 Le jeu range chaque bâtiment sous un type — `zones`, `bureaux`, `transport`,
@@ -338,6 +368,7 @@ local, mais elle repart des valeurs de `.env` à chaque redémarrage.
 | `/promos prix fourchette min max` | Modifie ses bornes, en gardant ses salons |
 | `/promos tolerance fourchette [min] [max]` | Zone acceptée quand la fourchette est trop pauvre ; sans bornes, l'efface |
 | `/promos plafond fourchette [nombre]` | Nombre maximum de promotions publiées, les plus chères ; sans nombre, ne plafonne plus |
+| `/promos plafond fourchette [nombre] min max` | Le même maximum pour la seule tranche de prix `min → max` ; sans nombre, efface la tranche |
 | `/promos supprimer fourchette` | Supprime une fourchette et ses salons |
 | `/promos salon ajouter fourchette salon` | Publie **cette** fourchette dans ce salon |
 | `/promos salon retirer fourchette salon` | Cesse de l'y publier |
@@ -801,6 +832,9 @@ bornes — comme `/promos chercher`. Et seulement si **toutes** les fourchettes 
 ont un, le plus large d'entre eux faisant loi : le plafond de l'une ne vaut pas
 pour l'union, et l'appliquer cacherait des promotions qu'une fourchette non
 plafonnée publie bel et bien.
+
+Les **tranches** suivent la même règle, plage par plage : seules celles réglées
+sur **toutes** les fourchettes s'appliquent, au plus grand de leurs nombres.
 
 ### Les montants ne passent jamais en nombre JSON
 

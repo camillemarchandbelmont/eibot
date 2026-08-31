@@ -22,7 +22,7 @@ from __future__ import annotations
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
-from src.db import plafond_fourchette
+from src.db import plafond_fourchette, tranches_fourchette
 from src.money import format_money, format_money_brut, format_money_long
 from src.promos import Meta, Promo
 
@@ -145,6 +145,18 @@ def fourchette_en_json(fourchette: dict) -> dict[str, Any]:
     # une fourchette plafonnée à zéro, c'est-à-dire muette.
     if (plafond := plafond_fourchette(fourchette)) is not None:
         rendu["plafond"] = plafond
+    # Les tranches dans le même style : leurs bornes pré-formatées comme tous les
+    # montants, leur nombre en entier nu. Absentes plutôt que liste vide — une
+    # liste vide se lirait comme un réglage fait puis vidé.
+    if tranches := tranches_fourchette(fourchette):
+        rendu["tranches"] = [
+            {
+                **montant_en_json("min", bas),
+                **montant_en_json("max", haut),
+                "nombre": nombre,
+            }
+            for bas, haut, nombre in tranches
+        ]
     return rendu
 
 

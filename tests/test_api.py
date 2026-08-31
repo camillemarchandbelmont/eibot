@@ -349,6 +349,54 @@ async def test_apercu_respecte_le_plafond_des_fourchettes(api):
     assert len(corps["promos"]["promos"]) == 2
 
 
+async def test_promos_respecte_les_tranches_des_fourchettes(api):
+    """Mêmes raisons que le plafond, à l'échelle d'une plage de prix : sans
+    bornes, la route décrit le post du soir, et une liste plus longue que lui
+    ferait douter du bot le lendemain."""
+    client, bot = await api()
+    await bot.store.ajouter_fourchette("tout", Decimal(0), Decimal("1e30"))
+    # 1 TØ : au-dessus de la Zone portuaire et de l'Entrepôt, sous les deux
+    # autres. La tranche ne peut donc en garder qu'un des deux.
+    await bot.store.regler_tranche_fourchette(
+        "tout", Decimal(0), Decimal("1e12"), 1
+    )
+
+    corps = await (await client.get("/api/promos", headers=_entetes())).json()
+
+    assert len(corps["promos"]) == 3
+
+
+async def test_promos_avec_bornes_nest_pas_tranchee(api):
+    """Le témoin de la précédente, et la même règle que le plafond : des bornes
+    données à la main sont une recherche libre, où couper cacherait des
+    promotions qu'on vient de demander explicitement."""
+    client, bot = await api()
+    await bot.store.ajouter_fourchette("tout", Decimal(0), Decimal("1e30"))
+    await bot.store.regler_tranche_fourchette(
+        "tout", Decimal(0), Decimal("1e12"), 1
+    )
+
+    corps = await (await client.get(
+        "/api/promos?min=0&max=1Q", headers=_entetes()
+    )).json()
+
+    assert len(corps["promos"]) == 4
+
+
+async def test_apercu_respecte_les_tranches_des_fourchettes(api):
+    """Un aperçu plus long que le post est exactement ce que l'aperçu doit
+    empêcher."""
+    client, bot = await api()
+    await bot.store.ajouter_fourchette("tout", Decimal(0), Decimal("1e30"))
+    await bot.store.regler_tranche_fourchette(
+        "tout", Decimal(0), Decimal("1e12"), 1
+    )
+
+    corps = await (await client.post("/api/apercu", json={}, headers=_entetes())).json()
+
+    assert len(corps["promos"]["promos"]) == 3
+
+
 async def test_promos_accepte_la_notation_du_jeu(api):
     """« 50 6P » doit être lu comme dans Discord : une seule grammaire de
     saisie pour les deux façades. Lu comme 506 PØ, il exclut le Mégapôle."""

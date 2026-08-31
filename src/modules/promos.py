@@ -30,7 +30,7 @@ from src.commandes import (
     permissions_manquantes,
     pour_ce_serveur,
 )
-from src.db import bornes_tolerees, plafond_fourchette
+from src.db import bornes_tolerees, plafond_fourchette, tranches_fourchette
 from src.modules import Envoi, Module, Publication, Tournee
 from src.money import MoneyError, format_money, parse_money
 from src.promos import CIBLE_MINIMUM, normaliser_type, types_disponibles
@@ -91,6 +91,7 @@ async def _preparer(bot: Any, magasin: Any, maintenant: Any) -> Tournee:
                 tolere_max=tolere_max,
                 magasin=magasin,
                 plafond=plafond_fourchette(fourchette),
+                tranches=tranches_fourchette(fourchette),
             )
         except Exception as erreur:
             # Rendu impossible pour *cette* fourchette (template appliqué à des
@@ -237,13 +238,19 @@ def enregistrer(bot: Any) -> None:
         # c'est-à-dire quand elle répond à « qu'est-ce qui va sortir ce soir ? ».
         # Avec des bornes tapées à la main, la question est autre — et cacher des
         # promotions qu'on vient de demander explicitement serait un piège.
-        # Le plafond est alors celui de l'union (voir `plafond_de_recherche`).
+        # Le plafond est alors celui de l'union (voir `plafond_de_recherche`), et
+        # les tranches celles réglées dans toutes les fourchettes.
         libre = min is not None or max is not None
         plafond = None if libre else await magasin.plafond_de_recherche()
+        tranches = () if libre else await magasin.tranches_de_recherche()
 
         try:
             embeds, contenu, repli = await bot.construire_publication(
-                prix_min, prix_max, magasin=magasin, plafond=plafond
+                prix_min,
+                prix_max,
+                magasin=magasin,
+                plafond=plafond,
+                tranches=tranches,
             )
         except SourceError as erreur:
             await interaction.followup.send(f"❌ {erreur}", ephemeral=True)
@@ -469,25 +476,139 @@ def enregistrer(bot: Any) -> None:
             ephemeral=True,
         )
 
+    async def plafonner_une_tranche(
+        interaction: discord.Interaction,
+        magasin: Any,
+        fourchette: str,
+        nombre: int | None,
+        min: str,
+        max: str,
+    ) -> None:
+        """Règle ou efface le plafond d'une **plage de prix** de la fourchette.
+
+        Séparée de la commande pour que celle-ci reste lisible : deux réglages y
+        cohabitent, la fourchette entière et ses tranches, et c'est la présence
+        des bornes qui aiguille.
+        """
+        try:
+            bas, haut = parse_money(min), parse_money(max)
+        except MoneyError as erreur:
+            await interaction.response.send_message(
+                f"❌ {erreur}\n{aide_montants()}", ephemeral=True
+            )
+            return
+
+        if bas > haut:
+            bas, haut = haut, bas
+        plage = f"**{format_money(bas)}** → **{format_money(haut)}**"
+
+        if nombre is None:
+            if not await magasin.effacer_tranche_fourchette(fourchette, bas, haut):
+                fourchettes = await magasin.fourchettes()
+                if magasin._index(fourchettes, fourchette) < 0:
+                    await refuser_fourchette_inconnue(interaction, fourchette)
+                else:
+                    # Les bornes redites : le cas ordinaire est celle qu'on a
+                    # retapée de travers, et l'on croit alors corriger la tranche
+                    # qu'on vient de régler alors qu'on en laisse deux.
+                    await interaction.response.send_message(
+                        f"ℹ️ **{fourchette.strip()}** n'a pas de tranche "
+                        f"{plage}.\n-# `/promos liste` montre celles qui existent.",
+                        ephemeral=True,
+                    )
+                return
+
+            await interaction.response.send_message(
+                f"✅ Tranche {plage} de **{fourchette.strip()}** effacée.\n"
+                "-# Cette plage de prix n'est plus limitée.",
+                ephemeral=True,
+            )
+            return
+
+        try:
+            regle = await magasin.regler_tranche_fourchette(
+                fourchette, bas, haut, nombre
+            )
+        except ValueError as erreur:
+            await interaction.response.send_message(f"❌ {erreur}", ephemeral=True)
+            return
+
+        if not regle:
+            await refuser_fourchette_inconnue(interaction, fourchette)
+            return
+
+        message = (
+            f"✅ **{fourchette.strip()}** : au maximum **{nombre}** "
+            f"promotion{'s' if nombre > 1 else ''} entre {plage}.\n"
+            "-# Les plus chères de la tranche ; le reste de la fourchette n'est "
+            "pas touché."
+        )
+
+        # Une tranche que la fourchette n'atteint pas est réglée mais inerte, cas
+        # d'une borne tapée d'un palier à côté. Sans avertissement, le réglage est
+        # confirmé, le post ne change pas, et rien à l'écran ne relie les deux.
+        liste = await magasin.fourchettes()
+        reglee = liste[magasin._index(liste, fourchette)]
+        tolere_min, tolere_max = bornes_tolerees(reglee)
+        # La zone tolérée englobe toujours la fourchette idéale (`_normaliser_
+        # fourchette` s'en charge) : elle suffit donc à dire jusqu'où la
+        # fourchette peut aller, sans comparer les deux paires de bornes.
+        portee_bas = tolere_min if tolere_min is not None else Decimal(reglee["prix_min"])
+        portee_haut = tolere_max if tolere_max is not None else Decimal(reglee["prix_max"])
+        if haut < portee_bas or bas > portee_haut:
+            message += (
+                f"\n⚠️ Hors de la fourchette ({format_money(portee_bas)} → "
+                f"{format_money(portee_haut)}) : cette tranche ne coupera rien."
+            )
+
+        await interaction.response.send_message(message, ephemeral=True)
+
     @groupe.command(
         name="plafond",
-        description="Nombre maximum de promotions publiées (sans nombre : efface)",
+        description="Nombre maximum de promotions publiées, en tout ou par tranche de prix",
     )
     @app_commands.describe(
         nombre="Combien de promotions au maximum ; laisser vide pour ne plus plafonner",
+        min="Début d'une tranche de prix (ex: 100T) ; sans bornes, toute la fourchette",
+        max="Fin de la tranche de prix (ex: 500T)",
     )
     @app_commands.autocomplete(fourchette=completer_fourchette)
     async def fourchette_plafond(
         interaction: discord.Interaction,
         fourchette: str,
         nombre: int | None = None,
+        min: str | None = None,
+        max: str | None = None,
     ) -> None:
-        """Règle ou efface le plafond d'une fourchette.
+        """Règle ou efface le plafond d'une fourchette, ou celui d'une de ses plages.
 
         Sans nombre, efface — le même geste que `/promos tolerance`, plutôt qu'un
         mot de plus à retenir par réglage.
+
+        Un seul mot pour les deux échelles : c'est le même réglage, et deux
+        commandes obligeraient à choisir laquelle avant même de savoir que l'autre
+        existe. Ce sont les bornes qui aiguillent, comme `/promos chercher` où leur
+        présence dit déjà « pas les fourchettes réglées ».
         """
         magasin = pour_ce_serveur(bot, interaction)
+
+        if (min is None) != (max is None):
+            # Une borne seule ne décrit pas une plage. Complétée au hasard, elle
+            # donnerait une tranche que personne n'a réglée ; ignorée, elle
+            # plafonnerait la fourchette entière alors qu'on visait une plage.
+            await interaction.response.send_message(
+                "❌ Donne les **deux** bornes de la tranche, ou aucune pour "
+                "plafonner toute la fourchette.\n"
+                "-# `/promos plafond fourchette:… nombre:3 min:100T max:500T`",
+                ephemeral=True,
+            )
+            return
+
+        if min is not None and max is not None:
+            await plafonner_une_tranche(
+                interaction, magasin, fourchette, nombre, min, max
+            )
+            return
 
         if nombre is None:
             if not await magasin.effacer_plafond_fourchette(fourchette):

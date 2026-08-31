@@ -194,6 +194,39 @@ def _ecart_a_la_fourchette(
     return Decimal(0)
 
 
+def _sous_les_tranches(
+    retenus: list[Building],
+    tranches: Iterable[tuple[Decimal, Decimal, int]],
+) -> list[Building]:
+    """Écarte ce qui dépasse le compte d'une tranche de prix.
+
+    Parcourt la liste **dans l'ordre du post** : chaque tranche garde donc ses
+    promotions les plus chères, sans avoir à trier quoi que ce soit ici.
+
+    Une tranche au nombre absurde (`0`, négatif) est ignorée plutôt que traitée
+    comme « aucune promotion » : la configuration se retouche à la main, et une
+    faute de frappe doit coûter la tranche du jour, pas le post.
+    """
+    comptes = [
+        [bas, haut, int(nombre), 0] for bas, haut, nombre in tranches if int(nombre) >= 1
+    ]
+    if not comptes:
+        return retenus
+
+    gardes: list[Building] = []
+    for batiment in retenus:
+        # Toutes les tranches qui contiennent la promotion, et non la première :
+        # une promotion à cheval doit être créditée partout, sinon la tranche
+        # oubliée laisse passer une promotion de plus que son nombre.
+        concernees = [c for c in comptes if c[0] <= batiment.valeur <= c[1]]
+        if any(c[3] >= c[2] for c in concernees):
+            continue
+        for tranche in concernees:
+            tranche[3] += 1
+        gardes.append(batiment)
+    return gardes
+
+
 def find_promos(
     batiments: list[Building],
     prix_min: Decimal,
@@ -203,6 +236,7 @@ def find_promos(
     tolere_max: Decimal | None = None,
     types_exclus: Iterable[str] = (),
     plafond: int | None = None,
+    tranches: Iterable[tuple[Decimal, Decimal, int]] = (),
 ) -> list[Promo]:
     """Promotions dont le prix payé tombe dans [prix_min, prix_max].
 
@@ -236,6 +270,21 @@ def find_promos(
     promotions les jours creux serait indéfendable. Un plafond absurde (`0`,
     négatif) est ignoré : la configuration est du JSON retouchable à la main, et
     une faute de frappe doit coûter le plafond du jour, pas la publication.
+
+    `tranches` plafonne par plage de prix — `(bas, haut, nombre)`, bornes
+    incluses — à l'intérieur de la fourchette. Trois règles, dont dépend tout le
+    reste :
+
+    - une promotion **hors de toute tranche passe** : les tranches limitent, elles
+      ne sélectionnent pas. Autrement, en régler une jetterait tout ce qu'elle ne
+      mentionne pas, ce que le mot « plafond » n'annonce nulle part.
+    - une promotion appartenant à plusieurs tranches **compte dans chacune** et
+      tombe dès que l'une est pleine. C'est la seule règle qui reste vraie quand
+      des tranches se touchent ou se chevauchent, ce qu'un réglage à la main
+      produit vite.
+    - la coupe se fait **avant** `plafond`, sur la récolte entière : l'inverse
+      ferait compter les tranches sur une liste déjà tronquée, donc les rendrait
+      inertes sans que rien ne le dise.
     """
     exclus = {t for t in (normaliser_type(nom) for nom in types_exclus) if t}
     en_promo = [
@@ -268,6 +317,7 @@ def find_promos(
         repeches = reste[: minimum - len(dedans) - len(toleres)]
 
     retenus = dedans + toleres + repeches
+    retenus = _sous_les_tranches(retenus, tranches)
     # Coupé ici, donc après les trois passes et avant le comptage : la liste est
     # déjà dans l'ordre du post — les idéales, puis les tolérées, puis les
     # repêchées, chaque groupe du plus cher au moins cher. `rang` et `total`

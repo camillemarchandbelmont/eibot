@@ -20,7 +20,7 @@ import discord
 from discord import app_commands
 
 from src.acces import gere_la_liste
-from src.db import bornes_tolerees, plafond_fourchette
+from src.db import bornes_tolerees, plafond_fourchette, tranches_fourchette
 from src.modules import Publication
 from src.money import ECHELLE, NOMS, format_money, parse_money
 from src.schedule import doit_publier, maintenant_local
@@ -122,6 +122,13 @@ def lister_fourchettes(bot: Any, fourchettes: list[dict]) -> str:
         if plafond := plafond_fourchette(fourchette):
             lignes.append(
                 f"-# plafond : {plafond} promotion{'s' if plafond > 1 else ''} au maximum"
+            )
+        # Une ligne par tranche, jamais regroupées : il faut pouvoir lire laquelle
+        # est laquelle pour en effacer une, l'effacement se faisant par ses bornes.
+        for bas, haut, combien in tranches_fourchette(fourchette):
+            lignes.append(
+                f"-# tranche {format_money(bas)} → {format_money(haut)} : "
+                f"{combien} au maximum"
             )
         if not fourchette["salons"]:
             lignes.append("⚠️ aucun salon : ne publiera rien")

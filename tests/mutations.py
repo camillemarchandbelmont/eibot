@@ -891,8 +891,8 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
     (
         "bot-promos-habille-par-le-commun",
         "src/modules/promos.py",
-        "                prix_min, prix_max, magasin=magasin",
-        "                prix_min, prix_max",
+        "                prix_min,\n                prix_max,\n                magasin=magasin,",
+        "                prix_min,\n                prix_max,",
         "`/promos` répondrait avec la charte du commun : l'aperçu ne montrerait "
         "pas ce qui sortira le soir",
     ),
@@ -3228,8 +3228,10 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
     (
         "plafond-zero-accepte-en-base",
         "src/db.py",
-        "        if int(combien) < 1:",
-        "        if False:",
+        "        if int(combien) < 1:\n"
+        "            raise ValueError(\n"
+        '                "Le plafond doit',
+        '        if False:\n            raise ValueError(\n                "Le plafond doit',
         "une fourchette réglée à zéro, muette et indiscernable d'une panne",
     ),
     (
@@ -3346,9 +3348,260 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
     (
         "plafond-api-bornes-libres-plafonnees",
         "src/api.py",
-        '    if any(source.get(cle) not in (None, "") for cle in ("min", "max")):\n'
-        "        return None",
-        "    if False:\n        pass",
+        "    if _bornes_donnees(requete, charge):\n        return None",
+        "    if False:\n        return None",
+        "une recherche à bornes données verrait son résultat coupé",
+    ),
+    (
+        "plafond-api-bornes-jamais-vues",
+        "src/api.py",
+        '    return any(source.get(cle) not in (None, "") for cle in ("min", "max"))',
+        "    return False",
+        "toute recherche libre du site serait coupée comme le post du soir",
+    ),
+    # --- Les tranches : un plafond par plage de prix dans la fourchette -----
+    (
+        "tranche-jamais-appliquee",
+        "src/promos.py",
+        "    retenus = _sous_les_tranches(retenus, tranches)",
+        "    retenus = list(retenus)",
+        "des tranches réglées, confirmées à l'écran, et sans effet sur le post",
+    ),
+    (
+        "tranche-laisse-passer-une-de-plus",
+        "src/promos.py",
+        "        if any(c[3] >= c[2] for c in concernees):",
+        "        if any(c[3] > c[2] for c in concernees):",
+        "une tranche réglée à 3 en publierait 4",
+    ),
+    (
+        "tranche-bornes-exclues",
+        "src/promos.py",
+        "        concernees = [c for c in comptes if c[0] <= batiment.valeur <= c[1]]",
+        "        concernees = [c for c in comptes if c[0] < batiment.valeur < c[1]]",
+        "une promotion pile sur une borne échapperait à la tranche",
+    ),
+    (
+        "tranche-seule-la-premiere-compte",
+        "src/promos.py",
+        "        concernees = [c for c in comptes if c[0] <= batiment.valeur <= c[1]]",
+        "        concernees = [c for c in comptes if c[0] <= batiment.valeur <= c[1]][:1]",
+        "deux tranches qui se chevauchent laisseraient passer plus que leur nombre",
+    ),
+    (
+        "tranche-absurde-vide-la-plage",
+        "src/promos.py",
+        "for bas, haut, nombre in tranches if int(nombre) >= 1",
+        "for bas, haut, nombre in tranches",
+        "un `0` retouché à la main ferait disparaître toute une plage de prix",
+    ),
+    (
+        "tranche-lecture-non-defensive",
+        "src/db.py",
+        "    if not isinstance(brutes, list):\n        return []",
+        "    if brutes is None:\n        return []",
+        "un `\"tranches\": 42` retouché à la main ferait tomber la publication",
+    ),
+    (
+        "tranche-entree-incomplete-gardee",
+        "src/db.py",
+        "        if bas is None or haut is None or nombre is None:\n            continue",
+        "        if False:\n            continue",
+        "une tranche sans borne ferait tomber la publication au lieu d'être ignorée",
+    ),
+    (
+        "tranche-bornes-inversees-inertes",
+        "src/db.py",
+        "        if bas > haut:\n"
+        "            bas, haut = haut, bas\n"
+        "        lues.append((bas, haut, nombre))",
+        "        lues.append((bas, haut, nombre))",
+        "une tranche `300 → 100` réglée, inerte, et rien pour dire pourquoi",
+    ),
+    (
+        "tranche-lues-dans-le-desordre",
+        "src/db.py",
+        "    return sorted(lues, key=lambda tranche: (tranche[0], tranche[1]))",
+        "    return lues",
+        "`/promos liste` réordonnerait ses tranches à chaque réglage",
+    ),
+    (
+        "tranche-perdue-a-la-normalisation",
+        "src/db.py",
+        '        "tranches": [\n'
+        '            {"min": str(bas), "max": str(haut), "nombre": nombre}\n'
+        "            for bas, haut, nombre in tranches_fourchette(brute)\n"
+        "        ],",
+        '        "tranches": [],',
+        "`/promos prix` effacerait les tranches au passage, sans le dire",
+    ),
+    (
+        "tranche-zero-acceptee-en-base",
+        "src/db.py",
+        "        if int(combien) < 1:\n"
+        "            raise ValueError(\n"
+        '                "Une tranche doit',
+        '        if False:\n            raise ValueError(\n                "Une tranche doit',
+        "une plage de prix muette, que le mot « plafond » n'annonce pas",
+    ),
+    (
+        "tranche-meme-plage-empilee",
+        "src/db.py",
+        "            if (tranche[0], tranche[1]) != (bas, haut)",
+        "            if True",
+        "chaque correction empilerait une tranche : la plus stricte gagnerait",
+    ),
+    (
+        "tranche-effacement-imaginaire-confirme",
+        "src/db.py",
+        "        if len(restantes) == len(avant):\n            return False",
+        "        if False:\n            return False",
+        "un effacement imaginaire confirmé par un « ✅ », et deux tranches restantes",
+    ),
+    (
+        "tranche-recherche-prend-le-plus-etroit",
+        "src/db.py",
+        "            (bas, haut, max(table[(bas, haut)] for table in par_plage))",
+        "            (bas, haut, min(table[(bas, haut)] for table in par_plage))",
+        "la recherche montrerait moins que la fourchette la plus généreuse",
+    ),
+    (
+        "tranche-recherche-tranchee-par-une-seule",
+        "src/db.py",
+        "        communes = set(par_plage[0])\n"
+        "        for table in par_plage[1:]:\n"
+        "            communes &= set(table)\n"
+        "\n"
+        "        return sorted(\n"
+        "            (bas, haut, max(table[(bas, haut)] for table in par_plage))\n"
+        "            for bas, haut in communes\n"
+        "        )",
+        "        toutes: dict[tuple[Decimal, Decimal], int] = {}\n"
+        "        for table in par_plage:\n"
+        "            for plage, nombre in table.items():\n"
+        "                toutes[plage] = max(nombre, toutes.get(plage, 0))\n"
+        "        return sorted(\n"
+        "            (bas, haut, nombre) for (bas, haut), nombre in toutes.items()\n"
+        "        )",
+        "la recherche cacherait ce qu'une fourchette sans cette plage publie",
+    ),
+    (
+        "tranche-recherche-sans-fourchette",
+        "src/db.py",
+        "        fourchettes = await self.fourchettes()\n"
+        "        if not fourchettes:\n"
+        "            return []",
+        "        fourchettes = await self.fourchettes()",
+        "un serveur neuf verrait `/promos chercher` tomber en panne",
+    ),
+    (
+        "tranche-jamais-transmise-au-coeur",
+        "src/bot.py",
+        "            tranches=tranches,",
+        "            tranches=(),",
+        "le réglage lu, transmis nulle part : post, aperçu et recherche entiers",
+    ),
+    (
+        "tranche-post-du-soir-non-tranche",
+        "src/modules/promos.py",
+        "                tranches=tranches_fourchette(fourchette),",
+        "                tranches=(),",
+        "le post du soir ignorerait les tranches de sa fourchette",
+    ),
+    (
+        "tranche-recherche-jamais-tranchee",
+        "src/modules/promos.py",
+        "        tranches = () if libre else await magasin.tranches_de_recherche()",
+        "        tranches = ()",
+        "`/promos chercher` promettrait plus long que le post du soir",
+    ),
+    (
+        "tranche-recherche-libre-tranchee",
+        "src/modules/promos.py",
+        "        tranches = () if libre else await magasin.tranches_de_recherche()",
+        "        tranches = await magasin.tranches_de_recherche()",
+        "des bornes tapées à la main verraient leur résultat coupé",
+    ),
+    (
+        "tranche-une-seule-borne-acceptee",
+        "src/modules/promos.py",
+        # La même garde existe pour `/promos tolerance` : la ligne vide qui
+        # précède celle-ci est ce qui distingue les deux.
+        "        magasin = pour_ce_serveur(bot, interaction)\n"
+        "\n"
+        "        if (min is None) != (max is None):",
+        "        magasin = pour_ce_serveur(bot, interaction)\n\n        if False:",
+        "une borne seule plafonnerait la fourchette entière, plage visée ignorée",
+    ),
+    (
+        "tranche-bornes-ignorees-par-la-commande",
+        "src/modules/promos.py",
+        "        if min is not None and max is not None:",
+        "        if False:",
+        "`min:` et `max:` donnés, et c'est la fourchette entière qui est plafonnée",
+    ),
+    (
+        "tranche-fourchette-inconnue-confirmee",
+        "src/modules/promos.py",
+        "        if not regle:\n"
+        "            await refuser_fourchette_inconnue(interaction, fourchette)\n"
+        "            return\n"
+        "\n"
+        "        message = (",
+        "        if False:\n            pass\n\n        message = (",
+        "un « ✅ » sur une fourchette qui n'existe pas",
+    ),
+    (
+        "tranche-hors-fourchette-sans-avertissement",
+        "src/modules/promos.py",
+        "        if haut < portee_bas or bas > portee_haut:",
+        "        if False:",
+        "une tranche inerte confirmée sans un mot : le post ne changera pas",
+    ),
+    (
+        "tranche-valide-avertie-a-tort",
+        "src/modules/promos.py",
+        "        if haut < portee_bas or bas > portee_haut:",
+        "        if True:",
+        "un ⚠️ sur chaque réglage valide : on apprendrait à ne plus le lire",
+    ),
+    (
+        "tranche-invisible-dans-la-liste",
+        "src/commandes.py",
+        "        for bas, haut, combien in tranches_fourchette(fourchette):\n"
+        "            lignes.append(\n"
+        '                f"-# tranche {format_money(bas)} → {format_money(haut)} : "\n'
+        '                f"{combien} au maximum"\n'
+        "            )",
+        "        if False:\n            pass",
+        "des tranches nulle part relisibles, donc re-réglées au hasard",
+    ),
+    (
+        "tranche-absente-exposee-vide",
+        "src/serialisation.py",
+        "    if tranches := tranches_fourchette(fourchette):",
+        "    if (tranches := tranches_fourchette(fourchette)) is not None:",
+        "le site montrerait « tranches : [] » sur une fourchette qui publie tout",
+    ),
+    (
+        "tranche-api-promos-non-tranchee",
+        "src/api.py",
+        "            tranches=await _tranches(bot, requete),",
+        "            tranches=(),",
+        "la page listerait plus de promotions que le post du soir",
+    ),
+    (
+        "tranche-api-apercu-non-tranche",
+        "src/api.py",
+        "            tranches=await _tranches(bot, requete, charge),",
+        "            tranches=(),",
+        "l'aperçu du site promettrait un post plus long que le vrai",
+    ),
+    (
+        "tranche-api-bornes-libres-tranchees",
+        "src/api.py",
+        "    if _bornes_donnees(requete, charge):\n        return []",
+        "    if False:\n        return []",
         "une recherche à bornes données verrait son résultat coupé",
     ),
 ]

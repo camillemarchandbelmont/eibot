@@ -333,6 +333,7 @@ class EmpireBot(discord.Client):
         tolere_max: Decimal | None = None,
         magasin=None,
         plafond: int | None = None,
+        tranches: Iterable[tuple[Decimal, Decimal, int]] = (),
     ) -> tuple[list[dict], str, str]:
         """Renvoie (embeds, contenu, message de repli si aucune promo).
 
@@ -358,6 +359,9 @@ class EmpireBot(discord.Client):
         non du magasin, contrairement aux types écartés : il appartient à la
         fourchette et l'appelant sait laquelle il rend, quand cette fonction, elle,
         ne reçoit que des bornes.
+
+        `tranches` plafonne par plage de prix à l'intérieur de la fourchette, pour
+        la même raison et de la même façon.
         """
         magasin = self.store if magasin is None else magasin
         meta, batiments = donnees if donnees is not None else await self.charger()
@@ -366,6 +370,7 @@ class EmpireBot(discord.Client):
             tolere_min=tolere_min, tolere_max=tolere_max,
             types_exclus=await magasin.types_exclus(),
             plafond=plafond,
+            tranches=tranches,
         )
         modele = await magasin.template()
         date = maintenant_local((await magasin.config())["fuseau"]).strftime("%Y-%m-%d")

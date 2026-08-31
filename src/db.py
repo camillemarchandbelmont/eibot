@@ -158,6 +158,42 @@ def _entier_ou_rien(brut: Any) -> int | None:
     return nombre if nombre >= 1 else None
 
 
+def tranches_fourchette(fourchette: dict) -> list[tuple[Decimal, Decimal, int]]:
+    """Plafonds par plage de prix, `(bas, haut, nombre)`, du plus bas au plus haut.
+
+    Même rôle que `bornes_tolerees` et `plafond_fourchette` : une seule traduction
+    pour la publication du soir, l'aperçu et l'API, plutôt qu'une lecture recopiée
+    à trois endroits dont l'une oublierait un jour de plafonner.
+
+    Défensive de bout en bout, la config étant du JSON retouchable à la main : une
+    entrée dont il manque une borne ou le nombre est ignorée, jamais levée. Les
+    bornes inversées sont remises dans l'ordre — `300 → 100` ne contiendrait
+    jamais rien, la tranche serait inerte et rien à l'écran ne dirait pourquoi.
+
+    Triées par borne basse : `/promos liste` les montre les unes sous les autres,
+    et une liste qui se réordonne à chaque réglage ne se relit pas.
+    """
+    # Une liste, ou rien : un nombre à cette place lèverait un `TypeError` à
+    # l'itération, et une chaîne s'y prêterait caractère par caractère.
+    brutes = fourchette.get("tranches")
+    if not isinstance(brutes, list):
+        return []
+
+    lues: list[tuple[Decimal, Decimal, int]] = []
+    for brute in brutes:
+        if not isinstance(brute, dict):
+            continue
+        bas = _montant_ou_rien(brute.get("min"))
+        haut = _montant_ou_rien(brute.get("max"))
+        nombre = _entier_ou_rien(brute.get("nombre"))
+        if bas is None or haut is None or nombre is None:
+            continue
+        if bas > haut:
+            bas, haut = haut, bas
+        lues.append((bas, haut, nombre))
+    return sorted(lues, key=lambda tranche: (tranche[0], tranche[1]))
+
+
 def _normaliser_fourchette(brute: dict) -> dict:
     """Fourchette aux champs garantis, quelle que soit l'origine du JSON.
 
@@ -198,6 +234,13 @@ def _normaliser_fourchette(brute: dict) -> dict:
         "tolere_min": "" if tolere_min is None else str(tolere_min),
         "tolere_max": "" if tolere_max is None else str(tolere_max),
         "plafond": 0 if plafond is None else plafond,
+        # Réécrites depuis la lecture défensive plutôt que recopiées : ce qui est
+        # enregistré est alors exactement ce que la publication appliquera, et une
+        # entrée abîmée disparaît au premier réglage au lieu de rester à traîner.
+        "tranches": [
+            {"min": str(bas), "max": str(haut), "nombre": nombre}
+            for bas, haut, nombre in tranches_fourchette(brute)
+        ],
     }
 
 
@@ -617,6 +660,122 @@ class Store:
         if not plafonds or None in plafonds:
             return None
         return max(plafonds)
+
+    async def regler_tranche_fourchette(
+        self, nom: str, bas: Decimal, haut: Decimal, combien: int
+    ) -> bool:
+        """Plafonne une plage de prix de la fourchette. False si elle est inconnue,
+        `ValueError` si le nombre est inférieur à 1.
+
+        Une plage déjà réglée est **remplacée** : sans ça, chaque correction
+        empilerait une tranche de plus sur les mêmes bornes, la plus stricte
+        gagnerait pour toujours et la commande aurait confirmé un nombre que le
+        post ne respecte pas.
+
+        Le nombre est vérifié **avant** le nom, comme pour le plafond : à saisie
+        doublement fautive, c'est le nombre qu'il faut signaler, parce qu'un nom de
+        fourchette s'autocomplète.
+        """
+        if int(combien) < 1:
+            raise ValueError(
+                "Une tranche doit accepter au moins 1 promotion. Pour qu'une "
+                "plage de prix ne sorte jamais, resserre les bornes de la "
+                "fourchette."
+            )
+
+        liste = await self.fourchettes()
+        index = self._index(liste, nom)
+        if index < 0:
+            return False
+
+        if bas > haut:
+            bas, haut = haut, bas
+
+        autres = [
+            tranche
+            for tranche in tranches_fourchette(liste[index])
+            if (tranche[0], tranche[1]) != (bas, haut)
+        ]
+        liste[index] = _normaliser_fourchette(
+            {
+                **liste[index],
+                "tranches": [
+                    *(
+                        {"min": str(a), "max": str(b), "nombre": n}
+                        for a, b, n in autres
+                    ),
+                    {"min": str(bas), "max": str(haut), "nombre": int(combien)},
+                ],
+            }
+        )
+        await self._ecrire_fourchettes(liste)
+        return True
+
+    async def effacer_tranche_fourchette(
+        self, nom: str, bas: Decimal, haut: Decimal
+    ) -> bool:
+        """Retire une tranche par ses bornes. False si la fourchette est inconnue
+        ou n'avait pas cette plage — pour que la commande n'annonce pas un
+        effacement imaginaire, cas d'une borne mal retapée.
+
+        Par ses bornes et non par un numéro : un numéro de tranche changerait de
+        sens dès qu'une autre est ajoutée, les tranches étant rangées par prix.
+        """
+        liste = await self.fourchettes()
+        index = self._index(liste, nom)
+        if index < 0:
+            return False
+
+        if bas > haut:
+            bas, haut = haut, bas
+
+        avant = tranches_fourchette(liste[index])
+        restantes = [t for t in avant if (t[0], t[1]) != (bas, haut)]
+        if len(restantes) == len(avant):
+            return False
+
+        liste[index] = _normaliser_fourchette(
+            {
+                **liste[index],
+                "tranches": [
+                    {"min": str(a), "max": str(b), "nombre": n}
+                    for a, b, n in restantes
+                ],
+            }
+        )
+        await self._ecrire_fourchettes(liste)
+        return True
+
+    async def tranches_de_recherche(self) -> list[tuple[Decimal, Decimal, int]]:
+        """Tranches à appliquer à une recherche, qui couvre **l'union** des
+        fourchettes : les plages réglées dans *toutes*, au plus permissif.
+
+        Même raisonnement que `plafond_de_recherche`. Une recherche ne porte sur
+        aucune fourchette en particulier ; y appliquer une tranche que l'une seule
+        connaît cacherait des promotions qu'une autre publie bel et bien, et
+        `/promos chercher` montrerait moins que ce qui sort le soir. Une plage doit
+        donc être plafonnée partout pour l'être ici, et alors au plus grand des
+        nombres.
+
+        Sans aucune fourchette, aucune tranche : « réglée partout » ne doit pas
+        être vrai d'un ensemble vide.
+        """
+        fourchettes = await self.fourchettes()
+        if not fourchettes:
+            return []
+
+        par_plage: list[dict[tuple[Decimal, Decimal], int]] = [
+            {(bas, haut): nombre for bas, haut, nombre in tranches_fourchette(f)}
+            for f in fourchettes
+        ]
+        communes = set(par_plage[0])
+        for table in par_plage[1:]:
+            communes &= set(table)
+
+        return sorted(
+            (bas, haut, max(table[(bas, haut)] for table in par_plage))
+            for bas, haut in communes
+        )
 
     async def ajouter_salon_fourchette(self, nom: str, salon_id: str) -> bool:
         """Attache un salon. False si la fourchette est inconnue ou l'a déjà."""

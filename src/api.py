@@ -191,22 +191,46 @@ async def _fourchette(bot, requete: web.Request, charge: dict | None = None):
     )
 
 
-async def _plafond(bot, requete: web.Request, charge: dict | None = None) -> int | None:
-    """Plafond à appliquer, ou rien si la requête a donné ses propres bornes.
+def _bornes_donnees(requete: web.Request, charge: dict | None = None) -> bool:
+    """Vrai si l'appel a fourni ses propres bornes de prix.
 
     Même règle que `/promos chercher` : sans bornes, la question est « qu'est-ce
-    qui va sortir ? » et le plafond des fourchettes doit s'y voir ; avec des
-    bornes, c'est une recherche libre, et couper le résultat cacherait des
-    promotions qu'on vient de demander explicitement.
+    qui va sortir ? » et les coupes réglées doivent s'y voir ; avec des bornes,
+    c'est une recherche libre, et couper le résultat cacherait des promotions
+    qu'on vient de demander explicitement.
+
+    Écrit une fois pour le plafond et pour les tranches : deux lectures
+    séparées finiraient par diverger, et un appel plafonné mais non tranché (ou
+    l'inverse) serait indéfendable.
+    """
+    source = {**(charge or {}), **dict(requete.query)}
+    return any(source.get(cle) not in (None, "") for cle in ("min", "max"))
+
+
+async def _plafond(bot, requete: web.Request, charge: dict | None = None) -> int | None:
+    """Plafond à appliquer, ou rien si la requête a donné ses propres bornes.
 
     Le plafond est celui de **l'union** (voir `Store.plafond_de_recherche`), et
     celui de la configuration commune : le site ne dit pas de quel serveur il
     parle.
     """
-    source = {**(charge or {}), **dict(requete.query)}
-    if any(source.get(cle) not in (None, "") for cle in ("min", "max")):
+    if _bornes_donnees(requete, charge):
         return None
     return await bot.store.plafond_de_recherche()
+
+
+async def _tranches(
+    bot, requete: web.Request, charge: dict | None = None
+) -> list[tuple[Decimal, Decimal, int]]:
+    """Tranches à appliquer, sous la même règle que le plafond ci-dessus.
+
+    Celles de **l'union** (voir `Store.tranches_de_recherche`) : une plage
+    réglée sur une seule fourchette cacherait ici des promotions qu'une autre
+    publie bel et bien.
+    """
+    if _bornes_donnees(requete, charge):
+        return []
+    return await bot.store.tranches_de_recherche()
 
 
 async def _config_json(bot) -> dict[str, Any]:
@@ -288,6 +312,7 @@ def enregistrer_routes(app: web.Application, bot) -> None:
             prix_max,
             types_exclus=await bot.store.types_exclus(),
             plafond=await _plafond(bot, requete),
+            tranches=await _tranches(bot, requete),
         )
         return _json(promos_en_json(trouvees, meta, await _date_du_jour(bot)))
 
@@ -386,6 +411,7 @@ def enregistrer_routes(app: web.Application, bot) -> None:
             prix_max,
             types_exclus=await bot.store.types_exclus(),
             plafond=await _plafond(bot, requete, charge),
+            tranches=await _tranches(bot, requete, charge),
         )
         date = await _date_du_jour(bot)
 
