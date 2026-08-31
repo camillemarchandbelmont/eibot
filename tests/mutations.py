@@ -3604,6 +3604,304 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
         "    if False:\n        return []",
         "une recherche à bornes données verrait son résultat coupé",
     ),
+    # --- Le collage du tableau du jeu ---------------------------------------
+    #
+    # Tout se joue sur des données qu'on ne relit pas : treize noms avec doubles
+    # espaces et des montants à dix-neuf chiffres. Une colonne mal lue ne se voit
+    # ni dans la page ni dans le jeu — l'import passe et ne met rien à jour.
+    (
+        "collage-colonnes-devinees-aux-espaces",
+        "src/collage.py",
+        "        cellules = ligne.split(SEPARATEUR)",
+        "        cellules = ligne.split()",
+        "« ARMEE  DE TERRE » deviendrait trois colonnes : nom tronqué, import muet",
+    ),
+    (
+        "collage-nom-normalise",
+        "src/collage.py",
+        "        nom = cellules[0].strip()",
+        '        nom = " ".join(cellules[0].split())',
+        "les doubles espaces sont la clé d'import du jeu : réduits, plus de filiale",
+    ),
+    (
+        "collage-entete-comptee-comme-filiale",
+        "src/collage.py",
+        "        if _est_entete(cellules):",
+        "        if False:",
+        "une ligne « Filiale » dans le tableau du soir, et sa colonne mal choisie",
+    ),
+    (
+        "collage-entete-ne-designe-plus-sa-colonne",
+        "src/collage.py",
+        "    if colonne is not None and 0 < colonne < len(cellules):",
+        "    if False:",
+        "une colonne ajoutée à droite par le jeu ferait prélever 7 % de n'importe quoi",
+    ),
+    (
+        "collage-nom-lu-comme-montant",
+        "src/collage.py",
+        "    for cellule in reversed(cellules[1:]):",
+        "    for cellule in reversed(cellules):",
+        "une ligne sans montant verrait son nom pris pour un montant",
+    ),
+    (
+        "collage-ligne-sans-tabulation-devinee",
+        "src/collage.py",
+        "        if len(cellules) < 2:",
+        "        if False:",
+        "la ligne retapée à la main passerait sans montant plutôt que d'être montrée",
+    ),
+    (
+        "collage-ligne-vide-signalee",
+        "src/collage.py",
+        "        if not ligne.strip():\n            continue",
+        "        if False:\n            continue",
+        "le retour à la ligne final se lirait comme une faute à corriger",
+    ),
+    (
+        "collage-numero-de-ligne-decale",
+        "src/collage.py",
+        '    for numero, ligne in enumerate(str(texte or "").splitlines(), start=1):',
+        '    for numero, ligne in enumerate(str(texte or "").splitlines(), start=0):',
+        "le numéro montré désignerait la ligne du dessus : on corrigerait une saine",
+    ),
+    (
+        "collage-doublon-empile",
+        "src/collage.py",
+        "        filiales = enregistrer(\n"
+        "            filiales, calculer(releve.nom, releve.benefices, date)\n"
+        "        )",
+        "        filiales = filiales + [\n"
+        "            calculer(releve.nom, releve.benefices, date)\n"
+        "        ]",
+        "deux sélections qui se chevauchent compteraient deux fois les mêmes frais",
+    ),
+    # --- La page des frais : ce qui s'affiche -------------------------------
+    (
+        "page-frais-mise-en-cache",
+        "src/page_frais.py",
+        '        headers={"Cache-Control": "no-store"},',
+        "        headers={},",
+        "la page montrerait le collage précédent : on croirait le sien sans effet",
+    ),
+    (
+        "page-frais-collage-non-echappe",
+        "src/page_frais.py",
+        "        collage=html.escape(collage),",
+        "        collage=collage,",
+        "un <script> collé s'exécuterait, et un lien piégé le ferait coller par un autre",
+    ),
+    (
+        "page-frais-nom-non-echappe",
+        "src/page_frais.py",
+        "            nom=html.escape(filiale.nom),",
+        "            nom=filiale.nom,",
+        "le nom d'une filiale reviendrait en HTML dans le tableau affiché",
+    ),
+    # --- La page des frais : le verrou d'écriture ---------------------------
+    #
+    # La page est ouverte à tous et son menu nomme toutes les entreprises : sans
+    # ce verrou, l'adresse suffirait à remplacer les relevés du jour de n'importe
+    # laquelle.
+    (
+        "page-frais-entreprise-inconnue-acceptee",
+        "src/page_frais.py",
+        "        entreprise = dict(serveurs).get(serveur)\n        if entreprise is None:",
+        "        entreprise = dict(serveurs).get(serveur)\n        if False:",
+        "un id quelconque écrirait dans un tiroir que personne ne publie",
+    ),
+    (
+        "page-frais-sans-mot-de-passe-ouverte",
+        "src/page_frais.py",
+        "        trace = await magasin.motdepasse_page()\n        if trace is None:",
+        "        trace = await magasin.motdepasse_page()\n        if False:",
+        "le refus ne nommerait plus la cause : on chercherait une faute de frappe",
+    ),
+    (
+        "page-frais-mot-de-passe-facultatif",
+        "src/page_frais.py",
+        "        if not par_mot_de_passe and not verifier_jeton(",
+        "        if False and not verifier_jeton(",
+        "l'adresse suffirait à remplacer les relevés du jour de toute entreprise",
+    ),
+    (
+        "page-frais-jeton-de-nimporte-quelle-entreprise",
+        "src/page_frais.py",
+        "            requete.cookies.get(nom_cookie(serveur), \"\"),\n"
+        "            serveur,\n"
+        "            int(time.time()),",
+        "            requete.cookies.get(nom_cookie(serveur), \"\"),\n"
+        '            "",\n'
+        "            int(time.time()),",
+        "l'entreprise ne serait plus dans ce qui est vérifié : un cookie pour toutes",
+    ),
+    (
+        "page-frais-refus-repond-oui",
+        "src/page_frais.py",
+        "                rendre(serveurs, collage, serveur, _refus_acces(raison)), statut=403",
+        "                rendre(serveurs, collage, serveur, _refus_acces(raison)), statut=200",
+        "un refus indistinguable d'un succès dans le journal d'accès",
+    ),
+    (
+        "page-frais-releves-dans-le-tiroir-commun",
+        "src/page_frais.py",
+        "        magasin = bot.store.pour(serveur)",
+        "        magasin = bot.store",
+        "les relevés d'une entreprise iraient dans un tableau que personne ne publie",
+    ),
+    # --- La page des frais : le cookie -------------------------------------
+    (
+        "page-frais-cookie-lisible-par-un-script",
+        "src/page_frais.py",
+        "        httponly=True,",
+        "        httponly=False,",
+        "volé par un script, il vaudrait mot de passe pendant un mois",
+    ),
+    (
+        "page-frais-cookie-en-clair-sur-le-reseau",
+        "src/page_frais.py",
+        "        secure=True,",
+        "        secure=False,",
+        "le cookie partirait en clair sur un réseau partagé",
+    ),
+    (
+        "page-frais-cookie-envoye-par-un-autre-site",
+        "src/page_frais.py",
+        '        samesite="Lax",',
+        "        samesite=None,",
+        "un formulaire posté d'ailleurs ferait écrire un navigateur identifié",
+    ),
+    (
+        "page-frais-cookie-sans-fin",
+        "src/page_frais.py",
+        "        max_age=DUREE_JETON,",
+        "        max_age=None,",
+        "le cookie tiendrait tant que le navigateur reste ouvert, sans durée annoncée",
+    ),
+    (
+        "page-frais-cookie-prolonge-sans-mot-de-passe",
+        "src/page_frais.py",
+        "        if par_mot_de_passe:\n            _identifier(reponse, serveur, trace)",
+        "        if True:\n            _identifier(reponse, serveur, trace)",
+        "un mois glissant : le navigateur qui colle tous les jours ne perdrait jamais la main",
+    ),
+    # --- Le mot de passe lui-même ------------------------------------------
+    (
+        "mdp-empreinte-sans-sel",
+        "src/motdepasse.py",
+        "    sel = secrets.token_bytes(16)",
+        '    sel = b"sel fixe"',
+        "deux entreprises au même mot de passe se verraient en base",
+    ),
+    (
+        "mdp-trace-abimee-plante",
+        "src/motdepasse.py",
+        "    if not isinstance(trace, dict):\n        return False",
+        "    if False:\n        return False",
+        "une config retouchée à la main ferait planter la page au lieu de refuser",
+    ),
+    (
+        "mdp-jeton-sans-empreinte-accepte",
+        "src/motdepasse.py",
+        '    if not isinstance(trace, dict) or not trace.get("empreinte"):\n        return False',
+        "    if False:\n        return False",
+        "une entreprise sans mot de passe verrait ses cookies vérifiés contre rien",
+    ),
+    (
+        "mdp-jeton-illisible-plante",
+        "src/motdepasse.py",
+        "    try:\n        expiration = int(brut)\n    except ValueError:\n        return False",
+        "    expiration = int(brut or 0)",
+        "un cookie retouché à la main casserait la page au lieu d'être refusé",
+    ),
+    (
+        "mdp-jeton-sans-date",
+        "src/motdepasse.py",
+        "    if expiration <= int(maintenant):\n        return False",
+        "    if False:\n        return False",
+        "un cookie de l'an dernier ouvrirait encore l'écriture",
+    ),
+    (
+        "mdp-jeton-sans-entreprise",
+        "src/motdepasse.py",
+        '    message = f"{serveur_id}|{expiration}".encode()',
+        '    message = f"{expiration}".encode()',
+        "le cookie d'une entreprise vaudrait pour toutes celles du menu",
+    ),
+    (
+        "mdp-jeton-signe-avec-une-cle-fixe",
+        "src/motdepasse.py",
+        '    cle = str(trace.get("empreinte", "")).encode()',
+        '    cle = b"cle fixe"',
+        "changer de mot de passe ne couperait plus les navigateurs déjà identifiés",
+    ),
+    (
+        "mdp-cookie-dune-heure",
+        "src/motdepasse.py",
+        "DUREE_JETON = 30 * 24 * 3600",
+        "DUREE_JETON = 3600",
+        "le mot de passe serait à retaper chaque jour, donc gardé sous la main",
+    ),
+    # --- Le tiroir : lot de relevés et empreinte ---------------------------
+    (
+        "db-lot-ecrase-le-tableau",
+        "src/db.py",
+        "        filiales = await self.filiales()\n        for releve in releves:",
+        "        filiales = []\n        for releve in releves:",
+        "un tableau collé en deux fois effacerait sa première moitié",
+    ),
+    (
+        "db-lot-non-ecrit",
+        "src/db.py",
+        '        await self.set("filiales", vers_json(filiales))\n        return releves',
+        "        return releves",
+        "la page annoncerait treize relevés enregistrés et n'écrirait rien",
+    ),
+    (
+        "db-mdp-trace-abimee-rendue-telle-quelle",
+        "src/db.py",
+        "        return trace if isinstance(trace, dict) else None",
+        "        return trace",
+        "une valeur retouchée à la main ferait planter la page au lieu de la fermer",
+    ),
+    (
+        "db-mdp-clair-en-base",
+        "src/db.py",
+        '        await self.set("motdepasse_page", motdepasse.empreinte(clair))',
+        '        await self.set("motdepasse_page", {"empreinte": clair})',
+        "le mot de passe serait lisible en base, donc chez l'hébergeur",
+    ),
+    (
+        "db-mdp-efface-sans-le-dire",
+        "src/db.py",
+        "        if await self.motdepasse_page() is None:\n            return False",
+        "        if False:\n            return False",
+        "un « ✅ retiré » sur une entreprise qui n'avait pas de mot de passe",
+    ),
+    # --- /reglages motdepasse ----------------------------------------------
+    (
+        "mdp-commande-ouverte-a-tous",
+        "src/reglages.py",
+        "        if not administrateur(interaction):\n"
+        "            await interaction.response.send_message(REFUS_MOTDEPASSE, ephemeral=True)",
+        "        if False:\n"
+        "            await interaction.response.send_message(REFUS_MOTDEPASSE, ephemeral=True)",
+        "n'importe qui s'accorderait l'écriture des relevés hors de Discord",
+    ),
+    (
+        "mdp-commande-montre-le-mot-de-passe-au-salon",
+        "src/reglages.py",
+        '            "déjà identifiés.",\n            ephemeral=True,',
+        '            "déjà identifiés.",\n            ephemeral=False,',
+        "le mot de passe resterait affiché dans le salon pour tout le monde",
+    ),
+    (
+        "mdp-commande-regle-toutes-les-entreprises",
+        "src/reglages.py",
+        "        magasin = pour_ce_serveur(bot, interaction)\n\n        if retirer:",
+        "        magasin = bot.store\n\n        if retirer:",
+        "un mot de passe commun donnerait l'écriture chez toutes les entreprises",
+    ),
 ]
 
 

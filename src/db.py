@@ -25,7 +25,7 @@ from decimal import Decimal, InvalidOperation
 from random import Random
 from typing import Any
 
-from src import settings
+from src import motdepasse, settings
 from src.filiales import (
     Filiale,
     calculer,
@@ -1160,6 +1160,29 @@ class Store:
         await self.set("filiales", vers_json(enregistrer(await self.filiales(), filiale)))
         return filiale
 
+    async def enregistrer_filiales(self, releves: list[Filiale]) -> list[Filiale]:
+        """Enregistre un lot de relevés en **une** écriture. Renvoie le lot.
+
+        Ce que colle la page web : treize relevés d'un coup. Passer treize fois
+        par `enregistrer_filiale` ferait treize lectures et treize écritures, et
+        une panne au septième laisserait le tableau à moitié rempli sans rien
+        dire.
+
+        Un lot n'est pas un nouveau tableau : les filiales qu'il ne nomme pas
+        restent, à leur place. Sinon, un tableau collé en deux fois effacerait sa
+        première moitié, et une filiale vendue — qui se retire avec `/frais
+        retirer` — disparaîtrait sans qu'on l'ait demandé.
+        """
+        if not releves:
+            # Rien à écrire, et surtout pas une liste vide par-dessus les relevés
+            # du jour : c'est le clic sur « Enregistrer » avant le collage.
+            return []
+        filiales = await self.filiales()
+        for releve in releves:
+            filiales = enregistrer(filiales, releve)
+        await self.set("filiales", vers_json(filiales))
+        return releves
+
     async def retirer_filiale(self, nom: str) -> bool:
         """Retire un relevé. Renvoie False s'il n'existait pas."""
         avant = await self.filiales()
@@ -1279,6 +1302,53 @@ class Store:
     async def oublier_publication(self) -> None:
         """Efface la marque du jour pour pouvoir retester le déclenchement."""
         await self.set("derniere_publication", None)
+
+    # --- Mot de passe de la page des frais ----------------------------------
+    #
+    # Sous sa **propre clé** et non dans `config` : celle-ci est rendue telle
+    # quelle au site de contrôle par `/api/config`, et l'empreinte n'a aucune
+    # raison d'en sortir. Hérité par `VueServeur`, donc rangé par entreprise sans
+    # une ligne de plus — et c'est l'essentiel : un mot de passe commun donnerait
+    # à qui le tient l'écriture chez toutes, celles que la page propose justement
+    # dans un menu déroulant.
+
+    async def motdepasse_page(self) -> dict | None:
+        """L'empreinte enregistrée, ou rien. Jamais le mot de passe : il n'est
+        pas en base.
+
+        Ce qui n'est pas un enregistrement est lu comme une absence : la base est
+        du JSON qu'on peut retoucher à la main, et rendre la valeur telle quelle
+        ferait échouer la signature du cookie — une panne de la page là où il ne
+        devrait y avoir qu'un refus.
+        """
+        trace = await self.get("motdepasse_page", None)
+        return trace if isinstance(trace, dict) else None
+
+    async def definir_motdepasse_page(self) -> str:
+        """Tire un mot de passe, n'enregistre que son empreinte, rend le clair.
+
+        Le tirage vit ici et non chez l'appelant : c'est ce qui garantit qu'aucun
+        chemin n'écrit un mot de passe lisible en base. Le clair rendu est le seul
+        moment où il existe — la commande le montre, et personne ne peut le relire
+        ensuite.
+
+        Remplace le précédent, donc coupe les cookies déjà distribués : ils sont
+        signés avec l'empreinte (voir `src/motdepasse.py`).
+        """
+        clair = motdepasse.nouveau()
+        await self.set("motdepasse_page", motdepasse.empreinte(clair))
+        return clair
+
+    async def effacer_motdepasse_page(self) -> bool:
+        """Referme la page en écriture. Renvoie False s'il n'y en avait pas.
+
+        Le booléen évite un « ✅ retiré » sur une entreprise qui n'en avait pas :
+        on croirait avoir refermé une page qui ne l'a jamais été.
+        """
+        if await self.motdepasse_page() is None:
+            return False
+        await self.set("motdepasse_page", None)
+        return True
 
 
 class VueServeur(Store):

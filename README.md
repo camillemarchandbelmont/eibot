@@ -325,6 +325,61 @@ propre heure, ses propres salons, sa propre marque du jour. Les deux ne peuvent
 donc pas se voler leur quota quotidien, et la panne de l'export du jeu — dont le
 tableau ne dépend pas, ses données étant saisies à la main — ne le fait pas taire.
 
+### Coller le tableau du jeu : la page `/frais`
+
+Treize filiales, c'est treize `/frais releve` à taper le soir. Le bot sert donc
+une page web — `https://<ton-service>.onrender.com/frais` — où l'on **colle le
+tableau des filiales du jeu**, titres compris, et où l'on récupère les deux
+colonnes que son import réclame :
+
+```
+Filiale→Trésorerie→Résultat d'exploitation→Résultat NET→Bénéfices ou pertes
+ARMEE  DE LAIR ET DE L ESPACE→3196169776647940996→…→344582317616911946
+MARINE  NATIONALE→3172949192738062677→…→213491272791433636
+```
+
+Les colonnes se séparent aux **tabulations**, celles que le navigateur pose en
+collant un tableau — jamais aux espaces : les noms du jeu en contiennent deux à la
+suite (`ARMEE  DE TERRE`), et ce nom est la clé d'import. Découpé aux espaces, il
+donnerait une filiale que le jeu ne retrouverait pas, et l'import passerait sans
+rien mettre à jour. Une ligne sans tabulation est donc **refusée et montrée avec
+son numéro**, jamais devinée. Les 7 % se calculent sur « Bénéfices ou pertes », la
+colonne nommée par l'en-tête quand il est collé, la dernière sinon.
+
+Deux boutons :
+
+- **Convertir** ne demande rien et n'écrit rien. La page est ouverte à tous : le
+  résultat se calcule sur ce qu'on colle et ne sort pas de la page.
+- **Convertir et enregistrer** vaut un lot de `/frais releve` dans l'entreprise
+  choisie au menu déroulant — le tableau du soir les reprendra. Un lot n'est pas
+  un nouveau tableau : les filiales absentes du collage restent, à leur place, et
+  se retirent avec `/frais retirer`.
+
+### Le mot de passe de la page
+
+Écrire demande un mot de passe **par entreprise**, tiré par
+`/reglages motdepasse` dans le serveur concerné. Sans ce verrou, l'adresse
+suffirait à remplacer les relevés du jour de n'importe quelle entreprise — la page
+est ouverte et son menu les nomme toutes.
+
+Le bot le tire lui-même et le montre **une fois**, dans une réponse éphémère :
+passé en argument de commande, il s'afficherait dans le salon pour tout le monde.
+Seule son empreinte salée (PBKDF2-SHA256) part en base ; rien ne peut le relire.
+`/reglages motdepasse retirer:true` referme la page en écriture, et en tirer un
+nouveau remplace le précédent.
+
+La commande est réservée aux **administrateurs** : le mot de passe s'emporte hors
+de Discord, donc le donner revient à donner l'écriture des relevés à quelqu'un que
+`/reglages acces` ne connaît pas.
+
+Une fois tapé, un cookie signé dispense de le retaper pendant **trente jours** —
+`httponly`, `samesite=Lax`, `secure`, et un cookie par entreprise pour qu'un même
+navigateur puisse en suivre plusieurs. Il est signé avec l'empreinte elle-même :
+aucun secret de plus à configurer sur Render, et changer le mot de passe coupe du
+même coup tous les navigateurs déjà identifiés. Il n'est **pas prolongé** à chaque
+enregistrement, sinon un poste qui colle tous les jours ne perdrait jamais la
+main.
+
 ## Installation
 
 ```bash
@@ -393,6 +448,7 @@ local, mais elle repart des valeurs de `.env` à chaque redémarrage.
 | `/reglages fuseau fuseau` | Fuseau horaire des publications de ce serveur (ex : `Europe/Paris`) |
 | `/reglages mention [role]` | Rôle mentionné dans le post ; sans argument, aucune mention |
 | `/reglages logs [salon]` | Salon de journal ; sans argument, journal désactivé |
+| `/reglages motdepasse [retirer]` | Tire le mot de passe qui autorise la page `/frais` à enregistrer ici ; `retirer:true` la referme |
 | `/reglages modules liste` | Les modules trouvés et leur état dans ce serveur |
 | `/reglages modules activer module` | Rallume un module dans ce serveur |
 | `/reglages modules desactiver module` | L'éteint : ses commandes quittent le menu et ses publications se taisent |
@@ -764,6 +820,10 @@ publication a sa propre marque, donc régler l'une ne fait pas repartir l'autre.
 demander un nouveau post.
 
 `GET /health` répond `ok` : c'est aussi la cible du health check Render.
+`GET /frais` sert la page où l'on colle le tableau du jeu (voir
+[Coller le tableau du jeu](#coller-le-tableau-du-jeu--la-page-frais)) ; elle est
+hors de `/api/`, donc hors du secret partagé avec le site de contrôle — son propre
+verrou est le mot de passe par entreprise.
 
 ## Le site web
 
@@ -1009,6 +1069,9 @@ src/migration.py déménagement de l'état d'une base Postgres à une autre
 src/acces.py     qui a le droit d'utiliser les commandes
 src/web.py       /health et /tick
 src/api.py       routes /api/* consommées par le site web
+src/collage.py   lecture du tableau des filiales collé depuis le jeu
+src/page_frais.py  la page web /frais : coller, convertir, enregistrer
+src/motdepasse.py  mot de passe d'écriture de cette page, et son cookie signé
 src/serialisation.py  objets métier → JSON (montants en texte)
 src/main.py      point d'entrée
 ```

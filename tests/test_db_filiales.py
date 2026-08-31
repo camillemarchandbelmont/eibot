@@ -15,6 +15,7 @@ from random import Random
 import pytest
 
 from src.db import Store
+from src.filiales import calculer
 
 
 @pytest.fixture
@@ -85,6 +86,65 @@ async def test_retirer_la_derniere_filiale_laisse_une_liste_vide(store):
 
     assert await store.filiales() == []
     assert await store.get("filiales") == []
+
+
+# --- Un lot de relevés d'un coup --------------------------------------------
+#
+# Ce que la page web colle : treize relevés à la fois. Enregistrés un par un, ce
+# serait treize lectures et treize écritures — et une panne au septième laisserait
+# le tableau à moitié rempli, sans rien dire.
+
+
+async def test_un_lot_senregistre_en_une_ecriture(store):
+    filiales = await store.enregistrer_filiales(
+        [
+            calculer("ARMEE  DE TERRE", Decimal(1000), "2026-08-11"),
+            calculer("MARINE", Decimal(2000), "2026-08-11"),
+        ]
+    )
+
+    assert [f.nom for f in filiales] == ["ARMEE  DE TERRE", "MARINE"]
+    assert [f.frais for f in await store.filiales()] == [Decimal(70), Decimal(140)]
+
+
+async def test_un_lot_ne_remplace_que_les_filiales_quil_nomme(store):
+    """Un lot n'est pas un nouveau tableau : c'est un lot de relevés.
+
+    Effacer les autres ferait disparaître celles dont on aurait collé le tableau
+    en deux fois, et une filiale vendue reste à retirer explicitement.
+    """
+    await store.enregistrer_filiale("A", Decimal(1000), "2026-08-09")
+
+    await store.enregistrer_filiales([calculer("B", Decimal(2000), "2026-08-11")])
+
+    assert [f.nom for f in await store.filiales()] == ["A", "B"]
+
+
+async def test_un_lot_garde_la_place_dune_filiale_deja_connue(store):
+    """L'ordre est celui de la première saisie : le tableau du soir se lit d'un
+    jour sur l'autre, et des lignes qui sautent de place se recoupent mal.
+
+    La casse du nom, elle, suit le dernier relevé — comme une ressaisie par
+    `/frais releve` : c'est ainsi qu'on corrige un nom mal orthographié, et c'est
+    le nom qui sert de clé à l'import du jeu.
+    """
+    await store.enregistrer_filiale("A", Decimal(1000), "2026-08-09")
+    await store.enregistrer_filiale("B", Decimal(1000), "2026-08-09")
+
+    await store.enregistrer_filiales([calculer("a", Decimal(3000), "2026-08-11")])
+
+    filiales = await store.filiales()
+    assert [f.nom for f in filiales] == ["a", "B"]
+    assert filiales[0].benefices == Decimal(3000)
+
+
+async def test_un_lot_vide_nefface_rien(store):
+    """Le clic sur « Enregistrer » avant le collage : rien à écrire, et surtout
+    pas une liste vide par-dessus les relevés du jour."""
+    await store.enregistrer_filiale("A", Decimal(1000), "2026-08-09")
+
+    assert await store.enregistrer_filiales([]) == []
+    assert [f.nom for f in await store.filiales()] == ["A"]
 
 
 async def test_les_filiales_ne_polluent_pas_la_config(store):

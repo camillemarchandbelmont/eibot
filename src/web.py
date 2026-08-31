@@ -81,6 +81,13 @@ def creer_app(bot) -> web.Application:
     from src.api import enregistrer_routes
 
     enregistrer_routes(app, bot)
+
+    # `/frais` : la page où l'on colle le tableau des filiales du jeu. Importée
+    # ici pour la même raison, et branchée après `/api/*` — le middleware de
+    # garde d'`api.py` laisse passer ce qui n'est pas sous `/api/`.
+    from src.page_frais import enregistrer_routes as enregistrer_page_frais
+
+    enregistrer_page_frais(app, bot)
     return app
 
 

@@ -34,6 +34,13 @@ from src.commandes import (
     pour_ce_serveur,
 )
 from src.importation import nommer, preparer
+from src.motdepasse import DUREE_JETON
+
+# Le chemin de la page vient de la page elle-même : recopié ici, il finirait par
+# désigner une adresse qui n'existe plus, et le mot de passe serait tiré sans
+# qu'on sache où le coller. Renommé pour ne pas se lire comme un chemin de
+# commande Discord au milieu de ce fichier.
+from src.page_frais import CHEMIN as CHEMIN_PAGE
 from src.publish import envoyer
 from src.schedule import maintenant_local
 from src.source import ApiSource, SourceError, diagnostiquer
@@ -287,6 +294,76 @@ def enregistrer_les_reglages(bot: EmpireBot) -> None:
         await interaction.response.send_message(
             f"✅ Journal dans {salon.mention} : publications et erreurs y seront "
             f"rapportées.",
+            ephemeral=True,
+        )
+
+    # --- /reglages motdepasse -----------------------------------------------
+
+    #: Le mot de passe s'emporte hors de Discord : le donner, c'est donner
+    #: l'écriture des relevés à quelqu'un que la liste d'accès ne connaît pas. Le
+    #: même verrou que la liste elle-même, donc, et pour la même raison — un
+    #: membre autorisé ne s'accorde pas de complices.
+    REFUS_MOTDEPASSE = (
+        "❌ Seul un administrateur peut régler le mot de passe de la page.\n"
+        f"-# Il donne le droit d'enregistrer des relevés depuis `{CHEMIN_PAGE}`, "
+        "hors de Discord et hors de la liste d'accès."
+    )
+
+    @groupe.command(
+        name="motdepasse",
+        description=f"Mot de passe pour enregistrer depuis la page {CHEMIN_PAGE}",
+    )
+    @app_commands.describe(retirer="Referme la page en écriture pour ce serveur")
+    async def reglages_motdepasse(
+        interaction: discord.Interaction, retirer: bool = False
+    ):
+        """Tire le mot de passe de la page des frais, et le montre une fois.
+
+        Tiré par le bot et non choisi : un mot de passe passé en argument de
+        commande s'afficherait dans le salon pour tout le monde, et serait à
+        changer aussitôt que lu. Ici il ne sort que dans une réponse éphémère.
+
+        Par serveur, comme le reste : la page propose la liste des entreprises
+        dans un menu déroulant, et un mot de passe commun donnerait à qui le tient
+        l'écriture chez toutes.
+        """
+        if not administrateur(interaction):
+            await interaction.response.send_message(REFUS_MOTDEPASSE, ephemeral=True)
+            return
+
+        magasin = pour_ce_serveur(bot, interaction)
+
+        if retirer:
+            if await magasin.effacer_motdepasse_page():
+                message = (
+                    f"✅ Mot de passe retiré : `{CHEMIN_PAGE}` n'enregistre plus "
+                    "rien pour cette entreprise.\n"
+                    "-# Les navigateurs déjà identifiés sont coupés du même coup. "
+                    "Convertir un tableau reste possible, comme pour tout le monde."
+                )
+            else:
+                message = (
+                    "ℹ️ Aucun mot de passe n'était réglé : `"
+                    f"{CHEMIN_PAGE}` n'enregistrait déjà rien pour cette entreprise."
+                )
+            await interaction.response.send_message(message, ephemeral=True)
+            return
+
+        clair = await magasin.definir_motdepasse_page()
+        jours = DUREE_JETON // 86400
+        # Le mot de passe est **montré une seule fois** : seule son empreinte est
+        # enregistrée, et rien ne peut le relire. Le dire évite de fermer la
+        # réponse sans l'avoir noté, puis d'en tirer un autre — ce qui couperait
+        # les navigateurs des autres postes.
+        await interaction.response.send_message(
+            f"✅ Mot de passe de **{interaction.guild.name}** :\n"
+            f"```{clair}```"
+            f"À coller sur la page web `{CHEMIN_PAGE}`, entreprise "
+            f"**{interaction.guild.name}**, pour y enregistrer les relevés collés. "
+            f"Ce navigateur restera ensuite identifié {jours} jours.\n"
+            "-# Il n'est affiché qu'une fois : seule son empreinte est enregistrée. "
+            "En retirer un nouveau remplace celui-ci et déconnecte les navigateurs "
+            "déjà identifiés.",
             ephemeral=True,
         )
 

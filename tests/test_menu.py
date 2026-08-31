@@ -73,6 +73,10 @@ async def test_reglages_rassemble_tout_ce_qui_configure_le_bot():
         # Le pont vers la configuration par serveur : chaque serveur a la sienne,
         # sans repli sur la commune, et c'est cette commande qui la reprend.
         "importer",
+        # Le mot de passe de la page web des frais, tiré par le bot et montré
+        # dans une réponse éphémère : choisi en argument de commande, il
+        # s'afficherait dans le salon pour tout le monde.
+        "motdepasse",
         # L'allumage par serveur : un module éteint ne publie plus et quitte le
         # menu de ce serveur seul.
         "modules",
