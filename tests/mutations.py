@@ -3779,11 +3779,11 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
         "le cookie tiendrait tant que le navigateur reste ouvert, sans durée annoncée",
     ),
     (
-        "page-frais-cookie-prolonge-sans-mot-de-passe",
+        "page-frais-cookie-non-repose",
         "src/page_frais.py",
-        "        if par_mot_de_passe:\n            _identifier(reponse, serveur, trace)",
-        "        if True:\n            _identifier(reponse, serveur, trace)",
-        "un mois glissant : le navigateur qui colle tous les jours ne perdrait jamais la main",
+        "        _identifier(reponse, serveur, trace)\n        return reponse",
+        "        return reponse",
+        "le mot de passe serait à retaper un jour, donc gardé sous la main",
     ),
     # --- Le mot de passe lui-même ------------------------------------------
     (
@@ -3838,9 +3838,16 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
     (
         "mdp-cookie-dune-heure",
         "src/motdepasse.py",
-        "DUREE_JETON = 30 * 24 * 3600",
+        "DUREE_JETON = 400 * 24 * 3600",
         "DUREE_JETON = 3600",
         "le mot de passe serait à retaper chaque jour, donc gardé sous la main",
+    ),
+    (
+        "mdp-cookie-plus-long-que-ce-quun-navigateur-retient",
+        "src/motdepasse.py",
+        "DUREE_JETON = 400 * 24 * 3600",
+        "DUREE_JETON = 10 * 365 * 24 * 3600",
+        "le navigateur ramènerait à 400 jours : le cookie mourrait avant sa date signée",
     ),
     # --- Le tiroir : lot de relevés et empreinte ---------------------------
     (
@@ -3891,8 +3898,8 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
     (
         "mdp-commande-montre-le-mot-de-passe-au-salon",
         "src/reglages.py",
-        '            "déjà identifiés.",\n            ephemeral=True,',
-        '            "déjà identifiés.",\n            ephemeral=False,',
+        "de les couper.\",\n            ephemeral=True,",
+        "de les couper.\",\n            ephemeral=False,",
         "le mot de passe resterait affiché dans le salon pour tout le monde",
     ),
     (

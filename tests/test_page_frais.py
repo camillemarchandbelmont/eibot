@@ -22,6 +22,7 @@ from http.cookies import SimpleCookie
 from aiohttp.test_utils import TestClient, TestServer
 
 from src.db import Store
+from src.motdepasse import DUREE_JETON
 from src.web import creer_app
 
 from tests.test_collage import COLLAGE
@@ -502,7 +503,7 @@ async def test_le_cookie_porte_le_nom_de_son_entreprise():
 
 
 async def test_le_cookie_est_hors_de_portee_du_javascript():
-    """Volé, il vaudrait mot de passe pour trente jours."""
+    """Volé, il vaudrait mot de passe jusqu'à ce qu'on en tire un nouveau."""
     client, bot = await _client()
     mdp = await bot.store.pour(111).definir_motdepasse_page()
 
@@ -512,9 +513,10 @@ async def test_le_cookie_est_hors_de_portee_du_javascript():
     assert "httponly" in entetes
     assert "samesite=lax" in entetes
     assert "secure" in entetes
-    # Trente jours, et une fin : sans durée, le cookie tiendrait le temps du
-    # navigateur, c'est-à-dire indéfiniment.
-    assert "max-age=2592000" in entetes
+    # Une durée, et la plus longue : sans `max-age`, le cookie ne vivrait que le
+    # temps du navigateur ouvert, et il serait à retaper à chaque redémarrage du
+    # poste. La valeur elle-même est éprouvée dans `test_motdepasse.py`.
+    assert f"max-age={DUREE_JETON}" in entetes
     await client.close()
 
 
@@ -535,12 +537,13 @@ async def test_le_cookie_ne_vaut_que_pour_son_entreprise():
     await client.close()
 
 
-async def test_le_cookie_nest_pas_prolonge_a_chaque_enregistrement():
-    """Trente jours à partir du mot de passe tapé, pas du dernier collage.
+async def test_le_cookie_est_reposse_a_chaque_enregistrement():
+    """Un navigateur qui sert reste identifié : la durée court du dernier collage.
 
-    Reposé à chaque enregistrement, le cookie ferait d'un mois glissant un accès
-    sans fin sur un navigateur qui colle tous les jours — alors que sa raison
-    d'être est qu'un navigateur oublié finisse par perdre la main.
+    Sans ce renouvellement, le mot de passe serait à retaper un beau jour sans
+    raison visible — et il faudrait donc le garder sous la main, c'est-à-dire à
+    portée de tout le monde. La date signée avance donc à chaque enregistrement,
+    y compris celui qu'a autorisé le cookie lui-même.
     """
     client, bot = await _client()
     mdp = await bot.store.pour(111).definir_motdepasse_page()
@@ -549,7 +552,7 @@ async def test_le_cookie_nest_pas_prolonge_a_chaque_enregistrement():
     seconde = await _enregistrer(client, "AUTRE\t2000", cookie=_cookie(premiere))
 
     assert seconde.status == 200
-    assert seconde.headers.getall("Set-Cookie", []) == []
+    assert "eibot_frais_111=" in " ".join(seconde.headers.getall("Set-Cookie"))
     await client.close()
 
 

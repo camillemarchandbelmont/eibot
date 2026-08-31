@@ -372,13 +372,19 @@ La commande est réservée aux **administrateurs** : le mot de passe s'emporte h
 de Discord, donc le donner revient à donner l'écriture des relevés à quelqu'un que
 `/reglages acces` ne connaît pas.
 
-Une fois tapé, un cookie signé dispense de le retaper pendant **trente jours** —
-`httponly`, `samesite=Lax`, `secure`, et un cookie par entreprise pour qu'un même
-navigateur puisse en suivre plusieurs. Il est signé avec l'empreinte elle-même :
-aucun secret de plus à configurer sur Render, et changer le mot de passe coupe du
-même coup tous les navigateurs déjà identifiés. Il n'est **pas prolongé** à chaque
-enregistrement, sinon un poste qui colle tous les jours ne perdrait jamais la
-main.
+Une fois tapé, un cookie signé dispense de le retaper : `httponly`,
+`samesite=Lax`, `secure`, et un cookie par entreprise pour qu'un même navigateur
+puisse en suivre plusieurs. Il est **reposé à chaque enregistrement**, si bien
+qu'un navigateur qui sert reste identifié indéfiniment — un mot de passe qu'il
+faudrait garder sous la main pour le jour où il expire serait un mot de passe à
+portée de tout le monde.
+
+Sa durée — 400 jours **sans enregistrement** — n'est donc qu'un délai
+d'inactivité, et ce n'est pas un choix : les navigateurs ramènent d'eux-mêmes à
+cette durée tout cookie qui demande plus. Ce qui coupe un navigateur n'est pas le
+temps mais `/reglages motdepasse` : le cookie est signé avec l'empreinte
+elle-même, donc en tirer un nouveau — ou le retirer — invalide d'un coup tous ceux
+déjà distribués. Aucun secret de plus à configurer sur Render, au passage.
 
 ## Installation
 
@@ -448,7 +454,7 @@ local, mais elle repart des valeurs de `.env` à chaque redémarrage.
 | `/reglages fuseau fuseau` | Fuseau horaire des publications de ce serveur (ex : `Europe/Paris`) |
 | `/reglages mention [role]` | Rôle mentionné dans le post ; sans argument, aucune mention |
 | `/reglages logs [salon]` | Salon de journal ; sans argument, journal désactivé |
-| `/reglages motdepasse [retirer]` | Tire le mot de passe qui autorise la page `/frais` à enregistrer ici ; `retirer:true` la referme |
+| `/reglages motdepasse [retirer]` | Tire le mot de passe qui autorise la page `/frais` à enregistrer ici, et coupe les navigateurs déjà identifiés ; `retirer:true` la referme |
 | `/reglages modules liste` | Les modules trouvés et leur état dans ce serveur |
 | `/reglages modules activer module` | Rallume un module dans ce serveur |
 | `/reglages modules desactiver module` | L'éteint : ses commandes quittent le menu et ses publications se taisent |

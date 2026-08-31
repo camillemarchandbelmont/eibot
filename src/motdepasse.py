@@ -54,12 +54,22 @@ PAR_GROUPE = 4
 #: sans invalider celles déjà en base.
 ITERATIONS = 100_000
 
-#: Durée de validité du cookie : trente jours.
+#: Validité du cookie : quatre cents jours **sans enregistrement**.
 #:
-#: Assez pour ne pas retaper le mot de passe chaque jour, assez peu pour qu'un
-#: navigateur oublié — un poste partagé, un téléphone perdu — ne garde pas l'accès
-#: indéfiniment.
-DUREE_JETON = 30 * 24 * 3600
+#: Un délai d'inactivité et non une date de fin : la page repose le cookie à
+#: chaque enregistrement, si bien qu'un navigateur qui sert reste identifié sans
+#: jamais retaper le mot de passe. C'est le but — un mot de passe qu'il faut
+#: garder sous la main est un mot de passe à portée de tout le monde.
+#:
+#: Quatre cents jours et pas davantage : les navigateurs ramènent d'eux-mêmes à
+#: cette durée tout cookie qui demande plus. Un chiffre plus grand ne servirait
+#: donc à rien, et ferait disparaître le cookie avant la date pour laquelle il
+#: est signé — le mot de passe serait à retaper un jour où rien ne l'annonce.
+#:
+#: Ce qui coupe un navigateur n'est donc pas le temps mais
+#: `/reglages motdepasse` : en tirer un nouveau, ou le retirer, invalide tous les
+#: cookies déjà distribués, puisque l'empreinte leur sert de clé de signature.
+DUREE_JETON = 400 * 24 * 3600
 
 _ALGO = "pbkdf2_sha256"
 

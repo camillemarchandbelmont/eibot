@@ -482,12 +482,13 @@ def enregistrer_routes(app: web.Application, bot) -> None:
         )
         reponse = _reponse(rendre(serveurs, collage, serveur, resultat))
 
-        # Le cookie n'est posé — ni prolongé — que sur un mot de passe tapé. Le
-        # renouveler à chaque enregistrement ferait d'un mois glissant un accès
-        # sans fin, alors que sa raison d'être est qu'un navigateur oublié finisse
-        # par perdre la main.
-        if par_mot_de_passe:
-            _identifier(reponse, serveur, trace)
+        # Le cookie est reposé à **chaque** enregistrement autorisé, y compris
+        # celui qu'il a lui-même autorisé : un navigateur qui sert reste identifié
+        # sans jamais retaper le mot de passe. Sinon il faudrait le garder sous la
+        # main pour le jour où le cookie expire, c'est-à-dire à portée de tout le
+        # monde. Ce qui coupe un navigateur est `/reglages motdepasse`, pas le
+        # temps.
+        _identifier(reponse, serveur, trace)
         return reponse
 
     app.router.add_get(CHEMIN, afficher)

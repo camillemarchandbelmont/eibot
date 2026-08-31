@@ -34,7 +34,6 @@ from src.commandes import (
     pour_ce_serveur,
 )
 from src.importation import nommer, preparer
-from src.motdepasse import DUREE_JETON
 
 # Le chemin de la page vient de la page elle-même : recopié ici, il finirait par
 # désigner une adresse qui n'existe plus, et le mot de passe serait tiré sans
@@ -350,7 +349,6 @@ def enregistrer_les_reglages(bot: EmpireBot) -> None:
             return
 
         clair = await magasin.definir_motdepasse_page()
-        jours = DUREE_JETON // 86400
         # Le mot de passe est **montré une seule fois** : seule son empreinte est
         # enregistrée, et rien ne peut le relire. Le dire évite de fermer la
         # réponse sans l'avoir noté, puis d'en tirer un autre — ce qui couperait
@@ -360,10 +358,11 @@ def enregistrer_les_reglages(bot: EmpireBot) -> None:
             f"```{clair}```"
             f"À coller sur la page web `{CHEMIN_PAGE}`, entreprise "
             f"**{interaction.guild.name}**, pour y enregistrer les relevés collés. "
-            f"Ce navigateur restera ensuite identifié {jours} jours.\n"
+            "Ce navigateur restera ensuite identifié, et le reste tant qu'il sert : "
+            "le mot de passe n'est plus à retaper.\n"
             "-# Il n'est affiché qu'une fois : seule son empreinte est enregistrée. "
-            "En retirer un nouveau remplace celui-ci et déconnecte les navigateurs "
-            "déjà identifiés.",
+            "En tirer un nouveau remplace celui-ci et déconnecte les navigateurs "
+            "déjà identifiés — c'est la seule façon de les couper.",
             ephemeral=True,
         )
 

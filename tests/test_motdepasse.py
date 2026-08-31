@@ -204,7 +204,13 @@ def test_le_jeton_ne_contient_pas_lempreinte():
     assert trace["sel"] not in jeton
 
 
-def test_la_duree_du_jeton_se_compte_en_semaines():
-    """Assez pour ne pas retaper le mot de passe chaque jour, assez peu pour
-    qu'un navigateur oublié ne garde pas l'accès indéfiniment."""
-    assert 7 * 24 * 3600 <= DUREE_JETON <= 90 * 24 * 3600
+def test_la_duree_du_jeton_ne_depasse_pas_ce_quun_navigateur_retient():
+    """Le cookie est reposé à chaque enregistrement : cette durée est un délai
+    d'**inactivité**, pas une date de fin.
+
+    Le plafond n'est pas un choix : les navigateurs ramènent d'eux-mêmes à
+    quatre cents jours tout cookie qui demande plus. Au-delà, le cookie
+    disparaîtrait avant la date pour laquelle il est signé, et le mot de passe
+    serait à retaper un jour où rien ne l'annonce.
+    """
+    assert 300 * 24 * 3600 <= DUREE_JETON <= 400 * 24 * 3600
