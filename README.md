@@ -357,20 +357,32 @@ Deux boutons :
 
 ### Le mot de passe de la page
 
-Écrire demande un mot de passe **par entreprise**, tiré par
+Écrire demande un mot de passe **par entreprise**, réglé par
 `/reglages motdepasse` dans le serveur concerné. Sans ce verrou, l'adresse
 suffirait à remplacer les relevés du jour de n'importe quelle entreprise — la page
 est ouverte et son menu les nomme toutes.
 
-Le bot le tire lui-même et le montre **une fois**, dans une réponse éphémère :
-passé en argument de commande, il s'afficherait dans le salon pour tout le monde.
-Seule son empreinte salée (PBKDF2-SHA256) part en base ; rien ne peut le relire.
-`/reglages motdepasse retirer:true` referme la page en écriture, et en tirer un
+La commande ouvre une **fenêtre de saisie** — jamais un argument de commande, que
+Discord afficherait dans le salon pour tout le monde. Deux chemins y mènent :
+
+- **le champ laissé vide** : le bot tire un mot de passe de seize caractères sans
+  glyphes ambigus, et le montre **une fois** dans une réponse éphémère. Personne
+  n'a à le retenir, et rien ne risque d'être un mot de passe réutilisé ailleurs ;
+- **un mot de passe tapé** : le sien, qu'on retient sans aller le rechercher. Il
+  n'est pas répété dans la réponse — celui qui vient de le taper le connaît. Le bot
+  ne maîtrisant plus sa force, un plancher s'applique : huit caractères et quatre
+  caractères différents au minimum. Huit suffit parce que chaque essai coûte les
+  cent mille itérations de PBKDF2 côté serveur.
+
+Dans les deux cas, seule l'empreinte salée (PBKDF2-SHA256) part en base ; rien ne
+peut relire le mot de passe. Un refus n'écrase pas le précédent.
+`/reglages motdepasse retirer:true` referme la page en écriture, et en régler un
 nouveau remplace le précédent.
 
 La commande est réservée aux **administrateurs** : le mot de passe s'emporte hors
 de Discord, donc le donner revient à donner l'écriture des relevés à quelqu'un que
-`/reglages acces` ne connaît pas.
+`/reglages acces` ne connaît pas. Le droit est revérifié à l'envoi du formulaire,
+pas seulement à l'ouverture de la fenêtre — c'est l'envoi qui écrit.
 
 Une fois tapé, un cookie signé dispense de le retaper : `httponly`,
 `samesite=Lax`, `secure`, et un cookie par entreprise pour qu'un même navigateur
@@ -454,7 +466,7 @@ local, mais elle repart des valeurs de `.env` à chaque redémarrage.
 | `/reglages fuseau fuseau` | Fuseau horaire des publications de ce serveur (ex : `Europe/Paris`) |
 | `/reglages mention [role]` | Rôle mentionné dans le post ; sans argument, aucune mention |
 | `/reglages logs [salon]` | Salon de journal ; sans argument, journal désactivé |
-| `/reglages motdepasse [retirer]` | Tire le mot de passe qui autorise la page `/frais` à enregistrer ici, et coupe les navigateurs déjà identifiés ; `retirer:true` la referme |
+| `/reglages motdepasse [retirer]` | Ouvre la fenêtre où régler le mot de passe qui autorise la page `/frais` à enregistrer ici — tapé, ou tiré par le bot si le champ reste vide ; coupe les navigateurs déjà identifiés, et `retirer:true` referme la page |
 | `/reglages modules liste` | Les modules trouvés et leur état dans ce serveur |
 | `/reglages modules activer module` | Rallume un module dans ce serveur |
 | `/reglages modules desactiver module` | L'éteint : ses commandes quittent le menu et ses publications se taisent |

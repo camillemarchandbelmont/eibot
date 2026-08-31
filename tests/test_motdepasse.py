@@ -20,8 +20,11 @@ Ce qui est éprouvé ici est pur : ni HTTP, ni base. Les propriétés qui compte
 from src.motdepasse import (
     ALPHABET,
     DUREE_JETON,
+    LONGUEUR_MAXIMALE,
+    LONGUEUR_MINIMALE,
     empreinte,
     nouveau,
+    refuse,
     signer,
     verifie,
     verifier_jeton,
@@ -49,6 +52,94 @@ def test_le_mot_de_passe_se_retape_sans_ambiguite():
 
     assert set(mdp) <= set(ALPHABET + "-")
     assert len(mdp.replace("-", "")) >= 16
+
+
+# --- Un mot de passe choisi -------------------------------------------------
+#
+# Choisi et non tiré : c'est le seul cas où le bot ne maîtrise plus la force de
+# ce qu'il enregistre. La page est ouverte sur internet et personne ne compte
+# les essais : ces règles sont donc le seul plancher qui existe.
+
+
+def test_un_mot_de_passe_choisi_convenable_est_accepte():
+    """Le cas courant : quelque chose qu'on retient, assez long pour tenir."""
+    assert refuse("frais-du-soir") is None
+
+
+def test_le_mot_de_passe_tire_par_le_bot_passe_ses_propres_regles():
+    """Une règle que le tirage ne respecterait pas serait une règle absurde — et
+    le jour où l'alphabet ou la longueur du tirage changent, c'est ici que ça se
+    voit."""
+    assert refuse(nouveau()) is None
+
+
+def test_un_mot_de_passe_choisi_trop_court_est_refuse():
+    """Sans plancher, `1234` suffirait à ouvrir les relevés en écriture.
+
+    Sept caractères écrits en clair, et non déduits de la constante : un plancher
+    ramené à un accepterait tout ce qui se déduit de lui, et le refus se
+    vérifierait contre lui-même.
+    """
+    raison = refuse("abcdefg")
+
+    assert raison is not None
+    assert "minimum" in raison.casefold()
+
+
+def test_le_plancher_reste_tapable_et_le_plafond_utile():
+    """Deux bornes qui n'ont de sens que dans un intervalle.
+
+    Trop bas, le plancher ne protège plus rien — la page est ouverte sur
+    internet. Trop haut, il fait écrire sur un papier ce qu'on voulait retenir, et
+    le tirage du bot lui-même n'y passerait plus.
+    """
+    assert 8 <= LONGUEUR_MINIMALE <= 16
+    assert LONGUEUR_MINIMALE < LONGUEUR_MAXIMALE <= 128
+
+
+def test_les_espaces_ne_comptent_pas_dans_la_longueur():
+    """`verifie` enlève les espaces des deux bouts avant de comparer : les garder
+    ici laisserait régler un mot de passe de trois lettres et deux espaces, qu'il
+    faudrait ensuite taper sans les espaces."""
+    raison = refuse("   abc   ")
+
+    assert raison is not None
+    assert "minimum" in raison.casefold()
+
+
+def test_un_mot_de_passe_vide_nest_pas_un_mot_de_passe():
+    """Le champ laissé vide veut dire « tire-le pour moi » : c'est à la commande
+    d'en décider, pas à cette règle de le bénir."""
+    assert refuse("") is not None
+    assert refuse("     ") is not None
+
+
+def test_un_mot_de_passe_toujours_le_meme_caractere_est_refuse():
+    """Assez long et pourtant deviné du premier coup : la longueur seule ne dit
+    rien de la force."""
+    for pauvre in ("aaaaaaaaaaaa", "abababababab", "111111111111"):
+        raison = refuse(pauvre)
+        assert raison is not None, pauvre
+        assert "différents" in raison.casefold(), pauvre
+
+
+def test_un_mot_de_passe_interminable_est_refuse():
+    """Le champ de Discord s'arrête à cette longueur, mais rien ne garantit que
+    ce qui arrive au bot en vienne : la même borne est tenue des deux côtés,
+    sinon ce qui passerait la première serait coupé par la seconde."""
+    raison = refuse("choisi-" + "a" * LONGUEUR_MAXIMALE)
+
+    assert raison is not None
+    assert "maximum" in raison.casefold()
+
+
+def test_lempreinte_ignore_les_espaces_des_deux_bouts():
+    """`verifie` les enlève : les garder au moment d'enregistrer donnerait un mot
+    de passe que personne ne pourrait plus taper — collé avec son espace, il
+    serait refusé, et le retaper sans ne marcherait pas davantage."""
+    trace = empreinte("  frais-du-soir  ")
+
+    assert verifie(trace, "frais-du-soir") is True
 
 
 # --- L'empreinte ------------------------------------------------------------

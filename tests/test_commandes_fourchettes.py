@@ -30,12 +30,20 @@ class Reponse:
     def __init__(self):
         self.messages: list[dict] = []
         self.differee = False
+        #: La fenêtre de saisie ouverte, s'il y en a une. Retenue plutôt
+        #: qu'affichée : Discord n'en montre le contenu à personne, et c'est
+        #: justement ce qu'on veut pouvoir vérifier — un mot de passe passé en
+        #: argument de commande s'afficherait dans le salon.
+        self.modale = None
 
     async def defer(self, ephemeral: bool = False) -> None:
         self.differee = True
 
     async def send_message(self, contenu=None, **options) -> None:
         self.messages.append({"contenu": contenu, **options})
+
+    async def send_modal(self, modale) -> None:
+        self.modale = modale
 
 
 class Followup:

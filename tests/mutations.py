@@ -3849,6 +3849,56 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
         "DUREE_JETON = 10 * 365 * 24 * 3600",
         "le navigateur ramènerait à 400 jours : le cookie mourrait avant sa date signée",
     ),
+    # --- Le plancher d'un mot de passe choisi ------------------------------
+    (
+        "mdp-choisi-sans-plancher",
+        "src/motdepasse.py",
+        "    if len(choisi) < LONGUEUR_MINIMALE:",
+        "    if False:",
+        "« 1234 » ouvrirait les relevés en écriture depuis internet",
+    ),
+    (
+        "mdp-plancher-ramene-a-rien",
+        "src/motdepasse.py",
+        "LONGUEUR_MINIMALE = 8",
+        "LONGUEUR_MINIMALE = 4",
+        "un plancher trop bas ne protège plus rien : la page est ouverte sur internet",
+    ),
+    (
+        "mdp-choisi-sans-plafond",
+        "src/motdepasse.py",
+        "    if len(choisi) > LONGUEUR_MAXIMALE:",
+        "    if False:",
+        "le champ de saisie couperait ce que la règle accepte : deux bornes qui diffèrent",
+    ),
+    (
+        "mdp-choisi-sans-variete",
+        "src/motdepasse.py",
+        "    if len(set(choisi)) < VARIETE_MINIMALE:",
+        "    if False:",
+        "« aaaaaaaaaaaa » serait accepté : long et deviné du premier coup",
+    ),
+    (
+        "mdp-variete-inexistante",
+        "src/motdepasse.py",
+        "VARIETE_MINIMALE = 4",
+        "VARIETE_MINIMALE = 1",
+        "un seul caractère répété suffirait",
+    ),
+    (
+        "mdp-choisi-longueur-comptee-avec-les-espaces",
+        "src/motdepasse.py",
+        '    choisi = str(mot_de_passe or "").strip()',
+        '    choisi = str(mot_de_passe or "")',
+        "trois lettres et cinq espaces passeraient pour huit caractères",
+    ),
+    (
+        "mdp-empreinte-garde-les-espaces",
+        "src/motdepasse.py",
+        '        "sha256", str(mot_de_passe or "").strip().encode(), sel, ITERATIONS',
+        '        "sha256", str(mot_de_passe or "").encode(), sel, ITERATIONS',
+        "un mot de passe collé avec son espace ne se retaperait plus jamais",
+    ),
     # --- Le tiroir : lot de relevés et empreinte ---------------------------
     (
         "db-lot-ecrase-le-tableau",
@@ -3879,6 +3929,13 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
         "le mot de passe serait lisible en base, donc chez l'hébergeur",
     ),
     (
+        "db-mdp-choisi-ignore",
+        "src/db.py",
+        "        clair = motdepasse.nouveau() if choisi is None else str(choisi)",
+        "        clair = motdepasse.nouveau()",
+        "le mot de passe choisi serait remplacé par un tirage, sans le dire",
+    ),
+    (
         "db-mdp-efface-sans-le-dire",
         "src/db.py",
         "        if await self.motdepasse_page() is None:\n            return False",
@@ -3896,18 +3953,70 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
         "n'importe qui s'accorderait l'écriture des relevés hors de Discord",
     ),
     (
-        "mdp-commande-montre-le-mot-de-passe-au-salon",
+        "mdp-modale-repond-au-salon",
         "src/reglages.py",
-        "de les couper.\",\n            ephemeral=True,",
-        "de les couper.\",\n            ephemeral=False,",
+        'de les couper."\n                )\n'
+        "            await interaction.response.send_message(message, ephemeral=True)",
+        'de les couper."\n                )\n'
+        "            await interaction.response.send_message(message, ephemeral=False)",
         "le mot de passe resterait affiché dans le salon pour tout le monde",
     ),
     (
         "mdp-commande-regle-toutes-les-entreprises",
         "src/reglages.py",
-        "        magasin = pour_ce_serveur(bot, interaction)\n\n        if retirer:",
-        "        magasin = bot.store\n\n        if retirer:",
+        "            magasin = pour_ce_serveur(bot, interaction)\n"
+        "            clair = await magasin.definir_motdepasse_page(choisi or None)",
+        "            magasin = bot.store\n"
+        "            clair = await magasin.definir_motdepasse_page(choisi or None)",
         "un mot de passe commun donnerait l'écriture chez toutes les entreprises",
+    ),
+    (
+        "mdp-modale-ouverte-a-tous",
+        "src/reglages.py",
+        "            if not administrateur(interaction):\n"
+        "                await interaction.response.send_message(\n"
+        "                    REFUS_MOTDEPASSE, ephemeral=True\n"
+        "                )",
+        "            if False:\n"
+        "                await interaction.response.send_message(\n"
+        "                    REFUS_MOTDEPASSE, ephemeral=True\n"
+        "                )",
+        "un rôle d'admin retiré, ou un formulaire rejoué, écrirait quand même",
+    ),
+    (
+        "mdp-modale-refus-ecrit-quand-meme",
+        "src/reglages.py",
+        "            if choisi and (raison := refuse(choisi)):",
+        "            if False and (raison := refuse(choisi)):",
+        "un mot de passe refusé écraserait l'ancien : la page fermée sans le dire",
+    ),
+    (
+        "mdp-modale-vide-enregistre-le-vide",
+        "src/reglages.py",
+        "            clair = await magasin.definir_motdepasse_page(choisi or None)",
+        "            clair = await magasin.definir_motdepasse_page(choisi)",
+        "un champ laissé vide réglerait le vide au lieu de tirer un mot de passe",
+    ),
+    (
+        "mdp-modale-repete-le-mot-de-passe-choisi",
+        "src/reglages.py",
+        '                    f"✅ Mot de passe réglé pour **{nom}**.\\n"',
+        '                    f"✅ Mot de passe réglé pour **{nom}** : {clair}\\n"',
+        "le mot de passe choisi resterait à l'écran dans un message qu'on ne ferme pas",
+    ),
+    (
+        "mdp-fenetre-champ-obligatoire",
+        "src/reglages.py",
+        "                required=False,",
+        "                required=True,",
+        "le tirage deviendrait impossible : Discord refuserait un champ vide",
+    ),
+    (
+        "mdp-fenetre-sans-plafond",
+        "src/reglages.py",
+        "                max_length=LONGUEUR_MAXIMALE,",
+        "                max_length=None,",
+        "le champ laisserait taper ce que la règle refuse",
     ),
 ]
 

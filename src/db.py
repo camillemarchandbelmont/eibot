@@ -1324,18 +1324,23 @@ class Store:
         trace = await self.get("motdepasse_page", None)
         return trace if isinstance(trace, dict) else None
 
-    async def definir_motdepasse_page(self) -> str:
-        """Tire un mot de passe, n'enregistre que son empreinte, rend le clair.
+    async def definir_motdepasse_page(self, choisi: str | None = None) -> str:
+        """Enregistre l'empreinte d'un mot de passe, et rend le clair.
 
-        Le tirage vit ici et non chez l'appelant : c'est ce qui garantit qu'aucun
-        chemin n'écrit un mot de passe lisible en base. Le clair rendu est le seul
-        moment où il existe — la commande le montre, et personne ne peut le relire
-        ensuite.
+        Sans argument, il est **tiré** ici et non chez l'appelant : c'est ce qui
+        garantit qu'aucun chemin n'écrit un mot de passe lisible en base. Le clair
+        rendu est le seul moment où il existe — la commande le montre, et personne
+        ne peut le relire ensuite.
+
+        Avec un `choisi`, il est enregistré tel quel. Sa **force** n'est pas
+        vérifiée ici mais par `motdepasse.refuse`, du côté de la commande : elle
+        seule a de quoi dire pourquoi elle refuse, et un refus muet ferait retaper
+        le même.
 
         Remplace le précédent, donc coupe les cookies déjà distribués : ils sont
         signés avec l'empreinte (voir `src/motdepasse.py`).
         """
-        clair = motdepasse.nouveau()
+        clair = motdepasse.nouveau() if choisi is None else str(choisi)
         await self.set("motdepasse_page", motdepasse.empreinte(clair))
         return clair
 

@@ -10,10 +10,16 @@ taper qu'une fois par navigateur.
 
 Trois partis pris :
 
-**Le mot de passe est tiré par le bot**, pas choisi. Il se lit une fois dans une
-réponse éphémère de Discord et se colle dans la page ; personne n'a à s'en
-souvenir, donc rien n'oblige à en accepter un faible. Et le tirage évite qu'un
-mot de passe réutilisé ailleurs finisse en base.
+**Le mot de passe est tiré par le bot** à moins qu'on en choisisse un. Le tirage
+reste le chemin par défaut : il se lit une fois dans une réponse éphémère de
+Discord et se colle dans la page, personne n'a à s'en souvenir, et rien ne risque
+d'être un mot de passe déjà réutilisé ailleurs. Un mot de passe choisi, lui, se
+retient sans aller le rechercher — c'est tout son intérêt, et c'est aussi
+pourquoi `refuse` lui impose un plancher : le bot ne maîtrise plus sa force.
+
+Choisi ou tiré, il ne passe **jamais** par un argument de commande — Discord
+afficherait celui-ci à tout le salon. Un mot de passe choisi arrive par une
+fenêtre de saisie (`discord.ui.Modal`), qui ne montre rien à personne.
 
 **Seule son empreinte salée est stockée.** La base est chez un hébergeur, et un
 mot de passe lisible en base serait celui de l'entreprise pour quiconque la lit.
@@ -47,6 +53,29 @@ ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789"
 #: groupes ne sont là que pour le relire à l'œil.
 GROUPES = 4
 PAR_GROUPE = 4
+
+#: Le plancher d'un mot de passe **choisi**, en caractères.
+#:
+#: Huit et pas seize : un mot de passe choisi sert à être retenu, et l'exiger
+#: aussi long que celui du tirage ferait recopier sur un papier ce qu'on voulait
+#: garder en tête. Huit tient parce que la page n'a pas de mot de passe à deviner
+#: vite : chaque essai coûte les cent mille itérations de PBKDF2 côté serveur, ce
+#: qui ramène l'essai à l'aveugle à quelques tentatives par seconde.
+LONGUEUR_MINIMALE = 8
+
+#: Le plafond, celui du champ de saisie de Discord.
+#:
+#: Tenu ici aussi : le champ borne ce qu'on tape, pas ce qui arrive au bot. Sans
+#: cette borne des deux côtés, l'une accepterait ce que l'autre coupe, et le mot
+#: de passe enregistré ne serait pas celui qu'on croit avoir réglé.
+LONGUEUR_MAXIMALE = 128
+
+#: Combien de caractères **différents** au minimum.
+#:
+#: La longueur seule ne dit rien de la force : `aaaaaaaaaaaa` est long et se
+#: devine du premier coup. Quatre, plutôt qu'une liste de mots de passe courants à
+#: tenir à jour — cette liste écarterait `azerty` et laisserait passer `azerty1`.
+VARIETE_MINIMALE = 4
 
 #: Nombre d'itérations de PBKDF2. Cent mille : quelques centaines de
 #: millisecondes sur l'hébergement gratuit, une fois par navigateur et par mois.
@@ -87,6 +116,39 @@ def nouveau() -> str:
     return "-".join(groupes)
 
 
+def refuse(mot_de_passe: str) -> str | None:
+    """Ce qui empêche de retenir ce mot de passe **choisi**, ou None s'il tient.
+
+    Rend la raison plutôt qu'un booléen : la règle et son explication changent
+    ensemble, et celui qui vient de se faire refuser un mot de passe a besoin de
+    savoir lequel refaire, pas d'apprendre qu'il a eu tort.
+
+    Les espaces des deux bouts ne comptent pas : `verifie` les enlève avant de
+    comparer, si bien qu'un mot de passe de trois lettres et deux espaces serait
+    un mot de passe de trois lettres, à taper sans les espaces.
+
+    Rien ici ne s'applique au tirage — mais le tirage doit passer ces règles, sans
+    quoi elles seraient absurdes ; c'est éprouvé.
+    """
+    choisi = str(mot_de_passe or "").strip()
+    if len(choisi) < LONGUEUR_MINIMALE:
+        return (
+            f"{LONGUEUR_MINIMALE} caractères au minimum. La page est ouverte sur "
+            "internet et personne n'y compte les essais."
+        )
+    if len(choisi) > LONGUEUR_MAXIMALE:
+        return (
+            f"{LONGUEUR_MAXIMALE} caractères au maximum, c'est ce que le champ de "
+            "saisie accepte."
+        )
+    if len(set(choisi)) < VARIETE_MINIMALE:
+        return (
+            f"{VARIETE_MINIMALE} caractères différents au minimum : un mot de "
+            "passe long qui se répète se devine du premier coup."
+        )
+    return None
+
+
 def empreinte(mot_de_passe: str) -> dict[str, str | int]:
     """Ce qui part en base : sel, empreinte, algorithme et itérations.
 
@@ -94,10 +156,15 @@ def empreinte(mot_de_passe: str) -> dict[str, str | int]:
     au moment de vérifier : les augmenter invaliderait sinon toutes les empreintes
     déjà enregistrées, et chaque entreprise se retrouverait sans mot de passe sans
     que rien ne le dise.
+
+    Les espaces des deux bouts sont enlevés, comme `verifie` le fait de ce qu'on
+    tape : sinon un mot de passe collé avec son espace serait enregistré avec, et
+    ne se retaperait plus jamais — ni avec l'espace, que le navigateur enlève, ni
+    sans, qui n'est pas ce qui a été enregistré.
     """
     sel = secrets.token_bytes(16)
     calcul = hashlib.pbkdf2_hmac(
-        "sha256", str(mot_de_passe).encode(), sel, ITERATIONS
+        "sha256", str(mot_de_passe or "").strip().encode(), sel, ITERATIONS
     )
     return {
         "algo": _ALGO,

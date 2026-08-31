@@ -34,6 +34,7 @@ from src.commandes import (
     pour_ce_serveur,
 )
 from src.importation import nommer, preparer
+from src.motdepasse import LONGUEUR_MAXIMALE, refuse
 
 # Le chemin de la page vient de la page elle-même : recopié ici, il finirait par
 # désigner une adresse qui n'existe plus, et le mot de passe serait tiré sans
@@ -308,6 +309,100 @@ def enregistrer_les_reglages(bot: EmpireBot) -> None:
         "hors de Discord et hors de la liste d'accès."
     )
 
+    def _ou_le_taper(nom: str) -> str:
+        """La phrase commune aux deux réponses : où ce mot de passe sert.
+
+        Écrite une fois : deux copies finiraient par ne plus dire la même chose,
+        et l'une des deux désignerait une page qui n'existe plus.
+        """
+        return (
+            f"À taper sur la page web `{CHEMIN_PAGE}`, entreprise **{nom}**, pour y "
+            "enregistrer les relevés collés. Ce navigateur restera ensuite "
+            "identifié, et le reste tant qu'il sert : le mot de passe n'est plus à "
+            "retaper."
+        )
+
+    class FenetreMotDePasse(discord.ui.Modal):
+        """La fenêtre où l'on tape le mot de passe — ou rien, pour qu'il soit tiré.
+
+        Une fenêtre et non un argument de commande : Discord affiche les arguments
+        dans le salon, à tout le monde et pour toujours. Ce qu'on tape ici ne part
+        qu'au bot.
+
+        Le champ est **facultatif** : laissé vide, il veut dire « tire-le pour
+        moi ». C'est aussi pourquoi la longueur minimale n'est pas confiée à
+        Discord — elle griserait le bouton d'envoi sur un champ vide, et le refus
+        d'un mot de passe trop court ne dirait plus sa raison.
+        """
+
+        def __init__(self):
+            # Un quart d'heure : au-delà, Discord refuse l'envoi de lui-même. Une
+            # fenêtre sans fin resterait, elle, dans la mémoire du bot jusqu'au
+            # redémarrage.
+            super().__init__(title="Mot de passe de la page des frais", timeout=900)
+            self.saisie = discord.ui.TextInput(
+                label="Mot de passe",
+                placeholder="Laisse vide : le bot en tire un solide",
+                required=False,
+                max_length=LONGUEUR_MAXIMALE,
+                style=discord.TextStyle.short,
+            )
+            self.add_item(self.saisie)
+
+        async def on_submit(self, interaction: discord.Interaction):
+            """Enregistre l'empreinte, et confirme sans jamais relire le clair."""
+            # Revérifié ici : l'envoi est le moment où l'on écrit, la fenêtre a pu
+            # rester ouverte un quart d'heure, et un formulaire Discord se rejoue.
+            # S'en remettre au contrôle fait à l'ouverture laisserait le droit
+            # dépendre du fait d'avoir vu la fenêtre.
+            if not administrateur(interaction):
+                await interaction.response.send_message(
+                    REFUS_MOTDEPASSE, ephemeral=True
+                )
+                return
+
+            choisi = str(self.saisie.value or "").strip()
+            if choisi and (raison := refuse(choisi)):
+                # Rien n'est écrit : un refus qui écraserait quand même l'ancien
+                # refermerait la page sans le dire.
+                await interaction.response.send_message(
+                    f"❌ Mot de passe refusé : {raison}\n"
+                    "-# Rien n'a changé — celui d'avant vaut toujours, s'il y en "
+                    "avait un. Retape `/reglages motdepasse`.",
+                    ephemeral=True,
+                )
+                return
+
+            nom = interaction.guild.name
+            magasin = pour_ce_serveur(bot, interaction)
+            clair = await magasin.definir_motdepasse_page(choisi or None)
+
+            if choisi:
+                # Le mot de passe choisi n'est **pas répété** : celui qui vient de
+                # le taper le connaît, et le remettre à l'écran le laisserait dans
+                # un message qu'on ne pense pas à fermer.
+                message = (
+                    f"✅ Mot de passe réglé pour **{nom}**.\n"
+                    + _ou_le_taper(nom)
+                    + "\n-# Il n'est pas répété ici, et seule son empreinte est "
+                    "enregistrée : rien ne peut le relire. Oublié, il ne se "
+                    "retrouve pas — il se remplace, ce qui déconnecte les "
+                    "navigateurs déjà identifiés."
+                )
+            else:
+                # Montré **une seule fois** : rien ne peut le relire ensuite. Le
+                # dire évite de fermer la réponse sans l'avoir noté, puis d'en
+                # tirer un autre — ce qui couperait les navigateurs des autres
+                # postes.
+                message = (
+                    f"✅ Mot de passe de **{nom}** :\n"
+                    f"```{clair}```" + _ou_le_taper(nom) + "\n-# Il n'est affiché "
+                    "qu'une fois : seule son empreinte est enregistrée. En tirer un "
+                    "nouveau remplace celui-ci et déconnecte les navigateurs déjà "
+                    "identifiés — c'est la seule façon de les couper."
+                )
+            await interaction.response.send_message(message, ephemeral=True)
+
     @groupe.command(
         name="motdepasse",
         description=f"Mot de passe pour enregistrer depuis la page {CHEMIN_PAGE}",
@@ -316,11 +411,12 @@ def enregistrer_les_reglages(bot: EmpireBot) -> None:
     async def reglages_motdepasse(
         interaction: discord.Interaction, retirer: bool = False
     ):
-        """Tire le mot de passe de la page des frais, et le montre une fois.
+        """Ouvre la fenêtre où régler le mot de passe de la page des frais.
 
-        Tiré par le bot et non choisi : un mot de passe passé en argument de
-        commande s'afficherait dans le salon pour tout le monde, et serait à
-        changer aussitôt que lu. Ici il ne sort que dans une réponse éphémère.
+        Choisi ou tiré, il ne passe **jamais** par un argument de commande :
+        Discord l'afficherait dans le salon pour tout le monde, et il serait à
+        changer aussitôt que lu. D'où la fenêtre de saisie, dont le contenu ne part
+        qu'au bot, et la réponse éphémère.
 
         Par serveur, comme le reste : la page propose la liste des entreprises
         dans un menu déroulant, et un mot de passe commun donnerait à qui le tient
@@ -330,9 +426,8 @@ def enregistrer_les_reglages(bot: EmpireBot) -> None:
             await interaction.response.send_message(REFUS_MOTDEPASSE, ephemeral=True)
             return
 
-        magasin = pour_ce_serveur(bot, interaction)
-
         if retirer:
+            magasin = pour_ce_serveur(bot, interaction)
             if await magasin.effacer_motdepasse_page():
                 message = (
                     f"✅ Mot de passe retiré : `{CHEMIN_PAGE}` n'enregistre plus "
@@ -348,23 +443,10 @@ def enregistrer_les_reglages(bot: EmpireBot) -> None:
             await interaction.response.send_message(message, ephemeral=True)
             return
 
-        clair = await magasin.definir_motdepasse_page()
-        # Le mot de passe est **montré une seule fois** : seule son empreinte est
-        # enregistrée, et rien ne peut le relire. Le dire évite de fermer la
-        # réponse sans l'avoir noté, puis d'en tirer un autre — ce qui couperait
-        # les navigateurs des autres postes.
-        await interaction.response.send_message(
-            f"✅ Mot de passe de **{interaction.guild.name}** :\n"
-            f"```{clair}```"
-            f"À coller sur la page web `{CHEMIN_PAGE}`, entreprise "
-            f"**{interaction.guild.name}**, pour y enregistrer les relevés collés. "
-            "Ce navigateur restera ensuite identifié, et le reste tant qu'il sert : "
-            "le mot de passe n'est plus à retaper.\n"
-            "-# Il n'est affiché qu'une fois : seule son empreinte est enregistrée. "
-            "En tirer un nouveau remplace celui-ci et déconnecte les navigateurs "
-            "déjà identifiés — c'est la seule façon de les couper.",
-            ephemeral=True,
-        )
+        # Une fenêtre plutôt qu'un tirage immédiat : c'est le seul moyen d'accepter
+        # un mot de passe choisi sans le faire passer par un argument de commande,
+        # que Discord afficherait dans le salon.
+        await interaction.response.send_modal(FenetreMotDePasse())
 
     # --- /reglages importer -------------------------------------------------
 
